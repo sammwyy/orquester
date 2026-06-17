@@ -1,21 +1,20 @@
-import React from "react";
+import React, { useState } from "react";
 import { Box, ChevronLeft, FolderPlus, Plus } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Dropdown, DropdownItem, IconButton } from "../ui";
-import { useProjects } from "../../hooks";
+import { NewItemInput } from "./NewItemInput";
 import { useAppStore } from "../../store/app";
 
 /** Sidebar view shown after entering a workspace: its projects. */
 export const ProjectList: React.FC = () => {
   const currentWorkspace = useAppStore((s) => s.currentWorkspace);
   const currentProject = useAppStore((s) => s.currentProject);
+  const projects = useAppStore((s) => s.projects);
+  const loading = useAppStore((s) => s.projectsLoading);
   const closeWorkspace = useAppStore((s) => s.closeWorkspace);
   const openProject = useAppStore((s) => s.openProject);
-  const { data: projects, loading } = useProjects(currentWorkspace);
-
-  // TODO: wire create project/folder (mkdir under the workspace) with a name input.
-  const create = (kind: "project" | "folder") =>
-    console.info(`[orquester] new ${kind} (not yet implemented)`);
+  const createProject = useAppStore((s) => s.createProject);
+  const [creating, setCreating] = useState<null | "project" | "folder">(null);
 
   return (
     <>
@@ -35,28 +34,41 @@ export const ProjectList: React.FC = () => {
           align="right"
           width="w-44"
         >
-          <DropdownItem icon={<Box size={14} />} onClick={() => create("project")}>
+          <DropdownItem icon={<Box size={14} />} onClick={() => setCreating("project")}>
             New Project
           </DropdownItem>
-          <DropdownItem icon={<FolderPlus size={14} />} onClick={() => create("folder")}>
+          <DropdownItem icon={<FolderPlus size={14} />} onClick={() => setCreating("folder")}>
             New Folder
           </DropdownItem>
         </Dropdown>
       </div>
 
       <nav className="flex-1 space-y-px overflow-y-auto px-2 pb-2">
-        {loading && <p className="px-2 py-2 text-xs text-neutral-600">Loading…</p>}
-        {!loading && projects.length === 0 && (
+        {creating && (
+          <NewItemInput
+            placeholder={creating === "folder" ? "folder-name" : "project-name"}
+            onCancel={() => setCreating(null)}
+            onSubmit={(name) => {
+              setCreating(null);
+              void createProject(name);
+            }}
+          />
+        )}
+
+        {loading && projects.length === 0 && (
+          <p className="px-2 py-2 text-xs text-neutral-600">Loading…</p>
+        )}
+        {!loading && projects.length === 0 && !creating && (
           <p className="px-2 py-2 text-xs text-neutral-600">No projects yet</p>
         )}
         {projects.map((project) => (
           <button
             key={project.path}
             type="button"
-            onClick={() => openProject(project.name)}
+            onClick={() => openProject(project)}
             className={cn(
               "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-              project.name === currentProject
+              project.path === currentProject?.path
                 ? "bg-neutral-800 text-neutral-100"
                 : "text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
             )}

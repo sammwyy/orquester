@@ -1,16 +1,16 @@
-import React from "react";
+import React, { useState } from "react";
 import { Folder, FolderPlus } from "lucide-react";
 import { IconButton } from "../ui";
-import { useWorkspaces } from "../../hooks";
+import { NewItemInput } from "./NewItemInput";
 import { useAppStore } from "../../store/app";
 
 /** Root sidebar view: the list of workspace folders. */
 export const WorkspaceList: React.FC = () => {
+  const workspaces = useAppStore((s) => s.workspaces);
+  const loading = useAppStore((s) => s.workspacesLoading);
   const openWorkspace = useAppStore((s) => s.openWorkspace);
-  const { data: workspaces, loading } = useWorkspaces();
-
-  // TODO: wire create-workspace (mkdir under workspacesDir) once name input exists.
-  const newWorkspace = () => console.info("[orquester] new workspace (not yet implemented)");
+  const createWorkspace = useAppStore((s) => s.createWorkspace);
+  const [creating, setCreating] = useState(false);
 
   return (
     <>
@@ -18,21 +18,34 @@ export const WorkspaceList: React.FC = () => {
         <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-500">
           Workspaces
         </span>
-        <IconButton label="New workspace" onClick={newWorkspace}>
+        <IconButton label="New workspace" onClick={() => setCreating(true)}>
           <FolderPlus size={15} />
         </IconButton>
       </div>
 
       <nav className="flex-1 space-y-px overflow-y-auto px-2 pb-2">
-        {loading && <p className="px-2 py-2 text-xs text-neutral-600">Loading…</p>}
-        {!loading && workspaces.length === 0 && (
+        {creating && (
+          <NewItemInput
+            placeholder="workspace-name"
+            onCancel={() => setCreating(false)}
+            onSubmit={(name) => {
+              setCreating(false);
+              void createWorkspace(name);
+            }}
+          />
+        )}
+
+        {loading && workspaces.length === 0 && (
+          <p className="px-2 py-2 text-xs text-neutral-600">Loading…</p>
+        )}
+        {!loading && workspaces.length === 0 && !creating && (
           <p className="px-2 py-2 text-xs text-neutral-600">No workspaces yet</p>
         )}
         {workspaces.map((workspace) => (
           <button
             key={workspace.path}
             type="button"
-            onClick={() => openWorkspace(workspace.name)}
+            onClick={() => void openWorkspace(workspace.name)}
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
           >
             <Folder size={15} className="text-neutral-500" />

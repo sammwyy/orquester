@@ -1,7 +1,7 @@
 import React from "react";
 import { Bot, FolderTree, LayoutGrid, MousePointerClick, TerminalSquare } from "lucide-react";
 import { EmptyState } from "./EmptyState";
-import { useAppStore } from "../../store/app";
+import { useActiveTabId, useAppStore, useCurrentTabs } from "../../store/app";
 import type { Tab, TabKind } from "../../types";
 
 const TAB_ICONS: Record<TabKind, React.ReactNode> = {
@@ -22,8 +22,8 @@ const TabContent: React.FC<{ tab: Tab }> = ({ tab }) => (
 /** Main panel: renders the active tab, or guidance when nothing is open. */
 export const MainView: React.FC = () => {
   const currentProject = useAppStore((s) => s.currentProject);
-  const tabs = useAppStore((s) => s.tabs);
-  const activeTabId = useAppStore((s) => s.activeTabId);
+  const tabs = useCurrentTabs();
+  const activeTabId = useActiveTabId();
 
   let body: React.ReactNode;
 

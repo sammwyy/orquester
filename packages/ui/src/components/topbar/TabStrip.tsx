@@ -1,7 +1,7 @@
 import React from "react";
 import { Bot, FolderTree, TerminalSquare, X } from "lucide-react";
 import { cn } from "../../lib/cn";
-import { useAppStore } from "../../store/app";
+import { useActiveTabId, useAppStore, useCurrentTabs } from "../../store/app";
 import type { TabKind } from "../../types";
 
 const TAB_ICONS: Record<TabKind, React.ReactNode> = {
@@ -12,8 +12,8 @@ const TAB_ICONS: Record<TabKind, React.ReactNode> = {
 
 /** Horizontal strip of open tabs for the current project. */
 export const TabStrip: React.FC = () => {
-  const tabs = useAppStore((s) => s.tabs);
-  const activeTabId = useAppStore((s) => s.activeTabId);
+  const tabs = useCurrentTabs();
+  const activeTabId = useActiveTabId();
   const activateTab = useAppStore((s) => s.activateTab);
   const closeTab = useAppStore((s) => s.closeTab);
 

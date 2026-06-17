@@ -36,7 +36,7 @@ export {
 } from "./lib/transporters";
 
 // State & data
-export { useAppStore, type AppState } from "./store/app";
+export { useAppStore, useCurrentTabs, useActiveTabId, type AppState } from "./store/app";
 export * from "./hooks";
 export * from "./services";
 

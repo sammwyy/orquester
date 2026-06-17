@@ -1,8 +1,9 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { AppWrapper, AppShell } from "./components/layout";
 import { OrquesterProvider, type WindowControls } from "./context/orquester-context";
 import { ApiClient } from "./lib/api-client";
 import { createTransporter } from "./lib/transporters";
+import { useAppStore } from "./store/app";
 import type { HttpClient } from "./lib/http-client";
 import type { Transporter } from "./lib/transporter";
 import type { Runtime, UiConnection } from "./types";
@@ -44,6 +45,13 @@ export const OrquesterApp: React.FC<OrquesterAppProps> = ({
   }, [initialConnection, transporter, httpClient]);
 
   const titlebar = useTitlebar ?? runtime === "desktop";
+
+  // Bind the server manager into the store and load the workspace tree.
+  useEffect(() => {
+    const store = useAppStore.getState();
+    store.setApi(api);
+    void store.loadWorkspaces();
+  }, [api]);
 
   return (
     <OrquesterProvider
