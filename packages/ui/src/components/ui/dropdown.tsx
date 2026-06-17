@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 
 export interface DropdownProps {
@@ -16,10 +17,20 @@ interface DropdownContextValue {
 
 const DropdownContext = React.createContext<DropdownContextValue>({ close: () => undefined });
 
+/** Fixed-viewport coordinates for the portaled panel. */
+interface PanelPosition {
+  top: number;
+  left?: number;
+  right?: number;
+}
+
+const GAP = 4;
+
 /**
- * Lightweight popover menu: toggles on trigger click, closes on outside click
- * or Escape. Render {@link DropdownItem}/{@link DropdownLabel}/{@link DropdownSeparator}
- * inside.
+ * Lightweight popover menu. The panel is rendered in a portal on `document.body`
+ * with fixed positioning derived from the trigger, so it never gets clipped or
+ * pushed around by `overflow`/flex ancestors (e.g. the scrollable tab strip).
+ * Closes on outside click or Escape.
  */
 export const Dropdown: React.FC<DropdownProps> = ({
   trigger,
@@ -29,9 +40,31 @@ export const Dropdown: React.FC<DropdownProps> = ({
   className
 }) => {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<PanelPosition | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
+
+  const updatePosition = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) {
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    setPosition(
+      align === "right"
+        ? { top: rect.bottom + GAP, right: window.innerWidth - rect.right }
+        : { top: rect.bottom + GAP, left: rect.left }
+    );
+  }, [align]);
+
+  // Position before paint to avoid a flash at the wrong spot.
+  useLayoutEffect(() => {
+    if (open) {
+      updatePosition();
+    }
+  }, [open, updatePosition]);
 
   useEffect(() => {
     if (!open) {
@@ -39,7 +72,11 @@ export const Dropdown: React.FC<DropdownProps> = ({
     }
 
     const onPointerDown = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        !triggerRef.current?.contains(target) &&
+        !panelRef.current?.contains(target)
+      ) {
         setOpen(false);
       }
     };
@@ -48,18 +85,25 @@ export const Dropdown: React.FC<DropdownProps> = ({
         setOpen(false);
       }
     };
+    const onReflow = () => updatePosition();
 
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onReflow);
+    // Reposition (capture phase) when any ancestor scrolls.
+    window.addEventListener("scroll", onReflow, true);
     return () => {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onReflow);
+      window.removeEventListener("scroll", onReflow, true);
     };
-  }, [open]);
+  }, [open, updatePosition]);
 
   return (
-    <div ref={rootRef} className="relative inline-flex">
+    <>
       <button
+        ref={triggerRef}
         type="button"
         className="inline-flex app-no-drag"
         onClick={() => setOpen((value) => !value)}
@@ -67,21 +111,25 @@ export const Dropdown: React.FC<DropdownProps> = ({
       >
         {trigger}
       </button>
-      {open && (
-        <div
-          role="menu"
-          className={cn(
-            "absolute top-full z-50 mt-1 overflow-hidden rounded-md border border-neutral-800",
-            "bg-neutral-900 p-1 shadow-xl shadow-black/40 app-no-drag",
-            align === "right" ? "right-0" : "left-0",
-            width,
-            className
-          )}
-        >
-          <DropdownContext.Provider value={{ close }}>{children}</DropdownContext.Provider>
-        </div>
-      )}
-    </div>
+      {open &&
+        position &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            style={{ position: "fixed", top: position.top, left: position.left, right: position.right }}
+            className={cn(
+              "z-50 overflow-hidden rounded-md border border-neutral-800",
+              "bg-neutral-900 p-1 shadow-xl shadow-black/40 app-no-drag",
+              width,
+              className
+            )}
+          >
+            <DropdownContext.Provider value={{ close }}>{children}</DropdownContext.Provider>
+          </div>,
+          document.body
+        )}
+    </>
   );
 };
 
