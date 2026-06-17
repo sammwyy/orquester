@@ -11,12 +11,16 @@ import type {
 import {
   type ClientConfig,
   type DaemonConfig,
+  type DaemonPaths,
   createDefaultClientConfig,
   createDefaultDaemonConfig,
-  parseDaemonConfig
+  dailyLogFile,
+  parseDaemonConfig,
+  resolveDaemonPaths
 } from "@orquester/config";
 import Fastify, { type FastifyInstance } from "fastify";
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { createWriteStream, type WriteStream } from "node:fs";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -25,43 +29,44 @@ const daemonId = randomUUID();
 const packageVersion = "0.0.0";
 
 async function main(): Promise<void> {
-  const config = await loadConfig();
+  const paths = resolveDaemonPaths({ homeDir: homedir(), platform: platform(), env: process.env });
+  const config = await loadConfig(paths);
   validateTransportConfig(config);
-  await prepareDataDir(config);
+  await prepareDirs(config, paths);
 
-  const clientConfig = createDefaultClientConfig(config.transports.unixSocket.path ?? "");
+  const logStream = createWriteStream(dailyLogFile(config.logsDir), { flags: "a" });
+  const clientConfig = createDefaultClientConfig(paths.socketPath);
   const started: string[] = [];
   const servers: FastifyInstance[] = [];
 
-  if (config.transports.unixSocket.enabled) {
-    const app = createServer(config, clientConfig, { authRequired: false, mode: "local" });
+  // The local unix socket transport is always present.
+  {
+    const app = createServer(config, paths, clientConfig, logStream, {
+      authRequired: false,
+      mode: "local"
+    });
     servers.push(app);
-    const socketPath = config.transports.unixSocket.path;
-
-    if (!socketPath) {
-      throw new Error("Unix socket transport is enabled but no socket path is configured.");
-    }
 
     if (platform() !== "win32") {
-      await rm(socketPath, { force: true });
+      await rm(paths.socketPath, { force: true });
     }
 
-    await app.listen({ path: socketPath });
-    started.push(`unix:${socketPath}`);
+    await app.listen({ path: paths.socketPath });
+    started.push(`unix:${paths.socketPath}`);
   }
 
+  // The external HTTP transport is opt-in (daemon.json -> transports.http.enabled).
   if (config.transports.http.enabled) {
-    const app = createServer(config, clientConfig, { authRequired: true, mode: "remote" });
+    const app = createServer(config, paths, clientConfig, logStream, {
+      authRequired: true,
+      mode: "remote"
+    });
     servers.push(app);
     await app.listen({
       host: config.transports.http.host,
       port: config.transports.http.port
     });
     started.push(`http://${config.transports.http.host}:${config.transports.http.port}`);
-  }
-
-  if (started.length === 0) {
-    throw new Error("No daemon transports are enabled.");
   }
 
   process.on("SIGINT", () => shutdown(servers));
@@ -72,11 +77,13 @@ async function main(): Promise<void> {
 
 function createServer(
   config: DaemonConfig,
+  paths: DaemonPaths,
   clientConfig: ClientConfig,
+  logStream: WriteStream,
   options: { authRequired: boolean; mode: "local" | "remote" }
 ): FastifyInstance {
   const app = Fastify({
-    logger: true
+    logger: { level: "info", stream: logStream }
   });
 
   void app.register(websocket);
@@ -103,14 +110,14 @@ function createServer(
     version: packageVersion,
     mode: options.mode,
     transports: [
-      ...(config.transports.unixSocket.enabled ? (["unix"] as const) : []),
+      "unix" as const,
       ...(config.transports.http.enabled ? (["http"] as const) : [])
     ]
   }));
 
   app.get("/api/info", async (): Promise<ServerInfoResponse> => ({
     name: "Orquester daemon",
-    dataDir: config.dataDir,
+    dataDir: paths.daemonDir,
     workspacesDir: config.workspacesDir,
     capabilities: {
       terminals: false,
@@ -234,26 +241,22 @@ async function listProjects(workspacesDir: string, workspace: string): Promise<P
   }));
 }
 
-async function loadConfig(): Promise<DaemonConfig> {
+async function loadConfig(paths: DaemonPaths): Promise<DaemonConfig> {
   const defaults = createDefaultDaemonConfig({
-    homeDir: homedir(),
+    homeDir: paths.homeDir,
     platform: platform(),
-    env: process.env
+    env: process.env,
+    paths
   });
-  const configPath = join(defaults.dataDir, "config.json");
 
   try {
-    const raw = await readFile(configPath, "utf8");
+    const raw = await readFile(paths.configPath, "utf8");
     const fromDisk = JSON.parse(raw) as Partial<DaemonConfig>;
 
     return parseDaemonConfig({
       ...defaults,
       ...fromDisk,
       transports: {
-        unixSocket: {
-          ...defaults.transports.unixSocket,
-          ...fromDisk.transports?.unixSocket
-        },
         http: {
           ...defaults.transports.http,
           ...fromDisk.transports?.http
@@ -262,6 +265,9 @@ async function loadConfig(): Promise<DaemonConfig> {
     });
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
+      // Persist defaults so the user has a daemon.json to edit.
+      await mkdir(paths.daemonDir, { recursive: true });
+      await writeFile(paths.configPath, `${JSON.stringify(defaults, null, 2)}\n`, "utf8");
       return defaults;
     }
 
@@ -272,15 +278,15 @@ async function loadConfig(): Promise<DaemonConfig> {
 function validateTransportConfig(config: DaemonConfig): void {
   if (config.transports.http.enabled && !config.transports.http.password) {
     throw new Error(
-      "HTTP transport requires ORQUESTER_HTTP_PASSWORD or transports.http.password in config.json."
+      "HTTP transport requires ORQUESTER_HTTP_PASSWORD or transports.http.password in daemon.json."
     );
   }
 }
 
-async function prepareDataDir(config: DaemonConfig): Promise<void> {
-  await mkdir(config.dataDir, { recursive: true });
-  await mkdir(config.workspacesDir, { recursive: true });
+async function prepareDirs(config: DaemonConfig, paths: DaemonPaths): Promise<void> {
+  await mkdir(paths.daemonDir, { recursive: true });
   await mkdir(config.logsDir, { recursive: true });
+  await mkdir(config.workspacesDir, { recursive: true });
 }
 
 function sanitizeDaemonConfig(config: DaemonConfig): DaemonConfig {
