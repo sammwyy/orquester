@@ -4,6 +4,7 @@ import type {
   CreateSessionRequest,
   CreateWorkspaceRequest,
   EventMessage,
+  FsListResponse,
   HealthResponse,
   OpenResult,
   OpenTargetSummary,
@@ -110,6 +111,12 @@ export class ApiClient {
 
   listProjects(workspace: string, signal?: AbortSignal): Promise<ProjectSummary[]> {
     return this.send("GET", `/api/workspaces/${encodeURIComponent(workspace)}/projects`, { signal });
+  }
+
+  // --- File browser --------------------------------------------------------
+
+  listFiles(path: string, signal?: AbortSignal): Promise<FsListResponse> {
+    return this.send("GET", "/api/fs", { query: { path }, signal });
   }
 
   createProject(

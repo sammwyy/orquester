@@ -3,6 +3,8 @@ import type {
   CreateSessionRequest,
   CreateWorkspaceRequest,
   EventMessage,
+  FsEntry,
+  FsListResponse,
   HealthResponse,
   OpenRequest,
   OpenResult,
@@ -32,7 +34,8 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { createWriteStream, type WriteStream } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
 const daemonId = randomUUID();
@@ -143,11 +146,27 @@ function createServer(
   options: { authRequired: boolean; mode: "local" | "remote" }
 ): FastifyInstance {
   const { registry, sessions } = services;
+  // Remote (HTTP) clients are cross-origin (web app / desktop renderer), so the
+  // remote transport is permissive on CORS; it is still bearer-token protected.
+  const cors = options.mode === "remote";
+  const corsHeaders: Record<string, string> = cors ? { "access-control-allow-origin": "*" } : {};
+
   const app = Fastify({
     logger: { level: "info", stream: logStream }
   });
 
   app.addHook("onRequest", async (request, reply) => {
+    if (cors) {
+      // reply.header() is synchronous — do not await (awaiting the reply
+      // deadlocks the request).
+      reply.header("access-control-allow-origin", "*");
+      reply.header("access-control-allow-headers", "authorization, content-type");
+      reply.header("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
+      if (request.method === "OPTIONS") {
+        return reply.code(204).send();
+      }
+    }
+
     if (!options.authRequired || request.url === "/health") {
       return;
     }
@@ -156,7 +175,7 @@ function createServer(
     const actual = request.headers.authorization?.replace(/^Bearer\s+/i, "");
 
     if (!expected || actual !== expected) {
-      await reply.code(401).send({
+      return reply.code(401).send({
         code: "UNAUTHORIZED",
         message: "A valid bearer token is required for this daemon transport."
       });
@@ -227,6 +246,25 @@ function createServer(
       const path = join(resolved.workspacesDir, workspace, name);
       await mkdir(path, { recursive: true });
       return { name, workspace, path };
+    }
+  );
+
+  // File browser: list a directory.
+  app.get<{ Querystring: { path?: string } }>(
+    "/api/fs",
+    async (request, reply): Promise<FsListResponse | void> => {
+      const path = request.query.path;
+      if (!path) {
+        return reply.code(400).send({ code: "INVALID_REQUEST", message: "path required." });
+      }
+      try {
+        return await listFiles(path);
+      } catch (error) {
+        return reply.code(400).send({
+          code: "FS_ERROR",
+          message: error instanceof Error ? error.message : "Cannot read directory."
+        });
+      }
     }
   );
 
@@ -310,7 +348,8 @@ function createServer(
     reply.raw.writeHead(200, {
       "content-type": "application/octet-stream",
       "cache-control": "no-cache",
-      "x-accel-buffering": "no"
+      "x-accel-buffering": "no",
+      ...corsHeaders
     });
     reply.raw.write(sessions.buffer(id));
 
@@ -333,7 +372,8 @@ function createServer(
     reply.raw.writeHead(200, {
       "content-type": "application/x-ndjson",
       "cache-control": "no-cache",
-      "x-accel-buffering": "no"
+      "x-accel-buffering": "no",
+      ...corsHeaders
     });
 
     const sink = { send: (data: string) => reply.raw.write(`${data}\n`) };
@@ -426,6 +466,36 @@ async function listProjects(workspacesDir: string, workspace: string): Promise<P
     workspace,
     path: join(workspacesDir, workspace, name)
   }));
+}
+
+/** List a directory for the file browser (dirs first, dotfiles included). */
+async function listFiles(path: string): Promise<FsListResponse> {
+  const dirents = await readdir(path, { withFileTypes: true });
+  const entries: FsEntry[] = await Promise.all(
+    dirents.map(async (dirent) => {
+      const full = join(path, dirent.name);
+      const kind = dirent.isDirectory() ? "dir" : "file";
+      let size = 0;
+      if (kind === "file") {
+        try {
+          size = (await stat(full)).size;
+        } catch {
+          size = 0;
+        }
+      }
+      return { name: dirent.name, path: full, kind, size } as FsEntry;
+    })
+  );
+
+  entries.sort((a, b) => {
+    if (a.kind !== b.kind) {
+      return a.kind === "dir" ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  const parent = dirname(path);
+  return { path, parent: parent === path ? null : parent, entries };
 }
 
 async function loadConfig(paths: DaemonPaths): Promise<DaemonConfig> {

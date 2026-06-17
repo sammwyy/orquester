@@ -1,5 +1,5 @@
 import React from "react";
-import { Download, Plus } from "lucide-react";
+import { Download, FolderTree, Plus } from "lucide-react";
 import {
   Dropdown,
   DropdownEmpty,
@@ -20,6 +20,7 @@ import { useAppStore } from "../../store/app";
  */
 export const NewTabMenu: React.FC = () => {
   const openTab = useAppStore((s) => s.openTab);
+  const openFileBrowser = useAppStore((s) => s.openFileBrowser);
   const api = useApi();
   const { data: registry, loading, reload } = useRegistry();
 
@@ -47,6 +48,13 @@ export const NewTabMenu: React.FC = () => {
           {shell.name}
         </DropdownItem>
       ))}
+
+      <DropdownSeparator />
+
+      <DropdownLabel>Tools</DropdownLabel>
+      <DropdownItem icon={<FolderTree size={14} />} onClick={() => openFileBrowser()}>
+        File Browser
+      </DropdownItem>
 
       <DropdownSeparator />
 

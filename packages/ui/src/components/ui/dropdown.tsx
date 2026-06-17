@@ -19,12 +19,15 @@ const DropdownContext = React.createContext<DropdownContextValue>({ close: () =>
 
 /** Fixed-viewport coordinates for the portaled panel. */
 interface PanelPosition {
-  top: number;
+  top?: number;
+  bottom?: number;
   left?: number;
   right?: number;
+  maxHeight: number;
 }
 
 const GAP = 4;
+const MARGIN = 8;
 
 /**
  * Lightweight popover menu. The panel is rendered in a portal on `document.body`
@@ -52,11 +55,22 @@ export const Dropdown: React.FC<DropdownProps> = ({
       return;
     }
     const rect = el.getBoundingClientRect();
-    setPosition(
-      align === "right"
-        ? { top: rect.bottom + GAP, right: window.innerWidth - rect.right }
-        : { top: rect.bottom + GAP, left: rect.left }
-    );
+    const spaceBelow = window.innerHeight - rect.bottom - MARGIN;
+    const spaceAbove = rect.top - MARGIN;
+    // Flip upward when there isn't room below (e.g. the sidebar-footer switcher).
+    const openUp = spaceBelow < 280 && spaceAbove > spaceBelow;
+
+    const vertical = openUp
+      ? { bottom: window.innerHeight - rect.top + GAP }
+      : { top: rect.bottom + GAP };
+    const horizontal =
+      align === "right" ? { right: window.innerWidth - rect.right } : { left: rect.left };
+
+    setPosition({
+      ...vertical,
+      ...horizontal,
+      maxHeight: Math.max(120, (openUp ? spaceAbove : spaceBelow) - GAP)
+    });
   }, [align]);
 
   // Position before paint to avoid a flash at the wrong spot.
@@ -117,9 +131,16 @@ export const Dropdown: React.FC<DropdownProps> = ({
           <div
             ref={panelRef}
             role="menu"
-            style={{ position: "fixed", top: position.top, left: position.left, right: position.right }}
+            style={{
+              position: "fixed",
+              top: position.top,
+              bottom: position.bottom,
+              left: position.left,
+              right: position.right,
+              maxHeight: position.maxHeight
+            }}
             className={cn(
-              "z-50 overflow-hidden rounded-md border border-neutral-800",
+              "z-50 overflow-y-auto rounded-md border border-neutral-800",
               "bg-neutral-900 p-1 shadow-xl shadow-black/40 app-no-drag",
               width,
               className

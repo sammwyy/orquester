@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld("orquesterDesktop", {
     ipcRenderer.on("orquester:stream:end", listener);
     return () => ipcRenderer.removeListener("orquester:stream:end", listener);
   },
+  // Remote-server persistence (<appdir>/app/remotes.json).
+  readRemotes: () => ipcRenderer.invoke("orquester:remotes:read"),
+  writeRemotes: (remotes) => ipcRenderer.invoke("orquester:remotes:write", remotes),
   // Frameless window caption controls.
   windowControls: {
     minimize: () => ipcRenderer.send("orquester:window", "minimize"),

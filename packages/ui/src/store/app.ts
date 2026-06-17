@@ -1,6 +1,14 @@
 import { useMemo } from "react";
 import { create } from "zustand";
-import type { ApiClient } from "../lib/api-client";
+import { ApiClient } from "../lib/api-client";
+import { createTransporter } from "../lib/transporters";
+import {
+  toRemoteConfig,
+  toUiConnection,
+  type ConnectionsAdapter
+} from "../lib/connections";
+import type { HttpClient } from "../lib/http-client";
+import type { Transporter } from "../lib/transporter";
 import { workspaceService } from "../services";
 import type {
   ConnectionStatus,
@@ -8,6 +16,7 @@ import type {
   ProjectSummary,
   RegistryKind,
   SessionSummary,
+  UiConnection,
   WorkspaceSummary
 } from "../types";
 
@@ -15,6 +24,38 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Module-level handle so we can drop the events subscription on reconnect. */
 let eventsUnsubscribe: (() => void) | null = null;
+
+/** Host-provided connection wiring, set once via initConnections(). */
+interface ConnectionSetup {
+  localConnection: UiConnection;
+  /** Injected transport for the local connection (desktop unix socket). */
+  localTransporter?: Transporter;
+  /** Custom HTTP client for remote transporters (rarely needed). */
+  httpClient?: HttpClient;
+  adapter?: ConnectionsAdapter;
+}
+
+let setup: ConnectionSetup | null = null;
+
+/** Build the transporter for a connection: local uses the injected one. */
+function buildTransporter(connection: UiConnection): Transporter {
+  if (setup && connection.id === setup.localConnection.id && setup.localTransporter) {
+    return setup.localTransporter;
+  }
+  return createTransporter(connection, { httpClient: setup?.httpClient });
+}
+
+/** A client-local, non-PTY tab (e.g. the file browser). */
+export interface FileTab {
+  id: string;
+  projectPath: string;
+  title: string;
+}
+
+/** A tab in the current project: a daemon session or a local tool tab. */
+export type ProjectTab =
+  | { id: string; type: "session"; session: SessionSummary }
+  | { id: string; type: "files"; title: string };
 
 function upsertSession(sessions: SessionSummary[], next: SessionSummary): SessionSummary[] {
   const index = sessions.findIndex((s) => s.id === next.id);
@@ -30,6 +71,10 @@ export interface AppState {
   api: ApiClient | null;
   connectionStatus: ConnectionStatus;
 
+  // connections (local daemon + user-added remotes)
+  connections: UiConnection[];
+  activeConnectionId: string | null;
+
   // navigation
   currentWorkspace: string | null;
   currentProject: ProjectSummary | null;
@@ -42,11 +87,19 @@ export interface AppState {
 
   /** All daemon sessions; a project's sessions are its tabs. */
   sessions: SessionSummary[];
-  /** Client-local active tab per project path. */
+  /** Client-local tool tabs (file browser) per project path. */
+  fileTabsByProject: Record<string, FileTab[]>;
+  /** Client-local active tab id per project path (session or file tab). */
   activeTabByProject: Record<string, string | null>;
 
   setApi: (api: ApiClient) => void;
   connect: () => Promise<void>;
+
+  // connection management
+  initConnections: (setup: ConnectionSetup) => Promise<void>;
+  selectConnection: (id: string) => Promise<void>;
+  addRemote: (input: { name: string; baseUrl: string; password?: string }) => Promise<string>;
+  removeRemote: (id: string) => Promise<void>;
 
   loadWorkspaces: () => Promise<void>;
   createWorkspace: (name: string) => Promise<void>;
@@ -59,6 +112,7 @@ export interface AppState {
 
   loadSessions: () => Promise<void>;
   openTab: (kind: RegistryKind, refId: string, title?: string) => Promise<void>;
+  openFileBrowser: () => void;
   closeTab: (id: string) => Promise<void>;
   activateTab: (id: string) => void;
 
@@ -68,6 +122,8 @@ export interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   api: null,
   connectionStatus: "connecting",
+  connections: [],
+  activeConnectionId: null,
   currentWorkspace: null,
   currentProject: null,
   workspaces: [],
@@ -75,6 +131,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   projects: [],
   projectsLoading: false,
   sessions: [],
+  fileTabsByProject: {},
   activeTabByProject: {},
 
   setApi: (api) => set({ api }),
@@ -110,6 +167,66 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Subscribe to the event bus for cross-client session sync.
     eventsUnsubscribe?.();
     eventsUnsubscribe = api.openEvents((event) => get().applyEvent(event));
+  },
+
+  initConnections: async (nextSetup) => {
+    setup = nextSetup;
+    const remotes = (await nextSetup.adapter?.load().catch(() => []))?.map(toUiConnection) ?? [];
+    const connections = [nextSetup.localConnection, ...remotes];
+    set({
+      connections,
+      activeConnectionId: nextSetup.localConnection.id,
+      api: new ApiClient(nextSetup.localConnection, buildTransporter(nextSetup.localConnection))
+    });
+    await get().connect();
+  },
+
+  selectConnection: async (id) => {
+    const connection = get().connections.find((c) => c.id === id);
+    if (!connection || id === get().activeConnectionId) {
+      return;
+    }
+    eventsUnsubscribe?.();
+    eventsUnsubscribe = null;
+    // Reset all daemon-scoped state: a different server has its own data.
+    set({
+      api: new ApiClient(connection, buildTransporter(connection)),
+      activeConnectionId: id,
+      currentWorkspace: null,
+      currentProject: null,
+      workspaces: [],
+      projects: [],
+      sessions: []
+    });
+    await get().connect();
+  },
+
+  addRemote: async (input) => {
+    const connection: UiConnection = {
+      id: crypto.randomUUID(),
+      name: input.name.trim() || input.baseUrl,
+      kind: "remote",
+      endpoint: input.baseUrl.trim().replace(/\/$/, ""),
+      status: "disconnected",
+      password: input.password?.trim() || undefined
+    };
+    const connections = [...get().connections, connection];
+    set({ connections });
+    await setup?.adapter
+      ?.save(connections.filter((c) => c.kind === "remote").map(toRemoteConfig))
+      .catch(() => undefined);
+    return connection.id;
+  },
+
+  removeRemote: async (id) => {
+    const connections = get().connections.filter((c) => c.id !== id);
+    set({ connections });
+    await setup?.adapter
+      ?.save(connections.filter((c) => c.kind === "remote").map(toRemoteConfig))
+      .catch(() => undefined);
+    if (get().activeConnectionId === id && setup) {
+      await get().selectConnection(setup.localConnection.id);
+    }
   },
 
   loadWorkspaces: async () => {
@@ -173,7 +290,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   openProject: (project) =>
     set((state) => {
       const active = state.activeTabByProject[project.path];
-      const fallback = state.sessions.find((s) => s.projectPath === project.path)?.id ?? null;
+      const fallback = firstTabId(state.sessions, state.fileTabsByProject, project.path);
       return {
         currentProject: project,
         activeTabByProject: {
@@ -216,10 +333,29 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
+  openFileBrowser: () =>
+    set((state) => {
+      const project = state.currentProject;
+      if (!project) {
+        return state;
+      }
+      const tab: FileTab = { id: crypto.randomUUID(), projectPath: project.path, title: "Files" };
+      return {
+        fileTabsByProject: {
+          ...state.fileTabsByProject,
+          [project.path]: [...(state.fileTabsByProject[project.path] ?? []), tab]
+        },
+        activeTabByProject: { ...state.activeTabByProject, [project.path]: tab.id }
+      };
+    }),
+
   closeTab: async (id) => {
     const api = get().api;
-    set((state) => removeSession(state, id));
-    await api?.closeSession(id).catch(() => undefined);
+    const isSession = get().sessions.some((s) => s.id === id);
+    set((state) => (isSession ? removeSession(state, id) : removeFileTab(state, id)));
+    if (isSession) {
+      await api?.closeSession(id).catch(() => undefined);
+    }
   },
 
   activateTab: (id) =>
@@ -245,28 +381,73 @@ export const useAppStore = create<AppState>((set, get) => ({
   }
 }));
 
-function removeSession(state: AppState, id: string): Partial<AppState> {
-  const sessions = state.sessions.filter((s) => s.id !== id);
-  const activeTabByProject = { ...state.activeTabByProject };
-  for (const [path, activeId] of Object.entries(activeTabByProject)) {
-    if (activeId === id) {
-      activeTabByProject[path] = sessions.find((s) => s.projectPath === path)?.id ?? null;
-    }
-  }
-  return { sessions, activeTabByProject };
-}
-
-/** Sessions (tabs) of the currently open project. */
-export function useProjectSessions(): SessionSummary[] {
-  const sessions = useAppStore((s) => s.sessions);
-  const project = useAppStore((s) => s.currentProject);
-  return useMemo(
-    () => (project ? sessions.filter((s) => s.projectPath === project.path) : []),
-    [sessions, project]
+/** First remaining tab id for a project (session preferred, then file tab). */
+function firstTabId(
+  sessions: SessionSummary[],
+  fileTabs: Record<string, FileTab[]>,
+  path: string
+): string | null {
+  return (
+    sessions.find((s) => s.projectPath === path)?.id ?? fileTabs[path]?.[0]?.id ?? null
   );
 }
 
-export function useActiveSessionId(): string | null {
+function reassignActive(
+  activeTabByProject: Record<string, string | null>,
+  removedId: string,
+  sessions: SessionSummary[],
+  fileTabs: Record<string, FileTab[]>
+): Record<string, string | null> {
+  const next = { ...activeTabByProject };
+  for (const [path, activeId] of Object.entries(next)) {
+    if (activeId === removedId) {
+      next[path] = firstTabId(sessions, fileTabs, path);
+    }
+  }
+  return next;
+}
+
+function removeSession(state: AppState, id: string): Partial<AppState> {
+  const sessions = state.sessions.filter((s) => s.id !== id);
+  return {
+    sessions,
+    activeTabByProject: reassignActive(state.activeTabByProject, id, sessions, state.fileTabsByProject)
+  };
+}
+
+function removeFileTab(state: AppState, id: string): Partial<AppState> {
+  const fileTabsByProject: Record<string, FileTab[]> = {};
+  for (const [path, tabs] of Object.entries(state.fileTabsByProject)) {
+    fileTabsByProject[path] = tabs.filter((t) => t.id !== id);
+  }
+  return {
+    fileTabsByProject,
+    activeTabByProject: reassignActive(state.activeTabByProject, id, state.sessions, fileTabsByProject)
+  };
+}
+
+/** Combined tabs (sessions + file tabs) of the currently open project. */
+export function useProjectTabs(): ProjectTab[] {
+  const sessions = useAppStore((s) => s.sessions);
+  const fileTabsByProject = useAppStore((s) => s.fileTabsByProject);
+  const project = useAppStore((s) => s.currentProject);
+  return useMemo(() => {
+    if (!project) {
+      return [];
+    }
+    const sessionTabs: ProjectTab[] = sessions
+      .filter((s) => s.projectPath === project.path)
+      .map((session) => ({ id: session.id, type: "session", session }));
+    const fileTabs: ProjectTab[] = (fileTabsByProject[project.path] ?? []).map((tab) => ({
+      id: tab.id,
+      type: "files",
+      title: tab.title
+    }));
+    return [...sessionTabs, ...fileTabs];
+  }, [sessions, fileTabsByProject, project]);
+}
+
+export function useActiveTabId(): string | null {
   return useAppStore((s) =>
     s.currentProject ? (s.activeTabByProject[s.currentProject.path] ?? null) : null
   );

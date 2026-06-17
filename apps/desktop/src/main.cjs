@@ -160,8 +160,30 @@ function openStreamOverSocket(event, { streamId, path }) {
   streams.set(streamId, req);
 }
 
+function remotesPath() {
+  return path.join(appDir(), "remotes.json");
+}
+
 function registerIpc() {
   ipcMain.handle("orquester:request", (_event, request) => requestOverSocket(request));
+
+  // Remote-server persistence.
+  ipcMain.handle("orquester:remotes:read", () => {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(remotesPath(), "utf8"));
+      return Array.isArray(parsed.remotes) ? parsed.remotes : [];
+    } catch {
+      return [];
+    }
+  });
+  ipcMain.handle("orquester:remotes:write", (_event, remotes) => {
+    try {
+      fs.mkdirSync(appDir(), { recursive: true });
+      fs.writeFileSync(remotesPath(), `${JSON.stringify({ version: 1, remotes }, null, 2)}\n`);
+    } catch {
+      /* best effort */
+    }
+  });
 
   ipcMain.on("orquester:stream:open", (event, payload) => openStreamOverSocket(event, payload));
   ipcMain.on("orquester:stream:close", (_event, streamId) => {

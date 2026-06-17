@@ -36,13 +36,22 @@ export {
   type HttpTransporterOptions,
   type CreateTransporterOptions
 } from "./lib/transporters";
+export {
+  createLocalStorageConnectionsAdapter,
+  toUiConnection,
+  toRemoteConfig,
+  type ConnectionsAdapter
+} from "./lib/connections";
+export type { RemoteConnectionConfig } from "@orquester/config";
 
 // State & data
 export {
   useAppStore,
-  useProjectSessions,
-  useActiveSessionId,
-  type AppState
+  useProjectTabs,
+  useActiveTabId,
+  type AppState,
+  type FileTab,
+  type ProjectTab
 } from "./store/app";
 export * from "./hooks";
 export * from "./services";
@@ -54,6 +63,8 @@ export * from "./components/sidebar";
 export * from "./components/topbar";
 export * from "./components/main";
 export * from "./components/terminal";
+export * from "./components/servers";
+export * from "./components/files";
 
 // Icons
 export { getRegistryIcon, RegistryIcon } from "./icons";

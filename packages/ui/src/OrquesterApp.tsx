@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { AppWrapper, AppShell } from "./components/layout";
 import { OrquesterProvider, type WindowControls } from "./context/orquester-context";
 import { ApiClient } from "./lib/api-client";
 import { createTransporter } from "./lib/transporters";
+import type { ConnectionsAdapter } from "./lib/connections";
 import { useAppStore } from "./store/app";
 import type { HttpClient } from "./lib/http-client";
 import type { Transporter } from "./lib/transporter";
@@ -12,23 +13,18 @@ import "./styles/globals.css";
 export interface OrquesterAppProps {
   /** Which shell is hosting the UI. */
   runtime: Runtime;
-  /** The default daemon connection (the "server" passed in by the host). */
+  /** The default/local daemon connection (always present, not removable). */
   initialConnection: UiConnection;
-  /**
-   * Render a custom (frameless) titlebar with window controls.
-   * Defaults to `true` on desktop, `false` on web.
-   */
+  /** Render a custom (frameless) titlebar. Defaults to true on desktop. */
   useTitlebar?: boolean;
-  /**
-   * Transport to reach the daemon. Inject one for non-HTTP endpoints — e.g.
-   * the desktop app passes a unix-domain-socket transporter. When omitted, a
-   * default HTTP transporter is built from `initialConnection`.
-   */
+  /** Transport for the local connection (e.g. the desktop unix-socket transporter). */
   transporter?: Transporter;
-  /** Custom HTTP client for the default HTTP transporter (e.g. desktop). */
+  /** Custom HTTP client for remote transporters. */
   httpClient?: HttpClient;
   /** Native window controls bridge (desktop only). */
   windowControls?: WindowControls;
+  /** Persistence for user-added remote servers (desktop IPC / web localStorage). */
+  connectionsAdapter?: ConnectionsAdapter;
 }
 
 export const OrquesterApp: React.FC<OrquesterAppProps> = ({
@@ -37,21 +33,32 @@ export const OrquesterApp: React.FC<OrquesterAppProps> = ({
   useTitlebar,
   transporter,
   httpClient,
-  windowControls
+  windowControls,
+  connectionsAdapter
 }) => {
-  const api = useMemo(() => {
-    const transport = transporter ?? createTransporter(initialConnection, { httpClient });
-    return new ApiClient(initialConnection, transport);
-  }, [initialConnection, transporter, httpClient]);
+  // A boot ApiClient so context always has one before the store initializes.
+  const [bootApi] = useState(
+    () =>
+      new ApiClient(
+        initialConnection,
+        transporter ?? createTransporter(initialConnection, { httpClient })
+      )
+  );
+  const storeApi = useAppStore((s) => s.api);
+  const api = storeApi ?? bootApi;
 
   const titlebar = useTitlebar ?? runtime === "desktop";
 
-  // Bind the server manager into the store, then wait for the daemon and load.
+  // Set up connections (local + persisted remotes), then connect.
   useEffect(() => {
-    const store = useAppStore.getState();
-    store.setApi(api);
-    void store.connect();
-  }, [api]);
+    void useAppStore.getState().initConnections({
+      localConnection: initialConnection,
+      localTransporter: transporter,
+      httpClient,
+      adapter: connectionsAdapter
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <OrquesterProvider

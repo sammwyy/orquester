@@ -3,17 +3,18 @@ import { LayoutGrid, MousePointerClick } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "./EmptyState";
 import { TerminalView } from "../terminal";
-import { useActiveSessionId, useAppStore, useProjectSessions } from "../../store/app";
+import { FileBrowser } from "../files";
+import { useActiveTabId, useAppStore, useProjectTabs } from "../../store/app";
 
 /**
- * Main panel. Every session of the current project is kept mounted (its output
- * stream stays open) and only the active one is shown, so switching tabs never
- * tears a terminal down.
+ * Main panel. Every tab of the current project is kept mounted (terminal output
+ * streams stay open) and only the active one is shown, so switching tabs never
+ * tears anything down.
  */
 export const MainView: React.FC = () => {
   const currentProject = useAppStore((s) => s.currentProject);
-  const sessions = useProjectSessions();
-  const activeId = useActiveSessionId();
+  const tabs = useProjectTabs();
+  const activeId = useActiveTabId();
 
   let body: React.ReactNode;
 
@@ -25,21 +26,25 @@ export const MainView: React.FC = () => {
         description="Pick a workspace and open a project from the sidebar to get started."
       />
     );
-  } else if (sessions.length === 0) {
+  } else if (tabs.length === 0) {
     body = (
       <EmptyState
         icon={<MousePointerClick size={40} strokeWidth={1.25} />}
         title="No tabs open"
-        description='Use the "+" button in the top bar to open a terminal or agent.'
+        description='Use the "+" button in the top bar to open a terminal, agent or file browser.'
       />
     );
   } else {
-    body = sessions.map((session) => (
+    body = tabs.map((tab) => (
       <div
-        key={session.id}
-        className={cn("h-full w-full", session.id === activeId ? "block" : "hidden")}
+        key={tab.id}
+        className={cn("h-full w-full", tab.id === activeId ? "block" : "hidden")}
       >
-        <TerminalView session={session} />
+        {tab.type === "session" ? (
+          <TerminalView session={tab.session} />
+        ) : (
+          <FileBrowser rootPath={currentProject.path} />
+        )}
       </div>
     ));
   }

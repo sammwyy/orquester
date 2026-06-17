@@ -59,6 +59,21 @@ export interface CreateProjectRequest {
   name: string;
 }
 
+/** A filesystem entry returned by the file browser. */
+export interface FsEntry {
+  name: string;
+  path: string;
+  kind: "dir" | "file";
+  size: number;
+}
+
+export interface FsListResponse {
+  path: string;
+  /** Parent directory, or null at the filesystem root. */
+  parent: string | null;
+  entries: FsEntry[];
+}
+
 /** A pluggable coding agent the daemon detected on the host. */
 export interface AgentSummary {
   id: string;
