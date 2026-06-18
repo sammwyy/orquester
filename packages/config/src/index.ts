@@ -229,7 +229,9 @@ export const appConfigSchema = z.object({
   /** Connection opened on launch. "local" is always available. */
   activeConnectionId: z.string().min(1).default(LOCAL_CONNECTION_ID),
   /** Render the custom frameless titlebar with window controls. */
-  useTitlebar: z.boolean().default(true)
+  useTitlebar: z.boolean().default(true),
+  /** Desktop: keep the daemon running in a tray when the window is closed. */
+  runInBackground: z.boolean().default(false)
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;

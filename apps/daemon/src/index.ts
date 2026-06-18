@@ -114,61 +114,78 @@ async function main(): Promise<void> {
   );
 
   const services: Services = { registry, sessions, broadcaster };
-  const started: string[] = [];
-  const servers: FastifyInstance[] = [];
+
+  // The static web build the HTTP transport optionally serves.
+  const webDirEnv = process.env.ORQUESTER_WEB_DIR;
+  const webDir = webDirEnv ? resolve(cwd, webDirEnv) : undefined;
+  const serveWeb = webDir && existsSync(join(webDir, "index.html")) ? webDir : undefined;
 
   // The local unix socket transport is always present.
-  {
-    const app = createServer(config, resolved, clientConfig, logStream, services, {
-      authRequired: false,
-      mode: "local"
-    });
-    servers.push(app);
-
-    if (platform() !== "win32") {
-      await rm(paths.socketPath, { force: true });
-    }
-
-    await app.listen({ path: paths.socketPath });
-    started.push(`unix:${paths.socketPath}`);
+  if (platform() !== "win32") {
+    await rm(paths.socketPath, { force: true });
   }
+  const unixServer = createServer(config, resolved, clientConfig, logStream, services, {
+    authRequired: false,
+    mode: "local"
+  });
+  await unixServer.listen({ path: paths.socketPath });
 
-  // The external HTTP transport is opt-in (daemon.json -> transports.http.enabled).
-  // It also serves the static web client build (if ORQUESTER_WEB_DIR is set),
-  // so the same daemon exposes both the API (/api, /health, /events) and the
-  // browser UI on one port.
-  if (config.transports.http.enabled) {
-    const webDirEnv = process.env.ORQUESTER_WEB_DIR;
-    const webDir = webDirEnv ? resolve(cwd, webDirEnv) : undefined;
-    const serveWeb = webDir && existsSync(join(webDir, "index.html")) ? webDir : undefined;
-
+  // The external HTTP transport is opt-in and hot-reloadable: changing its
+  // config (password / host / port / enabled) restarts THIS transport only —
+  // the daemon, sessions (PTYs) and the unix transport keep running. Connected
+  // clients are dropped and reconnect (re-authenticating on a password change).
+  let httpServer: FastifyInstance | null = null;
+  const startHttp = async () => {
+    if (!config.transports.http.enabled) {
+      return;
+    }
     const app = createServer(config, resolved, clientConfig, logStream, services, {
       authRequired: true,
       mode: "remote",
       serveWeb
     });
-    servers.push(app);
-    await app.listen({
-      host: config.transports.http.host,
-      port: config.transports.http.port
-    });
-    started.push(
-      `http://${config.transports.http.host}:${config.transports.http.port}${serveWeb ? " (+web)" : ""}`
+    await app.listen({ host: config.transports.http.host, port: config.transports.http.port });
+    httpServer = app;
+    console.log(
+      `http transport on ${config.transports.http.host}:${config.transports.http.port}${serveWeb ? " (+web)" : ""}`
     );
-  }
+  };
+  const stopHttp = async () => {
+    if (httpServer) {
+      const server = httpServer;
+      httpServer = null;
+      await server.close().catch(() => undefined);
+    }
+  };
+  services.reloadHttp = async () => {
+    await stopHttp();
+    try {
+      await startHttp();
+    } catch (error) {
+      console.error("Failed to (re)start HTTP transport", error);
+    }
+  };
 
-  process.on("SIGINT", () => shutdown(servers, sessions));
-  process.on("SIGTERM", () => shutdown(servers, sessions));
+  await startHttp();
 
-  console.log(
-    `Orquester daemon ${daemonId} listening on ${started.join(", ")} (workspaces: ${resolved.workspacesDir})`
-  );
+  const shutdown = async () => {
+    sessions.closeAll();
+    await stopHttp();
+    await unixServer.close().catch(() => undefined);
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  console.log(`Orquester daemon ${daemonId} on unix:${paths.socketPath} (workspaces: ${resolved.workspacesDir})`);
 }
 
 interface Services {
   registry: RegistryService;
   sessions: SessionManager;
   broadcaster: Broadcaster;
+  /** Restart the HTTP transport (set in main once the lifecycle exists). */
+  reloadHttp?: () => Promise<void>;
 }
 
 function createServer(
@@ -306,11 +323,14 @@ function createServer(
 
     await writeFile(resolved.configPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
 
-    // Apply what we safely can in-process; transport changes need a restart.
+    // Apply live in-process (no daemon restart): update the shared config + dirs,
+    // then hot-restart the HTTP transport so the new password/host/port/enabled
+    // take effect immediately. Sessions (PTYs) and the unix transport are untouched.
     Object.assign(config, merged);
     resolved.workspacesDir = expandVars(merged.workspacesDir, resolved.vars);
     resolved.logsDir = expandVars(merged.logsDir, resolved.vars);
     await mkdir(resolved.workspacesDir, { recursive: true }).catch(() => undefined);
+    void services.reloadHttp?.();
 
     return sanitizeDaemonConfig(config);
   });
@@ -836,12 +856,6 @@ function sanitizeDaemonConfig(config: DaemonConfig): DaemonConfig {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
-}
-
-async function shutdown(servers: FastifyInstance[], sessions: SessionManager): Promise<void> {
-  sessions.closeAll();
-  await Promise.all(servers.map((server) => server.close()));
-  process.exit(0);
 }
 
 main().catch((error) => {

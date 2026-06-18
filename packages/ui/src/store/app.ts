@@ -22,6 +22,26 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Module-level handle so we can drop the events subscription on reconnect. */
 let eventsUnsubscribe: (() => void) | null = null;
+/** Generation guard so a stale events stream's onEnd doesn't trigger reconnect. */
+let eventsGen = 0;
+/** Periodic health probe that detects a dropped/restarted transport. */
+let healthTimer: ReturnType<typeof setInterval> | null = null;
+/** Guards against overlapping reconnect loops. */
+let reconnecting = false;
+
+function stopHealthProbe(): void {
+  if (healthTimer) {
+    clearInterval(healthTimer);
+    healthTimer = null;
+  }
+}
+
+/** Intentionally drop the events subscription (bumps gen so its onEnd is ignored). */
+function closeEvents(): void {
+  eventsGen += 1;
+  eventsUnsubscribe?.();
+  eventsUnsubscribe = null;
+}
 
 /** Host-provided connection wiring, set once via initConnections(). */
 interface ConnectionSetup {
@@ -51,6 +71,7 @@ let homeApi: ApiClient | null = null;
 
 export interface UiAppConfig {
   useTitlebar: boolean;
+  runInBackground: boolean;
 }
 
 /** Persist the remote-server list to the home daemon (shared across clients). */
@@ -99,6 +120,8 @@ function upsertSession(sessions: SessionSummary[], next: SessionSummary): Sessio
 export interface AppState {
   api: ApiClient | null;
   connectionStatus: ConnectionStatus;
+  /** >0 while auto-reconnecting (drives the "Reconnecting… attempt N" toast). */
+  reconnectAttempt: number;
 
   // connections (local daemon + user-added remotes)
   connections: UiConnection[];
@@ -134,6 +157,10 @@ export interface AppState {
 
   setApi: (api: ApiClient) => void;
   connect: () => Promise<void>;
+  /** Establish a connected session on an ApiClient (auth, load, subscribe, probe). */
+  establish: (api: ApiClient) => Promise<void>;
+  /** Called when the transport drops; runs the reconnect loop. */
+  handleDisconnect: () => void;
 
   // connection management
   initConnections: (setup: ConnectionSetup) => Promise<void>;
@@ -174,9 +201,10 @@ export interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   api: null,
   connectionStatus: "connecting",
+  reconnectAttempt: 0,
   connections: [],
   activeConnectionId: null,
-  appConfig: { useTitlebar: false },
+  appConfig: { useTitlebar: false, runInBackground: false },
   settingsOpen: false,
   sidebarCollapsed: false,
   sidebarDrawerOpen: false,
@@ -199,7 +227,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!initial) {
       return;
     }
-    set({ connectionStatus: "connecting" });
+    stopHealthProbe();
+    reconnecting = false;
+    set({ connectionStatus: "connecting", reconnectAttempt: 0 });
 
     // The embedded daemon is spawned asynchronously: poll /health first.
     for (let attempt = 0; attempt < 60; attempt += 1) {
@@ -219,29 +249,82 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    // Auth gate: if the daemon requires a token, derive/restore the bcrypt-hash
-    // bearer (web) or prompt for the password.
-    let api = initial;
-    const info = await api.authInfo().catch(() => null);
+    await get().establish(initial);
+  },
+
+  establish: async (api) => {
+    // Auth gate: derive/restore the bcrypt-hash bearer (web) or prompt.
+    let active = api;
+    const info = await active.authInfo().catch(() => null);
     set({ authSalt: info?.salt ?? null });
     if (info?.authRequired) {
-      const hash = api.connection.password ?? loadStoredHash(api.connection.endpoint);
+      const hash = active.connection.password ?? loadStoredHash(active.connection.endpoint);
       if (!hash) {
-        set({ connectionStatus: "error", authPrompt: { connectionId: api.connection.id } });
+        stopHealthProbe();
+        set({ connectionStatus: "error", reconnectAttempt: 0, authPrompt: { connectionId: active.connection.id } });
         return;
       }
-      if (api.connection.password !== hash) {
-        api = apiWithPassword(api, hash);
-        set({ api });
+      if (active.connection.password !== hash) {
+        active = apiWithPassword(active, hash);
+        set({ api: active });
       }
     }
 
-    set({ connectionStatus: "connected", authPrompt: null });
+    set({ connectionStatus: "connected", reconnectAttempt: 0, authPrompt: null });
     await Promise.all([get().loadWorkspaces(), get().loadSessions()]);
 
-    // Subscribe to the event bus for cross-client session sync.
-    eventsUnsubscribe?.();
-    eventsUnsubscribe = get().api?.openEvents((event) => get().applyEvent(event)) ?? null;
+    // Live event sync. The stream ending unexpectedly (e.g. the transport was
+    // restarted) is the primary disconnect signal.
+    closeEvents();
+    const gen = eventsGen;
+    eventsUnsubscribe = active.openEvents(
+      (event) => get().applyEvent(event),
+      () => {
+        if (gen === eventsGen) {
+          get().handleDisconnect();
+        }
+      }
+    );
+
+    // Health probe: detect a dropped/restarted transport and auto-reconnect.
+    stopHealthProbe();
+    healthTimer = setInterval(() => {
+      const current = get().api;
+      if (current) {
+        void current.health().catch(() => get().handleDisconnect());
+      }
+    }, 4000);
+  },
+
+  handleDisconnect: () => {
+    stopHealthProbe();
+    if (reconnecting || get().api === null) {
+      return;
+    }
+    reconnecting = true;
+
+    const loop = async () => {
+      for (let attempt = 1; ; attempt += 1) {
+        const current = get().api;
+        if (!current) {
+          break;
+        }
+        set({ connectionStatus: "connecting", reconnectAttempt: attempt });
+        try {
+          await current.health();
+          // Daemon is back: rebuild the client so terminals + event streams
+          // re-subscribe to the (intact) sessions, then re-establish.
+          const fresh = apiWithPassword(current, current.connection.password ?? "");
+          set({ api: fresh });
+          await get().establish(fresh);
+          break;
+        } catch {
+          await delay(Math.min(attempt * 1000, 8000));
+        }
+      }
+      reconnecting = false;
+    };
+    void loop();
   },
 
   initConnections: async (nextSetup) => {
@@ -250,7 +333,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       connections: [nextSetup.localConnection],
       activeConnectionId: nextSetup.localConnection.id,
-      appConfig: { useTitlebar: nextSetup.defaultUseTitlebar },
+      appConfig: { useTitlebar: nextSetup.defaultUseTitlebar, runInBackground: false },
       api: homeApi
     });
     await get().connect();
@@ -262,8 +345,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const adapter = setup?.appConfigAdapter;
       const config = adapter ? await adapter.load() : await homeApi?.getAppConfig();
-      if (config && typeof config.useTitlebar === "boolean") {
-        set({ appConfig: { useTitlebar: config.useTitlebar } });
+      if (config) {
+        set((state) => ({
+          appConfig: {
+            useTitlebar: config.useTitlebar ?? state.appConfig.useTitlebar,
+            runInBackground: config.runInBackground ?? state.appConfig.runInBackground
+          }
+        }));
       }
     } catch {
       /* keep defaults */
@@ -318,8 +406,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   signOut: () => {
     const api = get().api;
     if (api) {
+      stopHealthProbe();
+      reconnecting = false;
+      closeEvents();
       clearStoredHash(api.connection.endpoint);
-      set({ api: apiWithPassword(api, ""), authPrompt: { connectionId: api.connection.id } });
+      set({
+        api: apiWithPassword(api, ""),
+        connectionStatus: "error",
+        reconnectAttempt: 0,
+        authPrompt: { connectionId: api.connection.id }
+      });
     }
   },
 
@@ -328,8 +424,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!connection || id === get().activeConnectionId) {
       return;
     }
-    eventsUnsubscribe?.();
-    eventsUnsubscribe = null;
+    stopHealthProbe();
+    reconnecting = false;
+    closeEvents();
     // Reset all daemon-scoped state: a different server has its own data.
     set({
       api: new ApiClient(connection, buildTransporter(connection)),

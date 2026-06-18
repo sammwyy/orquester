@@ -5,6 +5,7 @@ import { MainView } from "../main";
 import { SettingsModal } from "../settings";
 import { AuthModal } from "../auth";
 import { MobileKeyBar } from "../terminal";
+import { ConnectionStatusToast } from "../status";
 
 /**
  * Primary layout: full-height sidebar on the left, and a main column whose top
@@ -20,5 +21,6 @@ export const AppShell: React.FC = () => (
     </div>
     <SettingsModal />
     <AuthModal />
+    <ConnectionStatusToast />
   </div>
 );

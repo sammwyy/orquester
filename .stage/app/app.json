@@ -1,5 +1,6 @@
 {
   "version": 1,
   "activeConnectionId": "local",
-  "useTitlebar": true
+  "useTitlebar": true,
+  "runInBackground": true
 }

@@ -67,8 +67,12 @@ export class ApiClient {
     return response.data;
   }
 
-  /** Subscribe to the daemon event bus (NDJSON). Returns an unsubscribe fn. */
-  openEvents(onEvent: (event: EventMessage) => void): () => void {
+  /**
+   * Subscribe to the daemon event bus (NDJSON). `onEnd` fires when the stream
+   * closes (e.g. the transport restarted) — used to detect disconnects.
+   * Returns an unsubscribe fn.
+   */
+  openEvents(onEvent: (event: EventMessage) => void, onEnd?: () => void): () => void {
     let buffer = "";
     const handle = this.transporter.openStream("/events", {
       onData: (chunk) => {
@@ -87,7 +91,7 @@ export class ApiClient {
           newline = buffer.indexOf("\n");
         }
       },
-      onEnd: () => undefined
+      onEnd: () => onEnd?.()
     });
     return () => handle.close();
   }

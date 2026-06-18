@@ -66,6 +66,7 @@ export * from "./components/servers";
 export * from "./components/files";
 export * from "./components/settings";
 export * from "./components/auth";
+export * from "./components/status";
 
 // Icons
 export { getRegistryIcon, RegistryIcon } from "./icons";

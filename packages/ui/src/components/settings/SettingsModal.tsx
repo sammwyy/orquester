@@ -150,6 +150,17 @@ const AppSettings: React.FC = () => {
           onChange={(checked) => void updateAppConfig({ useTitlebar: checked })}
         />
       </Field>
+      {runtime === "desktop" && (
+        <Field
+          label="Run in background"
+          hint="Closing the window keeps the daemon running in the tray."
+        >
+          <Switch
+            checked={appConfig.runInBackground}
+            onChange={(checked) => void updateAppConfig({ runInBackground: checked })}
+          />
+        </Field>
+      )}
       <Field label="Runtime">
         <span className="text-sm text-neutral-400">{runtime}</span>
       </Field>
