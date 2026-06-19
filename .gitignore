@@ -8,6 +8,7 @@ dist-electron/
 .env.*
 !.env.example
 project.md
+release/
 
 # Stage Sandbox: keep committed config + seed workspaces, ignore runtime artifacts
 .stage/**/logs/

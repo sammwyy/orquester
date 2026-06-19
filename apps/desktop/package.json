@@ -6,8 +6,10 @@
   "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"vite --host 127.0.0.1 --port 5174\" \"pnpm build:main --watch\" \"wait-on http://127.0.0.1:5174 dist-electron/main.cjs && cross-env ORQUESTER_DESKTOP_DEV_URL=http://127.0.0.1:5174 electron .\"",
-    "build": "pnpm build:main && vite build",
     "build:main": "tsx scripts/build-main.ts",
+    "build:ui": "vite build",
+    "build:electron": "electron-builder",
+    "build": "pnpm build:main && pnpm build:ui && pnpm build:electron",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
@@ -31,9 +33,39 @@
     "concurrently": "^9.2.0",
     "cross-env": "^7.0.3",
     "electron": "^33.4.11",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.12",
     "typescript": "^5.8.3",
     "vite-plugin-svgr": "^5.2.0",
     "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.orquester.desktop",
+    "productName": "Orquester",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "mac": {
+      "target": "dmg",
+      "executableName": "orquester"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "executableName": "orquester"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "executableName": "orquester",
+      "category": "Utility"
+    }
   }
 }

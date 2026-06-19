@@ -304,11 +304,18 @@ function createWindow(): void {
     frame: false,
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 12, y: 12 },
+    show: false,
+    backgroundColor: "#111111",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(desktopRoot, "src", "preload.cjs")
+      preload: path.join(desktopRoot, "dist-electron", "preload.cjs")
     }
+  });
+
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+    mainWindow?.focus();
   });
 
   // Run-in-background: closing hides the window (daemon + tray keep running).

@@ -3,6 +3,7 @@ import svgr from "vite-plugin-svgr";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  base: "./",
   plugins: [
     react(),
     svgr({

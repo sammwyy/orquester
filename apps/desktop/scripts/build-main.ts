@@ -16,7 +16,21 @@ const options: BuildOptions = {
   format: "cjs",
   sourcemap: true,
   external: ["electron", "node-pty"],
-  logLevel: "info"
+  logLevel: "info",
+  plugins: [
+    {
+      name: "copy-preload",
+      setup(build) {
+        build.onEnd(async () => {
+          const { copyFile } = await import("node:fs/promises");
+          await copyFile(
+            path.join(root, "src", "preload.cjs"),
+            path.join(root, "dist-electron", "preload.cjs")
+          );
+        });
+      }
+    }
+  ]
 };
 
 if (watch) {
