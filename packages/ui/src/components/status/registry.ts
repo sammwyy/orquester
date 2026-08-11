@@ -1,14 +1,14 @@
 import React, { useSyncExternalStore } from "react";
 
 export type StatusModuleSide = "left" | "right";
-export type StatusModuleTone = "neutral" | "blue";
+export type StatusView = "project" | "empty";
 
 export interface StatusModuleDefinition {
   id: string;
   label: React.ReactNode;
   side: StatusModuleSide;
-  tone?: StatusModuleTone;
   icon?: React.ReactNode;
+  enabledOn?: readonly StatusView[];
   content: React.ComponentType;
 }
 

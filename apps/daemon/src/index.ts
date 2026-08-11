@@ -22,6 +22,8 @@ import type {
 } from "@orquester/api";
 import { RegistryService } from "./registry";
 import { SessionError, SessionManager } from "./sessions";
+import { watchGitProjects } from "./integrations/git";
+import { registerGitRoutes } from "./routes/git";
 import { Broadcaster } from "./broadcaster";
 import {
   type AppConfig,
@@ -120,11 +122,17 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
   const registry = new RegistryService(resolved.daemonDir, config.quotaWorkers);
   const sessions = new SessionManager(registry);
   const broadcaster = new Broadcaster();
+  const gitWatcher = watchGitProjects(resolved.workspacesDir, (status) => {
+    broadcaster.publish("projects", "project.git.changed", status);
+  });
   // Stream registry changes (install/update status, detected versions) to clients.
   registry.events.on("changed", (entry) => broadcaster.publish("registry", "registry.changed", entry));
   registry.quotaEvents.on("changed", (quota) => broadcaster.publish("registry", "registry.quota.changed", quota));
   registry.installEvents.on("sudo.required", (payload) => broadcaster.publish("registry", "registry.install.sudoRequired", payload));
-  broadcaster.onClientCountChange((count) => registry.setEventClientCount(count));
+  broadcaster.onClientCountChange((count) => {
+    registry.setEventClientCount(count);
+    gitWatcher.setActive(count > 0);
+  });
   await registry.init();
   sessions.lifecycle.on("created", (s: SessionSummary) =>
     broadcaster.publish("sessions", "session.created", s)
@@ -136,7 +144,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
     broadcaster.publish("sessions", "session.closed", payload)
   );
 
-  const services: Services = { registry, sessions, broadcaster };
+  const services: Services = { registry, sessions, broadcaster, gitWatcher };
 
   // The static web build the HTTP transport optionally serves.
   const webDirEnv = options.webDir ?? env.ORQUESTER_WEB_DIR;
@@ -192,6 +200,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
   await startHttp();
 
   const stop = async () => {
+    gitWatcher.stop();
     sessions.closeAll();
     await stopHttp();
     await unixServer.close().catch(() => undefined);
@@ -211,6 +220,7 @@ interface Services {
   registry: RegistryService;
   sessions: SessionManager;
   broadcaster: Broadcaster;
+  gitWatcher: ReturnType<typeof watchGitProjects>;
   /** Restart the HTTP transport (set in main once the lifecycle exists). */
   reloadHttp?: () => Promise<void>;
 }
@@ -531,6 +541,12 @@ function createServer(
         message: error instanceof Error ? error.message : "Cannot create entry."
       });
     }
+  });
+
+  registerGitRoutes(app, {
+    workspacesDir: resolved.workspacesDir,
+    broadcaster: services.broadcaster,
+    gitWatcher: services.gitWatcher
   });
 
   // Registry (shells & agents)

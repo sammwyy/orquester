@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { create } from "zustand";
-import type { RegistryQuota } from "@orquester/api";
+import type { GitStatusResponse, RegistryQuota } from "@orquester/api";
 import { ApiClient, ApiError } from "../lib/api-client";
 import { createTransporter } from "../lib/transporters";
 import { toRemoteConfig, toUiConnection } from "../lib/connections";
@@ -205,6 +205,8 @@ export interface AppState {
   // navigation
   currentWorkspace: string | null;
   currentProject: ProjectSummary | null;
+  gitStatus: GitStatusResponse | null;
+  gitStatusLoading: boolean;
 
   // data
   registry: RegistryResponse;
@@ -258,6 +260,8 @@ export interface AppState {
   loadProjects: () => Promise<void>;
   createProject: (name: string) => Promise<void>;
   openProject: (project: ProjectSummary) => void;
+  loadGitStatus: (projectPath?: string) => Promise<void>;
+  initializeGit: () => Promise<void>;
 
   loadSessions: () => Promise<void>;
   loadRegistry: () => Promise<void>;
@@ -291,6 +295,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   sudoPrompt: null,
   currentWorkspace: null,
   currentProject: null,
+  gitStatus: null,
+  gitStatusLoading: false,
   registry: EMPTY_REGISTRY,
   quotaById: {},
   workspaces: [],
@@ -646,6 +652,38 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       };
     });
+    void get().loadGitStatus(project.path);
+  },
+
+  loadGitStatus: async (projectPath) => {
+    const api = get().api;
+    const path = projectPath ?? get().currentProject?.path;
+    if (!api || !path) {
+      set({ gitStatus: null, gitStatusLoading: false });
+      return;
+    }
+    set({ gitStatusLoading: true });
+    try {
+      const status = await api.gitStatus(path);
+      if (get().currentProject?.path === path) set({ gitStatus: status });
+    } catch {
+      set({ gitStatus: null });
+    } finally {
+      set({ gitStatusLoading: false });
+    }
+  },
+
+  initializeGit: async () => {
+    const api = get().api;
+    const path = get().currentProject?.path;
+    if (!api || !path) return;
+    set({ gitStatusLoading: true });
+    try {
+      const status = await api.initializeGit({ path });
+      if (get().currentProject?.path === path) set({ gitStatus: status });
+    } finally {
+      set({ gitStatusLoading: false });
+    }
   },
 
   loadSessions: async () => {
@@ -737,6 +775,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
 
   applyEvent: (event) => {
+    if (event.channel === "projects" && event.type === "project.git.changed") {
+      const status = event.payload as GitStatusResponse;
+      if (status.projectPath === get().currentProject?.path) set({ gitStatus: status });
+      return;
+    }
     if (event.channel === "registry" && event.type === "registry.install.sudoRequired") {
       const payload = event.payload as { id?: string };
       if (payload.id) set({ sudoPrompt: { agentId: payload.id } });

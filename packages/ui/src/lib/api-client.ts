@@ -4,8 +4,10 @@ import type {
   CreateSessionRequest,
   CreateWorkspaceRequest,
   EventMessage,
+  GitInitRequest,
   FsListResponse,
   FsReadResponse,
+  GitStatusResponse,
   HealthResponse,
   OpenResult,
   ProjectSummary,
@@ -167,6 +169,14 @@ export class ApiClient {
 
   saveFile(path: string, content: string): Promise<{ ok: true }> {
     return this.send("PUT", "/api/fs/write", { body: { path, content } });
+  }
+
+  gitStatus(projectPath: string, signal?: AbortSignal): Promise<GitStatusResponse> {
+    return this.send("GET", "/api/git/status", { query: { path: projectPath }, signal });
+  }
+
+  initializeGit(request: GitInitRequest): Promise<GitStatusResponse> {
+    return this.send("POST", "/api/git/init", { body: request });
   }
 
   createProject(

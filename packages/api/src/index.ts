@@ -51,6 +51,28 @@ export interface ProjectSummary {
   path: string;
 }
 
+export interface GitStatusResponse {
+  projectPath: string;
+  branch: string;
+  origin?: string;
+  additions: number;
+  deletions: number;
+  commits: {
+    hash: string;
+    subject: string;
+    author: string;
+    date: string;
+  }[];
+  files: {
+    path: string;
+    status: string;
+  }[];
+}
+
+export interface GitInitRequest {
+  path: string;
+}
+
 export interface CreateWorkspaceRequest {
   name: string;
 }

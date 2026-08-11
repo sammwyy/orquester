@@ -5,5 +5,5 @@ export {
   useStatusModules,
   type StatusModuleDefinition,
   type StatusModuleSide,
-  type StatusModuleTone
+  type StatusView
 } from "./registry";
