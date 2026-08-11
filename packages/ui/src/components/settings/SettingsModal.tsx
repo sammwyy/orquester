@@ -10,17 +10,23 @@ import {
   Download,
   ExternalLink,
   Gauge,
+  Globe2,
+  HardDrive,
   Loader2,
+  LockKeyhole,
   Monitor,
   Moon,
   Palette,
+  Plus,
   RefreshCw,
   Server,
   ShieldCheck,
-  Sun
+  Sun,
+  Trash2
 } from "lucide-react";
 import type { RegistryEntry, RegistryQuota, QuotaWindow } from "@orquester/api";
 import type { DaemonConfig } from "@orquester/config";
+import type { ApiClient } from "../../lib/api-client";
 import { COLOR_SCHEMES, THEME_MODES } from "../../lib/theme";
 import type { BlurStrategy, ThemeMode } from "../../types";
 import { cn } from "../../lib/cn";
@@ -30,7 +36,15 @@ import { useIsDesktop, useRegistry } from "../../hooks";
 import { useApi, useOrquester } from "../../context/orquester-context";
 import { useAppStore } from "../../store/app";
 
-type Section = "app" | "appearance" | "daemon" | "agents" | "quota";
+type Section =
+  | "app"
+  | "appearance"
+  | "local-access"
+  | "workers"
+  | "storage"
+  | "access"
+  | "agents"
+  | "quota";
 /** Client settings live in this window; server settings belong to the daemon. */
 type SectionGroup = "client" | "server";
 
@@ -61,11 +75,32 @@ const SECTIONS: {
       desc: "Titlebar and sidebar look"
     },
     {
-      id: "daemon",
-      group: "server",
-      label: "Daemon",
+      id: "local-access",
+      group: "client",
+      label: "Local Access",
       icon: <Server size={16} />,
-      desc: "Workspaces dir, external HTTP access"
+      desc: "Let other devices reach this worker"
+    },
+    {
+      id: "workers",
+      group: "client",
+      label: "Remote Workers",
+      icon: <Globe2 size={16} />,
+      desc: "Connect to workers on other machines"
+    },
+    {
+      id: "storage",
+      group: "server",
+      label: "Storage",
+      icon: <HardDrive size={16} />,
+      desc: "Workspace directory"
+    },
+    {
+      id: "access",
+      group: "server",
+      label: "Access",
+      icon: <Globe2 size={16} />,
+      desc: "How the selected worker is reached"
     },
     {
       id: "agents",
@@ -85,13 +120,19 @@ const SECTIONS: {
 
 const sectionsOf = (group: SectionGroup) => SECTIONS.filter((s) => s.group === group);
 
-const renderSection = (id: Section) =>
+const renderSection = (id: Section, onGoToLocalAccess?: () => void) =>
   id === "app" ? (
     <AppSettings />
   ) : id === "appearance" ? (
     <AppearanceSettings />
-  ) : id === "daemon" ? (
-    <DaemonSettings />
+  ) : id === "local-access" ? (
+    <LocalAccessSettings />
+  ) : id === "workers" ? (
+    <RemoteWorkersSettings />
+  ) : id === "storage" ? (
+    <StorageSettings />
+  ) : id === "access" ? (
+    <AccessSettings onGoToLocalAccess={onGoToLocalAccess} />
   ) : id === "quota" ? (
     <QuotaSettings />
   ) : (
@@ -142,7 +183,9 @@ export const SettingsModal: React.FC = () => {
             <span className="text-sm font-medium text-neutral-100">{labelOf(current)}</span>
             <ModalCloseButton onClose={close} />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">{renderSection(current)}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {renderSection(current, () => setSection("local-access"))}
+          </div>
         </div>
       </Modal>
     );
@@ -200,7 +243,7 @@ export const SettingsModal: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div className="p-4">{renderSection(section)}</div>
+            <div className="p-4">{renderSection(section, () => setSection("local-access"))}</div>
           )}
         </div>
       </div>
@@ -664,6 +707,103 @@ const AppSettings: React.FC = () => {
   );
 };
 
+const RemoteWorkersSettings: React.FC = () => {
+  const connections = useAppStore((s) => s.connections);
+  const addRemote = useAppStore((s) => s.addRemote);
+  const removeRemote = useAppStore((s) => s.removeRemote);
+  const selectConnection = useAppStore((s) => s.selectConnection);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [password, setPassword] = useState("");
+
+  const submit = async () => {
+    if (!url.trim()) {
+      return;
+    }
+    const id = await addRemote({ name, baseUrl: url, password });
+    setAdding(false);
+    setName("");
+    setUrl("");
+    setPassword("");
+    await selectConnection(id);
+  };
+
+  return (
+    <div className="space-y-6">
+      <Group title="Workers">
+        {connections.map((connection) => (
+          <div key={connection.id} className="flex items-center gap-3 py-3">
+            <span
+              className={cn(
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                connection.kind === "local" ? "bg-neutral-800 text-neutral-400" : "bg-neutral-800/70 text-neutral-500"
+              )}
+            >
+              {connection.kind === "local" ? <LockKeyhole size={14} /> : <Globe2 size={15} />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm text-neutral-200">{connection.name}</span>
+              <span className="block truncate text-xs text-neutral-500">
+                {connection.kind === "local" ? "This device · always available" : connection.endpoint}
+              </span>
+            </span>
+            {connection.kind === "local" ? (
+              <span className="shrink-0 text-[11px] text-neutral-600">Local</span>
+            ) : (
+              <button
+                type="button"
+                aria-label={`Remove ${connection.name}`}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400"
+                onClick={() => void removeRemote(connection.id)}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        ))}
+
+        {adding ? (
+          <div className="space-y-2.5 py-3">
+            <Input aria-label="Worker name" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input
+              aria-label="Worker URL"
+              type="url"
+              placeholder="https://host:47831"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+            <Input
+              aria-label="Worker password"
+              type="password"
+              placeholder="Token (optional)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button size="sm" disabled={!url.trim()} onClick={() => void submit()}>
+                Add Worker
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setAdding(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 py-3 text-left text-sm text-neutral-400 transition-colors hover:text-neutral-200"
+            onClick={() => setAdding(true)}
+          >
+            <Plus size={15} />
+            Add remote worker
+          </button>
+        )}
+      </Group>
+    </div>
+  );
+};
+
 const BLUR_HINT: Record<BlurStrategy, string> = {
   vibrancy: "Blurred by macOS vibrancy.",
   acrylic: "Blurred by Windows acrylic.",
@@ -893,17 +1033,13 @@ const AppearanceSettings: React.FC = () => {
   );
 };
 
-const DaemonSettings: React.FC = () => {
+const StorageSettings: React.FC = () => {
   const api = useApi();
   const connections = useAppStore((s) => s.connections);
   const activeId = useAppStore((s) => s.activeConnectionId);
   const isLocal = connections.find((c) => c.id === activeId)?.kind === "local";
 
   const [workspacesDir, setWorkspacesDir] = useState("");
-  const [httpEnabled, setHttpEnabled] = useState(false);
-  const [host, setHost] = useState("");
-  const [port, setPort] = useState("");
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -914,9 +1050,6 @@ const DaemonSettings: React.FC = () => {
       .then((config: DaemonConfig) => {
         if (!active) return;
         setWorkspacesDir(config.workspacesDir);
-        setHttpEnabled(config.transports.http.enabled);
-        setHost(config.transports.http.host);
-        setPort(String(config.transports.http.port));
       })
       .catch(() => setMessage("Could not load daemon config."));
     return () => {
@@ -929,18 +1062,9 @@ const DaemonSettings: React.FC = () => {
     setMessage(null);
     try {
       await api.updateDaemonConfig({
-        workspacesDir,
-        transports: {
-          http: {
-            enabled: httpEnabled,
-            host,
-            port: Number(port) || 47831,
-            ...(password ? { password } : {})
-          }
-        }
+        workspacesDir
       });
-      setPassword("");
-      setMessage("Saved. Transport changes apply after a daemon restart.");
+      setMessage("Saved. Storage changes apply after a daemon restart.");
     } catch {
       setMessage("Failed to save (daemon config is editable only over the local socket).");
     } finally {
@@ -952,8 +1076,8 @@ const DaemonSettings: React.FC = () => {
     <div className="space-y-6">
       {!isLocal && (
         <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-3 text-xs text-neutral-400">
-          Daemon settings can only be changed from the local app (unix socket). Connected over HTTP
-          they are read-only.
+          Storage settings are read-only while connected to a remote worker. Change them from that
+          worker’s local app.
         </div>
       )}
 
@@ -968,50 +1092,130 @@ const DaemonSettings: React.FC = () => {
         </Field>
       </Group>
 
-      <Group title="External access">
-        <Field label="HTTP transport" hint="Expose the daemon to remote clients (token-gated).">
-          <Switch checked={httpEnabled} disabled={!isLocal} onChange={setHttpEnabled} />
-        </Field>
-
-        {httpEnabled && (
-          <>
-            <Field label="Host">
-              <Input
-                className="w-40 sm:w-64"
-                value={host}
-                disabled={!isLocal}
-                onChange={(e) => setHost(e.target.value)}
-              />
-            </Field>
-            <Field label="Port">
-              <Input
-                className="w-40 sm:w-64"
-                value={port}
-                disabled={!isLocal}
-                onChange={(e) => setPort(e.target.value)}
-              />
-            </Field>
-            <Field label="Password" hint="Min 8 chars. Leave blank to keep current.">
-              <Input
-                className="w-40 sm:w-64"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                disabled={!isLocal}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </Field>
-          </>
-        )}
-      </Group>
-
       {message && <p className="px-1 text-xs text-neutral-400">{message}</p>}
 
       {isLocal && (
         <Button size="sm" disabled={busy} onClick={() => void save()}>
-          {busy ? "Saving…" : "Save daemon config"}
+          {busy ? "Saving…" : "Save storage settings"}
         </Button>
       )}
     </div>
   );
+};
+
+const DaemonAccessSettings: React.FC<{
+  api: ApiClient | null;
+  editable: boolean;
+  remote?: boolean;
+  onGoToLocalAccess?: () => void;
+}> = ({ api, editable, remote = false, onGoToLocalAccess }) => {
+  const [httpEnabled, setHttpEnabled] = useState(false);
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!api) {
+      setMessage("Local worker is not available.");
+      return;
+    }
+    let active = true;
+    setMessage(null);
+    api
+      .getDaemonConfig()
+      .then((config: DaemonConfig) => {
+        if (!active) return;
+        setHttpEnabled(config.transports.http.enabled);
+        setHost(config.transports.http.host);
+        setPort(String(config.transports.http.port));
+      })
+      .catch(() => setMessage("Could not load access settings."));
+    return () => {
+      active = false;
+    };
+  }, [api]);
+
+  const save = async () => {
+    if (!api || !editable) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api.updateDaemonConfig({
+        transports: {
+          http: {
+            enabled: httpEnabled,
+            host,
+            port: Number(port) || 47831,
+            ...(password ? { password } : {})
+          }
+        }
+      });
+      setPassword("");
+      setMessage("Saved. Access changes apply after a daemon restart.");
+    } catch {
+      setMessage("Failed to save access settings.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {remote && (
+        <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-3 text-xs text-neutral-400">
+          <p>This worker’s access settings are read-only here. Change them from its local app.</p>
+          {onGoToLocalAccess && (
+            <Button size="sm" variant="outline" className="mt-3" onClick={onGoToLocalAccess}>
+              Go to Local Access
+            </Button>
+          )}
+        </div>
+      )}
+
+      <Group title="HTTP Access">
+        <Field label="Enabled" hint="Allow other clients to reach this worker.">
+          <Switch checked={httpEnabled} disabled={!editable} onChange={setHttpEnabled} />
+        </Field>
+        <Field label="Host">
+          <Input className="w-40 sm:w-64" value={host} disabled={!editable} onChange={(e) => setHost(e.target.value)} />
+        </Field>
+        <Field label="Port">
+          <Input className="w-40 sm:w-64" value={port} disabled={!editable} onChange={(e) => setPort(e.target.value)} />
+        </Field>
+        <Field label="Password" hint="Min 8 chars. Leave blank to keep current.">
+          <Input
+            className="w-40 sm:w-64"
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            disabled={!editable}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </Field>
+      </Group>
+
+      {message && <p className="px-1 text-xs text-neutral-400">{message}</p>}
+
+      {editable && (
+        <Button size="sm" disabled={busy} onClick={() => void save()}>
+          {busy ? "Saving…" : "Save access settings"}
+        </Button>
+      )}
+    </div>
+  );
+};
+
+const LocalAccessSettings: React.FC = () => {
+  const localApi = useAppStore((s) => s.localApi);
+  return <DaemonAccessSettings api={localApi} editable />;
+};
+
+const AccessSettings: React.FC<{ onGoToLocalAccess?: () => void }> = ({ onGoToLocalAccess }) => {
+  const api = useApi();
+  const connections = useAppStore((s) => s.connections);
+  const activeId = useAppStore((s) => s.activeConnectionId);
+  const isLocal = connections.find((c) => c.id === activeId)?.kind === "local";
+  return <DaemonAccessSettings api={api} editable={isLocal} remote={!isLocal} onGoToLocalAccess={onGoToLocalAccess} />;
 };

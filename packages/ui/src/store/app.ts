@@ -175,6 +175,8 @@ function upsertSession(sessions: SessionSummary[], next: SessionSummary): Sessio
 
 export interface AppState {
   api: ApiClient | null;
+  /** The local daemon remains available while a remote worker is selected. */
+  localApi: ApiClient | null;
   connectionStatus: ConnectionStatus;
   /** >0 while auto-reconnecting (drives the "Reconnecting… attempt N" toast). */
   reconnectAttempt: number;
@@ -272,6 +274,7 @@ export interface AppState {
 
 export const useAppStore = create<AppState>((set, get) => ({
   api: null,
+  localApi: null,
   connectionStatus: "connecting",
   reconnectAttempt: 0,
   connections: [],
@@ -412,6 +415,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       connections: [nextSetup.localConnection],
       activeConnectionId: nextSetup.localConnection.id,
       appConfig: { ...DEFAULT_APP_CONFIG, useTitlebar: nextSetup.defaultUseTitlebar },
+      localApi: homeApi,
       api: homeApi
     });
     await get().connect();

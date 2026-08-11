@@ -30,7 +30,8 @@ export const antigravityIntegration: AgentIntegration = {
       ? {
           id: "antigravity",
           provider: "Antigravity",
-          auth: { status: "unknown" as const },
+          // A readable usage response means the CLI has an active session.
+          auth: { status: "authenticated" as const },
           supported: true,
           fetchedAt: new Date().toISOString(),
           windows
