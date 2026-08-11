@@ -9,7 +9,8 @@ export {
   useOrquester,
   useApi,
   type OrquesterContextValue,
-  type WindowControls
+  type WindowControls,
+  type WindowState
 } from "./context/orquester-context";
 
 // Connection layer
@@ -75,6 +76,7 @@ export { getRegistryIcon, RegistryIcon } from "./icons";
 export type {
   Runtime,
   UiConnection,
+  BlurStrategy,
   ConnectionKind,
   ConnectionStatus,
   RegistryEntry,

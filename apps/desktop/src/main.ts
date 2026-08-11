@@ -1,6 +1,8 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray, type IpcMainEvent } from "electron";
 import { startDaemon as startOrquesterDaemon, type RunningDaemon } from "@orquester/daemon";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import http from "node:http";
 import path from "node:path";
 import zlib from "node:zlib";
@@ -18,6 +20,13 @@ interface DaemonResponse {
   headers: http.IncomingHttpHeaders;
   body: string;
 }
+
+/**
+ * Platforms that don't round frameless windows themselves (macOS and Windows
+ * do). Where true, the window surface is transparent and the renderer paints
+ * the rounded corners.
+ */
+const CSS_ROUNDED_CORNERS = process.platform === "linux";
 
 let daemon: RunningDaemon | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -98,6 +107,131 @@ function readAppConfig(): Record<string, unknown> {
   }
 }
 const runInBackground = () => readAppConfig().runInBackground === true;
+/** The setting only counts when the system actually offers a blur backend. */
+const glassSidebar = () => readAppConfig().glassSidebar === true && blurStrategy() !== null;
+
+/**
+ * How this system can blur what sits behind a window. There is no portable way:
+ * each platform exposes exactly one mechanism, or none at all — and without one
+ * the glass sidebar is pure transparency, which is worse than an opaque panel,
+ * so the UI keeps the setting disabled.
+ */
+type BlurStrategy = "vibrancy" | "acrylic" | "kwin";
+
+let detectedStrategy: BlurStrategy | null | undefined;
+
+function blurStrategy(): BlurStrategy | null {
+  if (detectedStrategy === undefined) {
+    detectedStrategy = detectBlurStrategy();
+  }
+  return detectedStrategy;
+}
+
+function detectBlurStrategy(): BlurStrategy | null {
+  if (process.platform === "darwin") {
+    return "vibrancy";
+  }
+  if (process.platform === "win32") {
+    // Acrylic behind a window landed in Windows 11 22H2 (build 22621).
+    return windowsBuild() >= 22621 ? "acrylic" : null;
+  }
+  if (process.platform === "linux") {
+    return kwinBlurAvailable() ? "kwin" : null;
+  }
+  return null;
+}
+
+/** Build number out of "10.0.22621" (0 when it can't be read). */
+function windowsBuild(): number {
+  return Number(os.release().split(".")[2]) || 0;
+}
+
+/**
+ * KWin is the only Linux compositor that takes blur requests, and only for X11
+ * surfaces: Wayland has no such protocol, so a Wayland-native window (Ozone)
+ * has nothing to ask.
+ */
+function kwinBlurAvailable(): boolean {
+  const desktop = `${process.env.XDG_CURRENT_DESKTOP ?? ""} ${process.env.XDG_SESSION_DESKTOP ?? ""}`;
+  if (!/kde|plasma/i.test(desktop)) {
+    return false;
+  }
+  if (app.commandLine.getSwitchValue("ozone-platform") === "wayland") {
+    return false;
+  }
+  try {
+    return spawnSync("which", ["xprop"], { stdio: "ignore" }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Turn the detected backdrop on or off. A system without one does nothing. */
+function applyBackdrop(win: BrowserWindow, enabled: boolean): void {
+  switch (blurStrategy()) {
+    case "vibrancy":
+      win.setVibrancy(enabled ? "sidebar" : null);
+      break;
+    case "acrylic":
+      win.setBackgroundMaterial(enabled ? "acrylic" : "none");
+      break;
+    case "kwin":
+      applyKwinBlur(win, enabled);
+      break;
+    default:
+      break;
+  }
+}
+
+const KWIN_BLUR_PROPERTY = "_KDE_NET_WM_BLUR_BEHIND_REGION";
+/** Keep in sync with the shell's `rounded-xl` corner radius. */
+const WINDOW_RADIUS = 12;
+
+/** The window's X11 id, or undefined when this isn't an X11/XWayland surface. */
+function x11WindowId(win: BrowserWindow): string | undefined {
+  try {
+    const handle = win.getNativeWindowHandle();
+    const value = handle.length === 8 ? handle.readBigUInt64LE() : BigInt(handle.readUInt32LE());
+    // Window ids are 32-bit; anything larger is a pointer to some other surface.
+    return value > 0n && value <= 0xffffffffn ? value.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Ask KWin to blur whatever sits behind the window. This X11 property is the
+ * only blur request a Linux app can make, and only KWin honours it (X11 or
+ * XWayland) — Wayland has no such protocol, and GNOME/wlroots decide blur
+ * themselves. Best effort: without KWin or xprop the sidebar stays clear glass.
+ *
+ * The region skips the rounded corners so the compositor doesn't fill them with
+ * blurred pixels and square the window off again.
+ */
+function applyKwinBlur(win: BrowserWindow, enabled: boolean): void {
+  const id = x11WindowId(win);
+  if (!id) {
+    return;
+  }
+  const args = ["-id", id];
+  if (enabled) {
+    const { width, height } = win.getBounds();
+    const { scaleFactor } = screen.getDisplayNearestPoint(win.getBounds());
+    const w = Math.round(width * scaleFactor);
+    const h = Math.round(height * scaleFactor);
+    const r = Math.round(WINDOW_RADIUS * scaleFactor);
+    // Two overlapping rects approximate the rounded rectangle.
+    const region = [0, r, w, h - 2 * r, r, 0, w - 2 * r, h].join(", ");
+    args.push("-f", KWIN_BLUR_PROPERTY, "32c", "-set", KWIN_BLUR_PROPERTY, region);
+  } else {
+    args.push("-remove", KWIN_BLUR_PROPERTY);
+  }
+  try {
+    spawn("xprop", args, { stdio: "ignore" }).on("error", () => undefined);
+  } catch {
+    /* no xprop: nothing to do */
+  }
+}
 
 function ensureAppFiles(): void {
   const dir = appDir();
@@ -105,7 +239,13 @@ function ensureAppFiles(): void {
   fs.mkdirSync(logsDir, { recursive: true });
   const appConfigPath = path.join(dir, "app.json");
   if (!fs.existsSync(appConfigPath)) {
-    const defaults = { version: 1, activeConnectionId: "local", useTitlebar: true, runInBackground: false };
+    const defaults = {
+      version: 1,
+      activeConnectionId: "local",
+      useTitlebar: true,
+      runInBackground: false,
+      glassSidebar: false
+    };
     fs.writeFileSync(appConfigPath, `${JSON.stringify(defaults, null, 2)}\n`);
   }
   const remotesPath = path.join(dir, "remotes.json");
@@ -216,6 +356,12 @@ function registerIpc(): void {
     if (req) {
       req.destroy();
       streams.delete(streamId);
+    }
+  });
+  ipcMain.handle("orquester:window:blur-support", () => blurStrategy());
+  ipcMain.on("orquester:window:backdrop", (_event, enabled: boolean) => {
+    if (mainWindow) {
+      applyBackdrop(mainWindow, enabled);
     }
   });
   ipcMain.on("orquester:window", (_event, action: string) => {
@@ -334,6 +480,15 @@ function createTray(): void {
 }
 
 function createWindow(): void {
+  const glass = glassSidebar();
+  const macGlass = glass && blurStrategy() === "vibrancy";
+  // Windows draws acrylic behind the window itself, but only over a
+  // zero-alpha background — it does not need (and does not want) transparency.
+  const winGlass = glass && blurStrategy() === "acrylic";
+  // The surface can't be made transparent after creation; the native backdrop
+  // (vibrancy/acrylic) can, and is re-applied from the renderer.
+  const transparent = CSS_ROUNDED_CORNERS || macGlass;
+
   mainWindow = new BrowserWindow({
     width: 1320,
     height: 860,
@@ -344,7 +499,12 @@ function createWindow(): void {
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 12, y: 12 },
     show: false,
-    backgroundColor: "#111111",
+    // Linux rounds nothing for us: the surface is transparent and the renderer
+    // paints the corners. macOS and Windows round frameless windows natively.
+    transparent,
+    backgroundColor: transparent || winGlass ? "#00000000" : "#111111",
+    vibrancy: macGlass ? "sidebar" : undefined,
+    backgroundMaterial: winGlass ? "acrylic" : undefined,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -356,6 +516,37 @@ function createWindow(): void {
     mainWindow?.show();
     mainWindow?.focus();
   });
+
+  // KWin's blur region is in window coordinates, so it has to follow resizes.
+  let blurResync: ReturnType<typeof setTimeout> | undefined;
+  mainWindow.on("resize", () => {
+    if (!glassSidebar() || blurStrategy() !== "kwin") {
+      return;
+    }
+    clearTimeout(blurResync);
+    blurResync = setTimeout(() => {
+      if (mainWindow) {
+        applyKwinBlur(mainWindow, true);
+      }
+    }, 150);
+  });
+
+  // The renderer squares off its corners while maximized/fullscreen.
+  const sendState = () => {
+    const win = mainWindow;
+    if (win) {
+      win.webContents.send("orquester:window:state", {
+        maximized: win.isMaximized(),
+        fullScreen: win.isFullScreen()
+      });
+    }
+  };
+  mainWindow.on("maximize", sendState);
+  mainWindow.on("unmaximize", sendState);
+  mainWindow.on("restore", sendState);
+  mainWindow.on("enter-full-screen", sendState);
+  mainWindow.on("leave-full-screen", sendState);
+  mainWindow.webContents.on("did-finish-load", sendState);
 
   // Run-in-background: closing hides the window (daemon + tray keep running).
   mainWindow.on("close", (event) => {

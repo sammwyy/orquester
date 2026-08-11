@@ -231,8 +231,13 @@ export const appConfigSchema = z.object({
   /** Render the custom frameless titlebar with window controls. */
   useTitlebar: z.boolean().default(true),
   /** Desktop: keep the daemon running in a tray when the window is closed. */
-  runInBackground: z.boolean().default(false)
-});
+  runInBackground: z.boolean().default(false),
+  /** Translucent sidebar over the desktop (native backdrop where available). */
+  glassSidebar: z.boolean().default(false)
+})
+  // Clients own this file; a daemon that predates a field must hand it back
+  // untouched instead of silently dropping the client's setting.
+  .passthrough();
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
 

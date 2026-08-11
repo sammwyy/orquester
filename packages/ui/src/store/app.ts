@@ -9,6 +9,7 @@ import type { HttpClient } from "../lib/http-client";
 import type { Transporter } from "../lib/transporter";
 import { workspaceService } from "../services";
 import type {
+  BlurStrategy,
   ConnectionStatus,
   EventMessage,
   ProjectSummary,
@@ -99,6 +100,7 @@ let homeApi: ApiClient | null = null;
 export interface UiAppConfig {
   useTitlebar: boolean;
   runInBackground: boolean;
+  glassSidebar: boolean;
 }
 
 /** Persist the remote-server list to the home daemon (shared across clients). */
@@ -160,6 +162,8 @@ export interface AppState {
   // app config + settings modal
   appConfig: UiAppConfig;
   settingsOpen: boolean;
+  /** Blur backend the host offers; null (the default) disables the glass chrome. */
+  blurStrategy: BlurStrategy | null;
   sidebarCollapsed: boolean;
   sidebarView: SidebarView;
   /** Mobile off-canvas sidebar drawer. */
@@ -204,6 +208,7 @@ export interface AppState {
   // app config + settings
   loadAppConfig: () => Promise<void>;
   setSettingsOpen: (open: boolean) => void;
+  setBlurStrategy: (strategy: BlurStrategy | null) => void;
   toggleSidebar: () => void;
   setSidebarView: (view: SidebarView) => void;
   setSidebarDrawer: (open: boolean) => void;
@@ -240,8 +245,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   reconnectAttempt: 0,
   connections: [],
   activeConnectionId: null,
-  appConfig: { useTitlebar: false, runInBackground: false },
+  appConfig: { useTitlebar: false, runInBackground: false, glassSidebar: false },
   settingsOpen: false,
+  blurStrategy: null,
   sidebarCollapsed: false,
   sidebarView: "workspaces",
   sidebarDrawerOpen: false,
@@ -371,7 +377,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       connections: [nextSetup.localConnection],
       activeConnectionId: nextSetup.localConnection.id,
-      appConfig: { useTitlebar: nextSetup.defaultUseTitlebar, runInBackground: false },
+      appConfig: {
+        useTitlebar: nextSetup.defaultUseTitlebar,
+        runInBackground: false,
+        glassSidebar: false
+      },
       api: homeApi
     });
     await get().connect();
@@ -387,7 +397,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         set((state) => ({
           appConfig: {
             useTitlebar: config.useTitlebar ?? state.appConfig.useTitlebar,
-            runInBackground: config.runInBackground ?? state.appConfig.runInBackground
+            runInBackground: config.runInBackground ?? state.appConfig.runInBackground,
+            glassSidebar: config.glassSidebar ?? state.appConfig.glassSidebar
           }
         }));
       }
@@ -409,6 +420,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+
+  setBlurStrategy: (strategy) => set({ blurStrategy: strategy }),
 
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 

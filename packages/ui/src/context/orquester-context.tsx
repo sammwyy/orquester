@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useMemo } from "react";
 import type { ApiClient } from "../lib/api-client";
-import type { Runtime } from "../types";
+import type { BlurStrategy, Runtime } from "../types";
+
+/** Live state of the native window, pushed by the desktop shell. */
+export interface WindowState {
+  maximized: boolean;
+  fullScreen: boolean;
+}
 
 /**
  * Optional bridge the desktop shell exposes (via Electron preload) to control
@@ -10,6 +16,17 @@ export interface WindowControls {
   minimize(): void;
   toggleMaximize(): void;
   close(): void;
+  /**
+   * True when the platform does not round frameless windows itself and the
+   * renderer has to draw the corners (the shell makes the surface transparent).
+   */
+  cssRoundedCorners?: boolean;
+  /** Subscribe to native window state; returns an unsubscribe. */
+  onStateChange?(listener: (state: WindowState) => void): () => void;
+  /** Turn the native window backdrop on or off. */
+  setBackdrop?(enabled: boolean): void;
+  /** Which blur backend the host system offers, if any. */
+  blurSupport?(): Promise<BlurStrategy | null>;
 }
 
 export interface OrquesterContextValue {

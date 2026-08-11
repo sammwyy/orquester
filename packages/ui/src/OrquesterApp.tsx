@@ -51,8 +51,22 @@ export const OrquesterApp: React.FC<OrquesterAppProps> = ({
   const api = storeApi ?? bootApi;
 
   const defaultTitlebar = useTitlebar ?? runtime === "desktop";
-  // Live value from app config (settings can toggle it).
+  // Live values from app config (settings can toggle them).
   const titlebar = useAppStore((s) => s.appConfig.useTitlebar);
+  const glassSidebar = useAppStore((s) => s.appConfig.glassSidebar);
+
+  // What the host can blur behind the window decides whether glass is offered
+  // at all; the backdrop itself then follows the setting.
+  useEffect(() => {
+    void windowControls
+      ?.blurSupport?.()
+      .then((strategy) => useAppStore.getState().setBlurStrategy(strategy))
+      .catch(() => undefined);
+  }, [windowControls]);
+
+  useEffect(() => {
+    windowControls?.setBackdrop?.(glassSidebar);
+  }, [windowControls, glassSidebar]);
 
   // Set up connections, then connect (app config + remotes load from the daemon).
   useEffect(() => {

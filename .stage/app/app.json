@@ -2,5 +2,6 @@
   "version": 1,
   "activeConnectionId": "local",
   "useTitlebar": true,
-  "runInBackground": true
+  "runInBackground": true,
+  "glassSidebar": true
 }

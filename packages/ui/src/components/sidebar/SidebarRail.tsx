@@ -2,6 +2,7 @@ import React from "react";
 import { Activity, Box, ChevronLeft, Folder, Folders, PanelLeftOpen, Server } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Tooltip } from "../ui";
+import { useGlassChrome } from "../../hooks";
 import { useActiveWorkspaces, useAppStore } from "../../store/app";
 import type { ConnectionStatus } from "../../types";
 
@@ -37,6 +38,7 @@ const RailButton: React.FC<{
 
 /** Icon-only sidebar shown when collapsed; hover reveals labels via portal. */
 export const SidebarRail: React.FC = () => {
+  const glass = useGlassChrome();
   const view = useAppStore((s) => s.sidebarView);
   const setView = useAppStore((s) => s.setSidebarView);
   const currentWorkspace = useAppStore((s) => s.currentWorkspace);
@@ -54,7 +56,12 @@ export const SidebarRail: React.FC = () => {
   const activeGroups = useActiveWorkspaces();
 
   return (
-    <aside className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-neutral-800 bg-neutral-900/40 py-2">
+    <aside
+      className={cn(
+        "flex w-12 shrink-0 flex-col items-center gap-1 border-r border-neutral-800 py-2",
+        glass ? "bg-neutral-900/80 backdrop-blur-2xl" : "bg-neutral-900/40"
+      )}
+    >
       <RailButton label="Expand sidebar" onClick={toggleSidebar}>
         <PanelLeftOpen size={16} />
       </RailButton>
