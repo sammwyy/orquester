@@ -9,6 +9,7 @@ import type {
 } from "@orquester/api";
 import { REGISTRY, type RegistryEntryDef } from "@orquester/registry";
 import { exec, spawn } from "node:child_process";
+import * as pty from "node-pty";
 import { EventEmitter } from "node:events";
 import { accessSync, constants } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -110,12 +111,16 @@ export class RegistryService {
   private quotas = new Map<string, RegistryQuota>();
   private quotaRequests = new Map<string, Promise<RegistryQuota>>();
   private quotaTimer: ReturnType<typeof setInterval> | null = null;
+  private eventClientCount = 0;
+  private quotaWorkers: Record<string, boolean>;
   /** Emits "changed" with the updated RegistryEntry (broadcast to clients). */
   readonly events = new EventEmitter();
   /** Emits "changed" with a refreshed RegistryQuota. */
   readonly quotaEvents = new EventEmitter();
 
-  constructor(private readonly daemonDir: string) { }
+  constructor(private readonly daemonDir: string, quotaWorkers: Record<string, boolean> = {}) {
+    this.quotaWorkers = quotaWorkers;
+  }
 
   async init(): Promise<void> {
     const defs: RegistryDef[] = [
@@ -221,25 +226,40 @@ export class RegistryService {
   async quota(id: string): Promise<RegistryQuota> {
     const cached = this.quotas.get(id);
     if (cached) return cached;
+    if (!this.isQuotaWorkerEnabled(id)) {
+      const entry = this.entries.get(id);
+      return unsupportedQuota(id, entry?.name ?? id, "Quota worker is disabled for this provider.");
+    }
     return this.refreshQuota(id);
   }
 
   setEventClientCount(count: number): void {
+    this.eventClientCount = count;
     if (count > 0 && !this.quotaTimer) {
       void this.refreshAllQuotas();
-      this.quotaTimer = setInterval(() => void this.refreshAllQuotas(), 60_000);
+      this.quotaTimer = setInterval(() => void this.refreshAllQuotas(), 30_000);
     } else if (count === 0 && this.quotaTimer) {
       clearInterval(this.quotaTimer);
       this.quotaTimer = null;
     }
   }
 
+  setQuotaWorkers(workers: Record<string, boolean>): void {
+    this.quotaWorkers = workers;
+    this.setEventClientCount(this.eventClientCount);
+  }
+
   private async refreshAllQuotas(): Promise<void> {
     await Promise.allSettled(
       [...this.entries.values()]
         .filter((entry) => entry.kind === "agent" && entry.enabled)
+        .filter((entry) => this.isQuotaWorkerEnabled(entry.id))
         .map((entry) => this.refreshQuota(entry.id))
     );
+  }
+
+  private isQuotaWorkerEnabled(id: string): boolean {
+    return this.quotaWorkers[id] !== false;
   }
 
   private async refreshQuota(id: string): Promise<RegistryQuota> {
@@ -280,6 +300,7 @@ export class RegistryService {
       const context: AgentCommandContext = {
         bin: entry.resolvedBin,
         call: (args) => runExecutable(entry.resolvedBin as string, args),
+        callInteractive: (args, stopWhen) => runInteractive(entry.resolvedBin as string, args, stopWhen),
         appServerCall: (method, params) => runAppServerCall(entry.resolvedBin as string, method, params)
       };
       const quota = await integration.getQuota(context);
@@ -471,6 +492,36 @@ function runExecutable(file: string, args: readonly string[]): Promise<RegistryA
       const output = `${stdout}${stderr}`.slice(0, 64_000);
       finish({ ok: code === 0, exitCode: code ?? 1, output });
     });
+  });
+}
+
+function runInteractive(file: string, args: readonly string[], stopWhen?: RegExp): Promise<RegistryActionResult> {
+  return new Promise((resolve) => {
+    const child = pty.spawn(file, [...args], {
+      name: "xterm-color",
+      cols: 120,
+      rows: 40,
+      cwd: process.cwd(),
+      env: process.env as Record<string, string>
+    });
+    let output = "";
+    let settled = false;
+    const finish = (exitCode: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      child.kill();
+      resolve({ ok: exitCode === 0, exitCode, output: output.slice(0, 64_000) });
+    };
+    const timeout = setTimeout(() => finish(124), 20_000);
+    child.onData((chunk) => {
+      output = `${output}${chunk}`.slice(-64_000);
+      if (stopWhen?.test(output)) {
+        child.write("\u0003");
+        setTimeout(() => finish(0), 250);
+      }
+    });
+    child.onExit(({ exitCode }) => finish(exitCode ?? 1));
   });
 }
 

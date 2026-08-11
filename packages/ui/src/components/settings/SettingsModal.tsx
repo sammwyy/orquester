@@ -410,7 +410,14 @@ const QuotaWindowView: React.FC<{ window: QuotaWindow; resetFormat: QuotaResetFo
   );
 };
 
-const QuotaCard: React.FC<{ quota: RegistryQuota; resetFormat: QuotaResetFormat; now: Date }> = ({ quota, resetFormat, now }) => (
+const QuotaCard: React.FC<{
+  quota: RegistryQuota;
+  resetFormat: QuotaResetFormat;
+  now: Date;
+  workerEnabled: boolean;
+  onWorkerChange: (enabled: boolean) => void;
+  disabled: boolean;
+}> = ({ quota, resetFormat, now, workerEnabled, onWorkerChange, disabled }) => (
   <article className="overflow-hidden rounded-2xl border border-neutral-800/75 bg-neutral-900/70 shadow-xl shadow-black/10">
     <div className="flex items-center gap-2.5 px-3.5 pb-2.5 pt-3.5">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-neutral-800 text-neutral-200 ring-1 ring-white/[0.04]">
@@ -424,6 +431,7 @@ const QuotaCard: React.FC<{ quota: RegistryQuota; resetFormat: QuotaResetFormat;
             : "Not supported"}
         </p>
       </div>
+      <Switch checked={workerEnabled} disabled={disabled} onChange={onWorkerChange} />
     </div>
     <div className="space-y-2.5 px-2.5 pb-2.5">
       {quota.windows.length > 0 ? quota.windows.map((window) => <QuotaWindowView key={window.id} window={window} resetFormat={resetFormat} now={now} />) : (
@@ -444,6 +452,10 @@ const QuotaSettings: React.FC = () => {
   const updateAppConfig = useAppStore((state) => state.updateAppConfig);
   const cachedQuotas = useAppStore((state) => state.quotaById);
   const setQuota = useAppStore((state) => state.setQuota);
+  const connections = useAppStore((state) => state.connections);
+  const activeConnectionId = useAppStore((state) => state.activeConnectionId);
+  const isLocal = connections.find((connection) => connection.id === activeConnectionId)?.kind === "local";
+  const [quotaWorkers, setQuotaWorkers] = useState<Record<string, boolean>>({});
   const [now, setNow] = useState(() => new Date());
   const installedIds = agents.filter((agent) => agent.enabled).map((agent) => agent.id);
   const installedKey = installedIds.join(",");
@@ -452,6 +464,26 @@ const QuotaSettings: React.FC = () => {
     const timer = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    api.getDaemonConfig().then((config) => {
+      if (active) setQuotaWorkers(config.quotaWorkers);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [api]);
+
+  const updateQuotaWorker = async (id: string, enabled: boolean) => {
+    const previous = quotaWorkers;
+    const next = { ...previous, [id]: enabled };
+    setQuotaWorkers(next);
+    try {
+      const config = await api.updateDaemonConfig({ quotaWorkers: next });
+      setQuotaWorkers(config.quotaWorkers);
+    } catch {
+      setQuotaWorkers(previous);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -524,13 +556,13 @@ const QuotaSettings: React.FC = () => {
       {available.length > 0 && (
         <section className="space-y-2">
           <h3 className="px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">Available quota</h3>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">{available.map((quota) => <QuotaCard key={quota.id} quota={quota} resetFormat={resetFormat} now={now} />)}</div>
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">{available.map((quota) => <QuotaCard key={quota.id} quota={quota} resetFormat={resetFormat} now={now} workerEnabled={quotaWorkers[quota.id] !== false} onWorkerChange={(enabled) => void updateQuotaWorker(quota.id, enabled)} disabled={!isLocal} />)}</div>
         </section>
       )}
       {unavailable.length > 0 && (
         <section className="space-y-2">
           <h3 className="px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">Needs authentication or provider support</h3>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">{unavailable.map((quota) => <QuotaCard key={quota.id} quota={quota} resetFormat={resetFormat} now={now} />)}</div>
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">{unavailable.map((quota) => <QuotaCard key={quota.id} quota={quota} resetFormat={resetFormat} now={now} workerEnabled={quotaWorkers[quota.id] !== false} onWorkerChange={(enabled) => void updateQuotaWorker(quota.id, enabled)} disabled={!isLocal} />)}</div>
         </section>
       )}
     </div>

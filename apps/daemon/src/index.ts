@@ -117,7 +117,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
 
   // Shared, transport-agnostic services. Sessions live here so they survive
   // client disconnects and are visible across every transport/client.
-  const registry = new RegistryService(resolved.daemonDir);
+  const registry = new RegistryService(resolved.daemonDir, config.quotaWorkers);
   const sessions = new SessionManager(registry);
   const broadcaster = new Broadcaster();
   // Stream registry changes (install/update status, detected versions) to clients.
@@ -325,6 +325,7 @@ function createServer(
     try {
       merged = parseDaemonConfig({
         version: 1,
+        quotaWorkers: body.quotaWorkers ?? config.quotaWorkers,
         workspacesDir: body.workspacesDir ?? config.workspacesDir,
         logsDir: body.logsDir ?? config.logsDir,
         transports: {
@@ -353,6 +354,7 @@ function createServer(
     // then hot-restart the HTTP transport so the new password/host/port/enabled
     // take effect immediately. Sessions (PTYs) and the unix transport are untouched.
     Object.assign(config, merged);
+    services.registry.setQuotaWorkers(merged.quotaWorkers);
     resolved.workspacesDir = expandVars(merged.workspacesDir, resolved.vars);
     resolved.logsDir = expandVars(merged.logsDir, resolved.vars);
     await mkdir(resolved.workspacesDir, { recursive: true }).catch(() => undefined);

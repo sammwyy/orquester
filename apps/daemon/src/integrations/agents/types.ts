@@ -3,6 +3,7 @@ import type { RegistryActionResult, RegistryAuthInfo, RegistryQuota } from "@orq
 export interface AgentCommandContext {
   bin: string;
   call(args: readonly string[]): Promise<RegistryActionResult>;
+  callInteractive?(args: readonly string[], stopWhen?: RegExp): Promise<RegistryActionResult>;
   appServerCall?(method: string, params?: unknown): Promise<unknown>;
 }
 
