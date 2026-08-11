@@ -1,0 +1,6 @@
+Place README screenshots here:
+  hero.png        desktop app, agent running in a project tab
+  workspaces.png  sidebar with workspaces/projects, one project open
+  files.png       file browser with a file open in the editor
+  settings.png    Settings > Agents, showing install/update state
+  mobile.png      narrow viewport: drawer sidebar + terminal + key bar

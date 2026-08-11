@@ -10,8 +10,5 @@ dist-electron/
 project.md
 release/
 
-# Stage Sandbox: keep committed config + seed workspaces, ignore runtime artifacts
-.stage/**/logs/
-.stage/daemon/*.sock
-.stage/workspaces/*
-!.stage/workspaces/.gitkeep
+# Stage Sandbox
+.stage/

@@ -23,6 +23,7 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
+      "electron-winstaller",
       "esbuild",
       "node-pty"
     ]
