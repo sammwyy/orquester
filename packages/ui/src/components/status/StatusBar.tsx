@@ -11,6 +11,22 @@ interface StatusModuleProps {
 const StatusModule: React.FC<StatusModuleProps> = ({ definition }) => {
   const [open, setOpen] = useState(false);
   const { label, side, icon, content: Content } = definition;
+  const triggerContent = (
+    <>
+      {icon}
+      <span className="flex min-w-0 items-center">{label}</span>
+    </>
+  );
+
+  if (!Content) {
+    return (
+      <span className="relative block h-full">
+        <span className="flex h-full items-center gap-1.5 px-2 text-[10px]">
+          {triggerContent}
+        </span>
+      </span>
+    );
+  }
 
   return (
     <span className="relative block h-full">
@@ -28,8 +44,7 @@ const StatusModule: React.FC<StatusModuleProps> = ({ definition }) => {
           open && "border-neutral-700/80 rounded-b-md"
         )}
       >
-        {icon}
-        <span className="flex min-w-0 items-center">{label}</span>
+        {triggerContent}
       </button>
       {open && (
         <span
@@ -49,8 +64,15 @@ const StatusModule: React.FC<StatusModuleProps> = ({ definition }) => {
 export const StatusBar: React.FC = () => {
   const modules = useStatusModules();
   const currentProject = useAppStore((state) => state.currentProject);
+  const integrations = useAppStore((state) => state.integrations);
   const view = currentProject ? "project" : "empty";
-  const visible = modules.filter((module) => !module.enabledOn || module.enabledOn.includes(view));
+  const visible = modules.filter((module) => {
+    const viewEnabled = !module.enabledOn || module.enabledOn.includes(view);
+    const integrationEnabled = !module.integration || integrations.some((integration) =>
+      integration.id === module.integration && integration.enabled && integration.available
+    );
+    return viewEnabled && integrationEnabled;
+  });
   const left = visible.filter((module) => module.side === "left");
   const right = visible.filter((module) => module.side === "right");
 

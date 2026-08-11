@@ -73,6 +73,30 @@ export interface GitInitRequest {
   path: string;
 }
 
+export interface BatteryStatusResponse {
+  hasBattery: boolean;
+  percentage?: number;
+  charging: boolean;
+  pluggedIn: boolean;
+}
+
+export interface IntegrationStatus {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  available: boolean;
+  unavailableReason?: string;
+}
+
+export interface IntegrationsResponse {
+  integrations: IntegrationStatus[];
+}
+
+export interface UpdateIntegrationsRequest {
+  integrations: Record<string, boolean>;
+}
+
 export interface CreateWorkspaceRequest {
   name: string;
 }

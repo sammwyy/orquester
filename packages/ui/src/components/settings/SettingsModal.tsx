@@ -7,6 +7,7 @@ import {
   Gauge,
   Globe2,
   HardDrive,
+  PlugZap,
   Palette,
   Server
 } from "lucide-react";
@@ -22,7 +23,8 @@ import {
   LocalAccessSettings,
   QuotaSettings,
   RemoteWorkersSettings,
-  StorageSettings
+  StorageSettings,
+  IntegrationsSettings
 } from "./tabs";
 
 type Section =
@@ -33,7 +35,8 @@ type Section =
   | "storage"
   | "access"
   | "agents"
-  | "quota";
+  | "quota"
+  | "integrations";
 /** Client settings live in this window; server settings belong to the daemon. */
 type SectionGroup = "client" | "server";
 
@@ -104,6 +107,13 @@ const SECTIONS: {
       label: "Quota",
       icon: <Gauge size={16} />,
       desc: "Usage windows, limits and authentication"
+    },
+    {
+      id: "integrations",
+      group: "server",
+      label: "Integrations",
+      icon: <PlugZap size={16} />,
+      desc: "Optional worker capabilities"
     }
   ];
 
@@ -124,6 +134,8 @@ const renderSection = (id: Section, onGoToLocalAccess?: () => void) =>
     <AccessSettings onGoToLocalAccess={onGoToLocalAccess} />
   ) : id === "quota" ? (
     <QuotaSettings />
+  ) : id === "integrations" ? (
+    <IntegrationsSettings />
   ) : (
     <AgentsSettings />
   );

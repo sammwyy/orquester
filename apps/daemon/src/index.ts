@@ -23,7 +23,11 @@ import type {
 import { RegistryService } from "./registry";
 import { SessionError, SessionManager } from "./sessions";
 import { watchGitProjects } from "./integrations/git";
+import { watchBattery } from "./integrations/battery";
+import { getIntegrationAvailability } from "./integrations/catalog";
 import { registerGitRoutes } from "./routes/git";
+import { registerSystemRoutes } from "./routes/system";
+import { registerIntegrationRoutes } from "./routes/integrations";
 import { Broadcaster } from "./broadcaster";
 import {
   type AppConfig,
@@ -122,16 +126,27 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
   const registry = new RegistryService(resolved.daemonDir, config.quotaWorkers);
   const sessions = new SessionManager(registry);
   const broadcaster = new Broadcaster();
+  const availability = await getIntegrationAvailability();
+  let eventClientCount = 0;
   const gitWatcher = watchGitProjects(resolved.workspacesDir, (status) => {
     broadcaster.publish("projects", "project.git.changed", status);
   });
+  const batteryWatcher = watchBattery((status) => {
+    broadcaster.publish("system", "battery.changed", status);
+  });
+  const applyIntegrations = (integrations: Record<string, boolean>) => {
+    const isAvailable = (id: string) => availability.some((item) => item.id === id && item.available);
+    gitWatcher.setActive(eventClientCount > 0 && integrations.git !== false && isAvailable("git"));
+    batteryWatcher.setActive(eventClientCount > 0 && integrations.battery !== false && isAvailable("battery"));
+  };
   // Stream registry changes (install/update status, detected versions) to clients.
   registry.events.on("changed", (entry) => broadcaster.publish("registry", "registry.changed", entry));
   registry.quotaEvents.on("changed", (quota) => broadcaster.publish("registry", "registry.quota.changed", quota));
   registry.installEvents.on("sudo.required", (payload) => broadcaster.publish("registry", "registry.install.sudoRequired", payload));
   broadcaster.onClientCountChange((count) => {
+    eventClientCount = count;
     registry.setEventClientCount(count);
-    gitWatcher.setActive(count > 0);
+    applyIntegrations(config.integrations);
   });
   await registry.init();
   sessions.lifecycle.on("created", (s: SessionSummary) =>
@@ -144,7 +159,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
     broadcaster.publish("sessions", "session.closed", payload)
   );
 
-  const services: Services = { registry, sessions, broadcaster, gitWatcher };
+  const services: Services = { registry, sessions, broadcaster, gitWatcher, batteryWatcher, applyIntegrations };
 
   // The static web build the HTTP transport optionally serves.
   const webDirEnv = options.webDir ?? env.ORQUESTER_WEB_DIR;
@@ -200,7 +215,8 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
   await startHttp();
 
   const stop = async () => {
-    gitWatcher.stop();
+  gitWatcher.stop();
+  batteryWatcher.stop();
     sessions.closeAll();
     await stopHttp();
     await unixServer.close().catch(() => undefined);
@@ -221,6 +237,8 @@ interface Services {
   sessions: SessionManager;
   broadcaster: Broadcaster;
   gitWatcher: ReturnType<typeof watchGitProjects>;
+  batteryWatcher: ReturnType<typeof watchBattery>;
+  applyIntegrations: (integrations: Record<string, boolean>) => void;
   /** Restart the HTTP transport (set in main once the lifecycle exists). */
   reloadHttp?: () => Promise<void>;
 }
@@ -337,6 +355,7 @@ function createServer(
       merged = parseDaemonConfig({
         version: 1,
         quotaWorkers: body.quotaWorkers ?? config.quotaWorkers,
+        integrations: body.integrations ?? config.integrations,
         workspacesDir: body.workspacesDir ?? config.workspacesDir,
         logsDir: body.logsDir ?? config.logsDir,
         transports: {
@@ -366,6 +385,7 @@ function createServer(
     // take effect immediately. Sessions (PTYs) and the unix transport are untouched.
     Object.assign(config, merged);
     services.registry.setQuotaWorkers(merged.quotaWorkers);
+    services.applyIntegrations(merged.integrations);
     resolved.workspacesDir = expandVars(merged.workspacesDir, resolved.vars);
     resolved.logsDir = expandVars(merged.logsDir, resolved.vars);
     await mkdir(resolved.workspacesDir, { recursive: true }).catch(() => undefined);
@@ -547,6 +567,13 @@ function createServer(
     workspacesDir: resolved.workspacesDir,
     broadcaster: services.broadcaster,
     gitWatcher: services.gitWatcher
+  });
+  registerSystemRoutes(app);
+  registerIntegrationRoutes(app, {
+    config,
+    configPath: resolved.configPath,
+    local: options.mode === "local",
+    apply: services.applyIntegrations
   });
 
   // Registry (shells & agents)

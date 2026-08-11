@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { create } from "zustand";
-import type { GitStatusResponse, RegistryQuota } from "@orquester/api";
+import type { BatteryStatusResponse, GitStatusResponse, IntegrationStatus, RegistryQuota } from "@orquester/api";
 import { ApiClient, ApiError } from "../lib/api-client";
 import { createTransporter } from "../lib/transporters";
 import { toRemoteConfig, toUiConnection } from "../lib/connections";
@@ -207,6 +207,8 @@ export interface AppState {
   currentProject: ProjectSummary | null;
   gitStatus: GitStatusResponse | null;
   gitStatusLoading: boolean;
+  batteryStatus: BatteryStatusResponse | null;
+  integrations: IntegrationStatus[];
 
   // data
   registry: RegistryResponse;
@@ -262,6 +264,9 @@ export interface AppState {
   openProject: (project: ProjectSummary) => void;
   loadGitStatus: (projectPath?: string) => Promise<void>;
   initializeGit: () => Promise<void>;
+  loadBatteryStatus: () => Promise<void>;
+  loadIntegrations: () => Promise<void>;
+  setIntegrations: (integrations: IntegrationStatus[]) => void;
 
   loadSessions: () => Promise<void>;
   loadRegistry: () => Promise<void>;
@@ -297,6 +302,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentProject: null,
   gitStatus: null,
   gitStatusLoading: false,
+  batteryStatus: null,
+  integrations: [],
   registry: EMPTY_REGISTRY,
   quotaById: {},
   workspaces: [],
@@ -358,7 +365,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({ connectionStatus: "connected", reconnectAttempt: 0, authPrompt: null });
-    await Promise.all([get().loadWorkspaces(), get().loadSessions(), get().loadRegistry()]);
+    await Promise.all([get().loadWorkspaces(), get().loadSessions(), get().loadRegistry(), get().loadBatteryStatus(), get().loadIntegrations()]);
 
     // Live event sync. The stream ending unexpectedly (e.g. the transport was
     // restarted) is the primary disconnect signal.
@@ -686,6 +693,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  loadBatteryStatus: async () => {
+    const api = get().api;
+    if (!api) return;
+    try {
+      set({ batteryStatus: await api.batteryStatus() });
+    } catch {
+      set({ batteryStatus: null });
+    }
+  },
+
+  loadIntegrations: async () => {
+    const api = get().api;
+    if (!api) return;
+    try {
+      set({ integrations: (await api.getIntegrations()).integrations });
+    } catch {
+      set({ integrations: [] });
+    }
+  },
+
+  setIntegrations: (integrations) => set({ integrations }),
+
   loadSessions: async () => {
     const api = get().api;
     if (!api) {
@@ -775,6 +804,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
 
   applyEvent: (event) => {
+    if (event.channel === "system" && event.type === "battery.changed") {
+      set({ batteryStatus: event.payload as BatteryStatusResponse });
+      return;
+    }
     if (event.channel === "projects" && event.type === "project.git.changed") {
       const status = event.payload as GitStatusResponse;
       if (status.projectPath === get().currentProject?.path) set({ gitStatus: status });

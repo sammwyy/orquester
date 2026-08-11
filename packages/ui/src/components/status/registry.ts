@@ -9,7 +9,8 @@ export interface StatusModuleDefinition {
   side: StatusModuleSide;
   icon?: React.ReactNode;
   enabledOn?: readonly StatusView[];
-  content: React.ComponentType;
+  integration?: string;
+  content?: React.ComponentType;
 }
 
 const modules = new Map<string, StatusModuleDefinition>();

@@ -123,6 +123,7 @@ export const httpTransportSchema = z.object({
 export const daemonConfigSchema = z.object({
   version: z.literal(1).default(1),
   quotaWorkers: z.record(z.boolean()).default({}),
+  integrations: z.record(z.boolean()).default({ git: true, battery: true }),
   // May contain $vars; expand with expandVars() before use.
   workspacesDir: z.string().min(1),
   logsDir: z.string().min(1),

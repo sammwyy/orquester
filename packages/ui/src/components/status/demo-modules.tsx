@@ -1,5 +1,5 @@
 import React from "react";
-import { Code2, FileDiff, FileText, GitBranch, GitBranchPlus, GitCommitHorizontal } from "lucide-react";
+import { Battery, BatteryCharging, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal } from "lucide-react";
 import { registerStatusModule } from "./registry";
 import { useAppStore } from "../../store/app";
 
@@ -53,41 +53,34 @@ const GitContent: React.FC = () => {
   );
 };
 
-const MarkdownContent: React.FC = () => (
-  <>
-    <p className="text-xs font-medium">Markdown</p>
-    <p className="mt-1 text-[10px] text-neutral-400">Plain text document</p>
-  </>
-);
+const BatteryLabel: React.FC = () => {
+  const status = useAppStore((state) => state.batteryStatus);
+  if (!status) return <span>Battery…</span>;
+  if (!status.hasBattery) return <span className="text-current/60">No battery</span>;
 
-const EncodingContent: React.FC = () => (
-  <>
-    <p className="text-xs font-medium">UTF-8</p>
-    <p className="mt-1 text-[10px] text-current/60">Unicode text encoding</p>
-  </>
-);
+  const percentage = status.percentage ?? 0;
+  const tone = percentage <= 15 ? "text-red-400" : percentage <= 30 ? "text-orange-300" : "text-current";
+  return (
+    <span className={`flex items-center gap-1 ${tone}`}>
+      {status.pluggedIn ? <BatteryCharging size={13} /> : <Battery size={13} />}
+      <span>{percentage}%</span>
+    </span>
+  );
+};
 
 registerStatusModule({
   id: "project.git",
   label: <GitLabel />,
   side: "left",
+  integration: "git",
   icon: <GitBranch size={12} />,
   enabledOn: ["project"],
   content: GitContent
 });
 
 registerStatusModule({
-  id: "demo.markdown",
-  label: "Markdown",
+  id: "system.battery",
+  label: <BatteryLabel />,
   side: "right",
-  icon: <FileText size={12} />,
-  content: MarkdownContent
-});
-
-registerStatusModule({
-  id: "demo.encoding",
-  label: "UTF-8",
-  side: "right",
-  icon: <Code2 size={12} />,
-  content: EncodingContent
+  integration: "battery"
 });

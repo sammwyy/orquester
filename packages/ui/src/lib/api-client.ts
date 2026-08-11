@@ -1,5 +1,6 @@
 import type {
   AuthInfoResponse,
+  BatteryStatusResponse,
   CreateProjectRequest,
   CreateSessionRequest,
   CreateWorkspaceRequest,
@@ -8,6 +9,7 @@ import type {
   FsListResponse,
   FsReadResponse,
   GitStatusResponse,
+  IntegrationsResponse,
   HealthResponse,
   OpenResult,
   ProjectSummary,
@@ -177,6 +179,18 @@ export class ApiClient {
 
   initializeGit(request: GitInitRequest): Promise<GitStatusResponse> {
     return this.send("POST", "/api/git/init", { body: request });
+  }
+
+  batteryStatus(signal?: AbortSignal): Promise<BatteryStatusResponse> {
+    return this.send("GET", "/api/system/battery", { signal });
+  }
+
+  getIntegrations(signal?: AbortSignal): Promise<IntegrationsResponse> {
+    return this.send("GET", "/api/integrations", { signal });
+  }
+
+  updateIntegrations(integrations: Record<string, boolean>): Promise<IntegrationsResponse> {
+    return this.send("PUT", "/api/integrations", { body: { integrations } });
   }
 
   createProject(

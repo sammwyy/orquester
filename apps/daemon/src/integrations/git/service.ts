@@ -7,6 +7,15 @@ import type { GitStatusResponse } from "@orquester/api";
 
 const execFileAsync = promisify(execFile);
 
+export async function isGitAvailable(): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["--version"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function git(projectPath: string, args: string[]): Promise<string> {
   const result = await execFileAsync("git", ["-C", projectPath, ...args], {
     maxBuffer: 2 * 1024 * 1024,
