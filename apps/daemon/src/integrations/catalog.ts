@@ -20,6 +20,13 @@ export async function getIntegrationAvailability(): Promise<IntegrationStatus[]>
       enabled: true,
       available: battery.hasBattery,
       ...(battery.hasBattery ? {} : { unavailableReason: "This worker does not report a battery." })
+    },
+    {
+      id: "system-resources",
+      name: "System Resources",
+      description: "CPU, memory and the disk containing this worker’s workspaces.",
+      enabled: true,
+      available: true
     }
   ];
 }

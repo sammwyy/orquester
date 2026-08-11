@@ -1,5 +1,5 @@
 import React from "react";
-import { Battery, BatteryCharging, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal } from "lucide-react";
+import { Battery, BatteryCharging, Cpu, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, MemoryStick } from "lucide-react";
 import { registerStatusModule } from "./registry";
 import { useAppStore } from "../../store/app";
 
@@ -68,6 +68,94 @@ const BatteryLabel: React.FC = () => {
   );
 };
 
+const formatBytes = (bytes: number): string => {
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
+  let value = Math.max(0, bytes);
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const maximumFractionDigits = unit === 0 ? 0 : value < 10 ? 2 : value < 100 ? 1 : 0;
+  return `${new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)} ${units[unit]}`;
+};
+
+const ResourcesLabel: React.FC = () => {
+  const resources = useAppStore((state) => state.systemResources);
+  if (!resources) return <span>Resources…</span>;
+  return (
+    <span className="flex items-center gap-2 text-current/80">
+      <span className="flex items-center gap-0.5"><Cpu size={11} />{resources.cpu.percentage}%</span>
+      <span className="flex items-center gap-0.5"><MemoryStick size={11} />{resources.memory.percentage}%</span>
+      <span className="flex items-center gap-0.5"><HardDrive size={11} />{resources.disk.percentage}%</span>
+    </span>
+  );
+};
+
+type ResourceBarUsage = { percentage: number; usedBytes?: number; freeBytes?: number; totalBytes?: number };
+
+const ResourceCard: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  detail: string;
+  usage: ResourceBarUsage;
+}> = ({ icon, label, detail, usage }) => (
+  <div className="border-b border-neutral-700/50 py-2.5 last:border-b-0">
+    <div className="flex items-center gap-2">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center text-neutral-400">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="text-[11px] text-neutral-200">{label}</p>
+          <p className="text-[11px] tabular-nums text-neutral-300">{usage.percentage}%</p>
+        </div>
+        <p className="mt-0.5 truncate text-[10px] text-neutral-500">{detail}</p>
+      </div>
+    </div>
+    <div className="ml-8 mt-2 h-1 overflow-hidden rounded-full bg-neutral-700/70">
+      <div className="h-full rounded-full bg-neutral-300/70" style={{ width: `${usage.percentage}%` }} />
+    </div>
+    {usage.usedBytes !== undefined && usage.freeBytes !== undefined && usage.totalBytes !== undefined && (
+      <div className="ml-8 mt-1.5 flex justify-between gap-2 text-[10px] text-neutral-500">
+        <span>{formatBytes(usage.usedBytes)} used</span>
+        <span>{formatBytes(usage.freeBytes)} free · {formatBytes(usage.totalBytes)} total</span>
+      </div>
+    )}
+  </div>
+);
+
+const ResourcesContent: React.FC = () => {
+  const resources = useAppStore((state) => state.systemResources);
+  if (!resources) return <p className="text-xs text-current/60">System resources unavailable.</p>;
+  return (
+    <div className="w-72 max-w-[calc(100vw-2rem)]">
+      <div className="mb-1 flex items-center justify-between px-0.5 pb-1.5">
+        <p className="text-xs font-medium text-neutral-100">System Resources</p>
+        <span className="text-[10px] text-neutral-500">This worker</span>
+      </div>
+      <ResourceCard
+        icon={<Cpu size={16} />}
+        label="CPU"
+        detail={`${resources.cpu.cores} logical cores`}
+        usage={{ percentage: resources.cpu.percentage }}
+      />
+      <ResourceCard
+        icon={<MemoryStick size={16} />}
+        label="Memory"
+        detail="System memory"
+        usage={resources.memory}
+      />
+      <ResourceCard
+        icon={<HardDrive size={16} />}
+        label="Storage"
+        detail={resources.disk.mount}
+        usage={resources.disk}
+      />
+    </div>
+  );
+};
+
 registerStatusModule({
   id: "project.git",
   label: <GitLabel />,
@@ -83,4 +171,12 @@ registerStatusModule({
   label: <BatteryLabel />,
   side: "right",
   integration: "battery"
+});
+
+registerStatusModule({
+  id: "system.resources",
+  label: <ResourcesLabel />,
+  side: "right",
+  integration: "system-resources",
+  content: ResourcesContent
 });

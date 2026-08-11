@@ -18,6 +18,7 @@ import type {
   RegistryResponse,
   ServerInfoResponse,
   SessionSummary,
+  SystemResourcesResponse,
   WorkspaceSummary
 } from "@orquester/api";
 import type { AppConfig, DaemonConfig, RemoteConnectionConfig } from "@orquester/config";
@@ -187,6 +188,10 @@ export class ApiClient {
 
   getIntegrations(signal?: AbortSignal): Promise<IntegrationsResponse> {
     return this.send("GET", "/api/integrations", { signal });
+  }
+
+  systemResources(signal?: AbortSignal): Promise<SystemResourcesResponse> {
+    return this.send("GET", "/api/system/resources", { signal });
   }
 
   updateIntegrations(integrations: Record<string, boolean>): Promise<IntegrationsResponse> {

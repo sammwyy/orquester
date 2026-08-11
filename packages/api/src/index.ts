@@ -97,6 +97,19 @@ export interface UpdateIntegrationsRequest {
   integrations: Record<string, boolean>;
 }
 
+export interface ResourceUsage {
+  usedBytes: number;
+  totalBytes: number;
+  freeBytes: number;
+  percentage: number;
+}
+
+export interface SystemResourcesResponse {
+  cpu: { percentage: number; cores: number };
+  memory: ResourceUsage;
+  disk: ResourceUsage & { mount: string; path: string };
+}
+
 export interface CreateWorkspaceRequest {
   name: string;
 }
