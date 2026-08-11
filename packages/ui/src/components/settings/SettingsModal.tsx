@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   AppWindow,
   Boxes,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -103,13 +104,6 @@ export const SettingsModal: React.FC = () => {
   const setOpen = useAppStore((s) => s.setSettingsOpen);
   const isDesktop = useIsDesktop();
   const [section, setSection] = useState<Section | null>(null);
-
-  // Reset to the category list each time it closes (mobile shows list first).
-  useEffect(() => {
-    if (!open) {
-      setSection(null);
-    }
-  }, [open]);
 
   const close = () => setOpen(false);
 
@@ -224,6 +218,13 @@ const Group: React.FC<{ title: string; children: React.ReactNode }> = ({ title, 
       {children}
     </div>
   </section>
+);
+
+const SectionHeading: React.FC<{ title: string; description: string }> = ({ title, description }) => (
+  <div className="flex items-baseline justify-between gap-4 px-1">
+    <h3 className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">{title}</h3>
+    <p className="text-right text-[11px] text-neutral-600">{description}</p>
+  </div>
 );
 
 const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({
@@ -696,6 +697,59 @@ const ThemePreview: React.FC<{ scheme: string; mode: "light" | "dark" }> = ({ sc
   </span>
 );
 
+const ThemeSwatch: React.FC<{ scheme: string; mode: "light" | "dark" }> = ({ scheme, mode }) => (
+  <span
+    data-scheme={scheme}
+    data-mode={mode}
+    className="relative flex h-14 w-14 overflow-hidden rounded-full bg-neutral-950 shadow-[inset_0_0_0_1px_rgb(255_255_255_/_0.18),0_2px_6px_rgb(0_0_0_/_0.25)]"
+  >
+    <span
+      className="absolute inset-0"
+      style={{
+        background:
+          "linear-gradient(135deg, rgb(var(--n-200)) 0%, rgb(var(--n-400)) 30%, rgb(var(--n-700)) 62%, rgb(var(--n-950)) 100%)"
+      }}
+    />
+    <span className="absolute -left-3 -top-4 h-10 w-10 rounded-full bg-white/25 blur-md" />
+    <span className="absolute bottom-1.5 right-2 h-2 w-2 rounded-full bg-white/35 blur-[1px]" />
+  </span>
+);
+
+const ThemeChoice: React.FC<{
+  label: string;
+  scheme: string;
+  mode: "light" | "dark";
+  selected: boolean;
+  onSelect: () => void;
+}> = ({ label, scheme, mode, selected, onSelect }) => (
+  <button
+    type="button"
+    aria-pressed={selected}
+    onClick={onSelect}
+    className="group relative flex w-20 flex-col items-center gap-2 rounded-lg py-1.5 focus:outline-none focus-visible:bg-neutral-800/60"
+  >
+    <ThemeSwatch scheme={scheme} mode={mode} />
+    <span
+      className={cn(
+        "absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-md border text-[11px] transition-colors",
+        selected
+          ? "border-neutral-100 bg-neutral-100 text-neutral-900"
+          : "border-neutral-600 bg-neutral-900/70 text-transparent group-hover:border-neutral-400"
+      )}
+    >
+      <Check size={12} strokeWidth={3} />
+    </span>
+    <span
+      className={cn(
+        "text-[11px] transition-colors",
+        selected ? "text-neutral-100" : "text-neutral-400 group-hover:text-neutral-200"
+      )}
+    >
+      {label}
+    </span>
+  </button>
+);
+
 const AppearanceSettings: React.FC = () => {
   const { runtime, windowControls } = useOrquester();
   const appConfig = useAppStore((s) => s.appConfig);
@@ -709,48 +763,45 @@ const AppearanceSettings: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <Group title="Theme">
-        <StackedField>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {COLOR_SCHEMES.map((scheme) => (
-              <OptionCard
-                key={scheme.id}
-                label={scheme.label}
-                selected={appConfig.theme === scheme.id}
-                onSelect={() => void updateAppConfig({ theme: scheme.id })}
-              >
-                <ThemePreview scheme={scheme.id} mode={resolvedMode} />
-              </OptionCard>
-            ))}
-          </div>
-        </StackedField>
+      <section className="space-y-3">
+        <SectionHeading title="Theme" description="Choose your visual tone" />
+        <div className="flex flex-wrap gap-3">
+          {COLOR_SCHEMES.map((scheme) => (
+            <ThemeChoice
+              key={scheme.id}
+              label={scheme.label}
+              scheme={scheme.id}
+              mode={resolvedMode}
+              selected={appConfig.theme === scheme.id}
+              onSelect={() => void updateAppConfig({ theme: scheme.id })}
+            />
+          ))}
+        </div>
+      </section>
 
-        <StackedField
-          label="Appearance"
-          hint="System follows the OS; Dynamic follows the time of day."
-        >
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {THEME_MODES.map((mode) => (
-              <OptionCard
-                key={mode.id}
-                label={mode.label}
-                selected={appConfig.themeMode === mode.id}
-                onSelect={() => void updateAppConfig({ themeMode: mode.id })}
-              >
-                <span className="relative block">
-                  <ThemePreview
-                    scheme={appConfig.theme}
-                    mode={mode.id === "light" ? "light" : mode.id === "dark" ? "dark" : resolvedMode}
-                  />
-                  <span className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900/80 text-neutral-300 backdrop-blur">
-                    {MODE_ICON[mode.id]}
-                  </span>
+      <section className="space-y-3">
+        <SectionHeading title="Color Mode" description="System follows the OS · Dynamic follows the time of day" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {THEME_MODES.map((mode) => (
+            <OptionCard
+              key={mode.id}
+              label={mode.label}
+              selected={appConfig.themeMode === mode.id}
+              onSelect={() => void updateAppConfig({ themeMode: mode.id })}
+            >
+              <span className="relative block">
+                <ThemePreview
+                  scheme={appConfig.theme}
+                  mode={mode.id === "light" ? "light" : mode.id === "dark" ? "dark" : resolvedMode}
+                />
+                <span className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900/80 text-neutral-300 backdrop-blur">
+                  {MODE_ICON[mode.id]}
                 </span>
-              </OptionCard>
-            ))}
-          </div>
-        </StackedField>
-      </Group>
+              </span>
+            </OptionCard>
+          ))}
+        </div>
+      </section>
 
       {desktop && (
         <Group title="Sidebar">

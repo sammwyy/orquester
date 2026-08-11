@@ -8,8 +8,12 @@ import type { ThemeMode } from "../types";
  */
 export const COLOR_SCHEMES: { id: string; label: string }[] = [
   { id: "mono", label: "Monochrome" },
+  { id: "warm", label: "Warm" },
   { id: "slate", label: "Slate" },
-  { id: "warm", label: "Warm" }
+  { id: "rose", label: "Rose" },
+  { id: "green", label: "Matcha" },
+  { id: "yellow", label: "Dune" },
+  { id: "amethyst", label: "Amethyst" }
 ];
 
 export const THEME_MODES: { id: ThemeMode; label: string }[] = [
