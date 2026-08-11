@@ -1,5 +1,6 @@
 import React from "react";
 import { cn } from "../../lib/cn";
+import { ActiveList } from "./ActiveList";
 import { WorkspaceList } from "./WorkspaceList";
 import { ProjectList } from "./ProjectList";
 import { SidebarRail } from "./SidebarRail";
@@ -13,10 +14,14 @@ import { useAppStore } from "../../store/app";
  */
 export const Sidebar: React.FC = () => {
   const isDesktop = useIsDesktop();
+  const view = useAppStore((s) => s.sidebarView);
   const currentWorkspace = useAppStore((s) => s.currentWorkspace);
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
   const drawerOpen = useAppStore((s) => s.sidebarDrawerOpen);
   const setDrawer = useAppStore((s) => s.setSidebarDrawer);
+
+  const body =
+    view === "active" ? <ActiveList /> : currentWorkspace ? <ProjectList /> : <WorkspaceList />;
 
   // --- Desktop ---
   if (isDesktop) {
@@ -25,7 +30,7 @@ export const Sidebar: React.FC = () => {
     }
     return (
       <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-800 bg-neutral-900/40">
-        {currentWorkspace ? <ProjectList /> : <WorkspaceList />}
+        {body}
         <ServerSwitcher />
       </aside>
     );
@@ -43,7 +48,7 @@ export const Sidebar: React.FC = () => {
           drawerOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        {currentWorkspace ? <ProjectList /> : <WorkspaceList />}
+        {body}
         <ServerSwitcher />
       </aside>
     </>

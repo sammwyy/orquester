@@ -134,6 +134,9 @@ export type ProjectTab =
   | { id: string; type: "session"; session: SessionSummary }
   | { id: string; type: "files"; title: string };
 
+/** Which list the sidebar shows: the workspace browser or the active tree. */
+export type SidebarView = "workspaces" | "active";
+
 function upsertSession(sessions: SessionSummary[], next: SessionSummary): SessionSummary[] {
   const index = sessions.findIndex((s) => s.id === next.id);
   if (index === -1) {
@@ -158,6 +161,7 @@ export interface AppState {
   appConfig: UiAppConfig;
   settingsOpen: boolean;
   sidebarCollapsed: boolean;
+  sidebarView: SidebarView;
   /** Mobile off-canvas sidebar drawer. */
   sidebarDrawerOpen: boolean;
 
@@ -201,6 +205,7 @@ export interface AppState {
   loadAppConfig: () => Promise<void>;
   setSettingsOpen: (open: boolean) => void;
   toggleSidebar: () => void;
+  setSidebarView: (view: SidebarView) => void;
   setSidebarDrawer: (open: boolean) => void;
   updateAppConfig: (patch: Partial<UiAppConfig>) => Promise<void>;
 
@@ -238,6 +243,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   appConfig: { useTitlebar: false, runInBackground: false },
   settingsOpen: false,
   sidebarCollapsed: false,
+  sidebarView: "workspaces",
   sidebarDrawerOpen: false,
   authPrompt: null,
   authSalt: null,
@@ -406,6 +412,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
+  setSidebarView: (view) => set({ sidebarView: view }),
+
   setSidebarDrawer: (open) => set({ sidebarDrawerOpen: open }),
 
   updateAppConfig: async (patch) => {
@@ -560,7 +568,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().loadProjects();
   },
 
-  openProject: (project) =>
+  openProject: (project) => {
+    // The active tree opens projects across workspaces: follow along so the
+    // workspace browser and the project switcher stay on the same workspace.
+    if (project.workspace && project.workspace !== get().currentWorkspace) {
+      set({ currentWorkspace: project.workspace, projects: [] });
+      void get().loadProjects();
+    }
     set((state) => {
       const active = state.activeTabByProject[project.path];
       const fallback = firstTabId(state.sessions, state.fileTabsByProject, project.path);
@@ -573,7 +587,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           [project.path]: active ?? fallback
         }
       };
-    }),
+    });
+  },
 
   loadSessions: async () => {
     const api = get().api;
@@ -746,6 +761,80 @@ export function useProjectTabs(): ProjectTab[] {
     }));
     return [...sessionTabs, ...fileTabs];
   }, [sessions, fileTabsByProject, project]);
+}
+
+/** A project with at least one open tab. */
+export interface ActiveProject {
+  project: ProjectSummary;
+  tabs: ProjectTab[];
+}
+
+/** A workspace with at least one active project, as the "Active" tree shows it. */
+export interface ActiveWorkspace {
+  name: string;
+  projects: ActiveProject[];
+}
+
+/**
+ * Resolve a project path back to its workspace and name. Paths come from the
+ * daemon (`<workspacesDir>/<workspace>/<project>`), so the loaded workspace list
+ * is the source of truth and the path segments are the fallback.
+ */
+function resolveProjectPath(
+  path: string,
+  workspaces: WorkspaceSummary[]
+): { workspace: string; name: string } {
+  const segments = path.split(/[/\\]/).filter(Boolean);
+  const name = segments[segments.length - 1] ?? path;
+  const owner = workspaces.find((w) => path.startsWith(`${w.path}/`) || path.startsWith(`${w.path}\\`));
+  return { workspace: owner?.name ?? segments[segments.length - 2] ?? "", name };
+}
+
+/** Projects that currently hold tabs, grouped by workspace. */
+export function useActiveWorkspaces(): ActiveWorkspace[] {
+  const sessions = useAppStore((s) => s.sessions);
+  const fileTabsByProject = useAppStore((s) => s.fileTabsByProject);
+  const workspaces = useAppStore((s) => s.workspaces);
+
+  return useMemo(() => {
+    const tabsByPath = new Map<string, ProjectTab[]>();
+    const push = (path: string, tab: ProjectTab) => {
+      const list = tabsByPath.get(path);
+      if (list) {
+        list.push(tab);
+      } else {
+        tabsByPath.set(path, [tab]);
+      }
+    };
+
+    for (const session of sessions) {
+      if (session.projectPath) {
+        push(session.projectPath, { id: session.id, type: "session", session });
+      }
+    }
+    for (const [path, tabs] of Object.entries(fileTabsByProject)) {
+      for (const tab of tabs) {
+        push(path, { id: tab.id, type: "files", title: tab.title });
+      }
+    }
+
+    const groups = new Map<string, ActiveProject[]>();
+    for (const [path, tabs] of tabsByPath) {
+      const { workspace, name } = resolveProjectPath(path, workspaces);
+      const projects = groups.get(workspace) ?? [];
+      projects.push({ project: { name, workspace, path }, tabs });
+      groups.set(workspace, projects);
+    }
+
+    const order = new Map(workspaces.map((workspace, index) => [workspace.name, index]));
+    const rank = (name: string) => order.get(name) ?? workspaces.length;
+    return [...groups.entries()]
+      .map(([name, projects]) => ({
+        name,
+        projects: projects.sort((a, b) => a.project.name.localeCompare(b.project.name))
+      }))
+      .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
+  }, [sessions, fileTabsByProject, workspaces]);
 }
 
 export function useActiveTabId(): string | null {
