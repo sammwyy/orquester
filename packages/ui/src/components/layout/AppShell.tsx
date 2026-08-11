@@ -5,7 +5,7 @@ import { MainView } from "../main";
 import { SettingsModal, SudoPasswordModal } from "../settings";
 import { AuthModal } from "../auth";
 import { MobileKeyBar } from "../terminal";
-import { ConnectionStatusToast } from "../status";
+import { ConnectionStatusToast, StatusBar } from "../status";
 
 /**
  * Primary layout: full-height sidebar on the left, and a main column whose top
@@ -17,6 +17,7 @@ export const AppShell: React.FC = () => (
     <div className="flex min-w-0 flex-1 flex-col bg-neutral-950">
       <TopBar />
       <MainView />
+      <StatusBar />
       <MobileKeyBar />
     </div>
     <SettingsModal />
