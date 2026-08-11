@@ -16,6 +16,7 @@ import Gemini from "./agents/gemini.svg?react";
 import Grok from "./agents/grok.svg?react";
 import OpenCode from "./agents/opencode.svg?react";
 import Cline from "./agents/cline.png";
+import Kimi from "./agents/kimi.png";
 
 // IDEs - bare ids, matching daemon where possible; filename variants mapped to id
 import Antigravity from "./ides/antigravity.svg?react";
@@ -63,6 +64,9 @@ const generic: Partial<Record<RegistryKind, React.ComponentType<React.SVGProps<S
 const ClineIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <img src={Cline} width={props.width} height={props.height} className={props.className} style={props.style} alt="" />
 );
+const KimiIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <img src={Kimi} width={props.width} height={props.height} className={props.className} style={props.style} alt="" />
+);
 
 const specific: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   // agents (bare ids)
@@ -73,6 +77,7 @@ const specific: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>
   deepcode: DeepSeek,
   gemini: Gemini,
   grok: Grok,
+  kimi: KimiIcon,
   opencode: OpenCode,
 
   // ides (bare ids from daemon + jetbrains from user SVGs)
