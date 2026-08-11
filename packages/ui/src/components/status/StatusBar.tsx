@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { cn } from "../../lib/cn";
 import { useAppStore } from "../../store/app";
 import { useStatusModules, type StatusModuleDefinition } from "./registry";
-import "./demo-modules";
+import "./modules";
 
 interface StatusModuleProps {
   definition: StatusModuleDefinition;

@@ -4,10 +4,10 @@
   "useTitlebar": true,
   "runInBackground": true,
   "sidebarTransparent": true,
-  "sidebarOpacity": 0.75,
+  "sidebarOpacity": 0.85,
   "glassSidebar": true,
   "roundedWindow": true,
-  "theme": "mono",
+  "theme": "warm",
   "themeMode": "dark",
   "quotaResetFormat": "relative",
   "showQuotaMenu": true
