@@ -72,7 +72,7 @@ function parseClaudeUsage(output: string): QuotaWindow[] {
 }
 
 function normalizeClaudeReset(value: string): string | undefined {
-  const match = value.match(/^([A-Za-z]{3})\s+(\d{1,2}),\s*(\d{1,2}):(\d{2})\s*(am|pm)\s*\(([^)]+)\)$/i);
+  const match = value.match(/^([A-Za-z]{3})\s+(\d{1,2}),\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(([^)]+)\)$/i);
   if (!match) return undefined;
   const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
   const month = months.indexOf(match[1].toLowerCase());
@@ -81,7 +81,7 @@ function normalizeClaudeReset(value: string): string | undefined {
   if (match[5].toLowerCase() === "pm" && hour !== 12) hour += 12;
   if (match[5].toLowerCase() === "am" && hour === 12) hour = 0;
   const now = new Date();
-  const localAsUtc = Date.UTC(now.getFullYear(), month, Number(match[2]), hour, Number(match[4]));
+  const localAsUtc = Date.UTC(now.getFullYear(), month, Number(match[2]), hour, Number(match[4] ?? 0));
   const timeZone = match[6];
   let candidate = new Date(localAsUtc);
   for (let attempt = 0; attempt < 2; attempt += 1) {

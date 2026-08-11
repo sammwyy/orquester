@@ -3,7 +3,6 @@ import type { RegistryEntryDef } from "@orquester/registry";
 export const HOST_IDES: readonly RegistryEntryDef[] = [
   { id: "vscode", name: "VS Code", kind: "ide", bin: ["code", "code-insiders", "/usr/bin/code", "/usr/share/code/bin/code", "/snap/bin/code", "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", "$LOCALAPPDATA\\Programs\\Microsoft VS Code\\bin\\code.cmd", "$PROGRAMFILES\\Microsoft VS Code\\bin\\code.cmd"] },
   { id: "cursor", name: "Cursor", kind: "ide", bin: ["cursor", "/usr/bin/cursor", "/usr/share/cursor/bin/cursor", "/Applications/Cursor.app/Contents/Resources/app/bin/cursor", "$LOCALAPPDATA\\Programs\\cursor\\resources\\app\\bin\\cursor.cmd"] },
-  { id: "antigravity", name: "Antigravity", kind: "ide", bin: ["antigravity", "/usr/bin/antigravity", "/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity", "$LOCALAPPDATA\\Programs\\Antigravity\\bin\\antigravity.cmd"] },
   { id: "windsurf", name: "Windsurf", kind: "ide", bin: ["windsurf", "/usr/bin/windsurf", "/Applications/Windsurf.app/Contents/Resources/app/bin/windsurf"] },
   { id: "zed", name: "Zed", kind: "ide", bin: ["zed", "zeditor", "/usr/bin/zed", "/Applications/Zed.app/Contents/MacOS/cli"] },
   { id: "intellij", name: "IntelliJ IDEA", kind: "ide", bin: ["idea", "idea.sh", "/Applications/IntelliJ IDEA.app/Contents/MacOS/idea"] },
