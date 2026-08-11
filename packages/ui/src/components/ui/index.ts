@@ -12,6 +12,13 @@ export {
 } from "./dropdown";
 export { Modal, ModalCloseButton, type ModalProps } from "./modal";
 export { Switch, type SwitchProps } from "./switch";
+export { Slider, type SliderProps } from "./slider";
+export {
+  SegmentedControl,
+  type SegmentedControlProps,
+  type SegmentedOption
+} from "./segmented";
+export { OptionCard, type OptionCardProps } from "./option-card";
 export { Tooltip, type TooltipProps } from "./tooltip";
 export { ContextMenu, type ContextMenuProps, type ContextMenuItem } from "./context-menu";
 export { DropdownContext } from "./dropdown";

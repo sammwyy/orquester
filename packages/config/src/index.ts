@@ -232,8 +232,18 @@ export const appConfigSchema = z.object({
   useTitlebar: z.boolean().default(true),
   /** Desktop: keep the daemon running in a tray when the window is closed. */
   runInBackground: z.boolean().default(false),
-  /** Translucent sidebar over the desktop (native backdrop where available). */
-  glassSidebar: z.boolean().default(false)
+  /** Let the desktop show through the sidebar. */
+  sidebarTransparent: z.boolean().default(false),
+  /** How opaque the sidebar stays while transparent. */
+  sidebarOpacity: z.coerce.number().min(0.3).max(1).default(0.85),
+  /** Ask the compositor to blur behind the transparent sidebar. */
+  glassSidebar: z.boolean().default(false),
+  /** Rounded window corners where the app draws them itself (Linux). */
+  roundedWindow: z.boolean().default(true),
+  /** Colour scheme id; matches a `[data-scheme]` block in the UI stylesheet. */
+  theme: z.string().min(1).default("mono"),
+  /** Which variant of that scheme to show. */
+  themeMode: z.enum(["system", "light", "dark", "dynamic"]).default("dark")
 })
   // Clients own this file; a daemon that predates a field must hand it back
   // untouched instead of silently dropping the client's setting.

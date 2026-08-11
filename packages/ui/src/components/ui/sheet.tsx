@@ -30,7 +30,10 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onClose, title, 
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[110] flex flex-col justify-end" onMouseDown={onClose}>
+    <div
+      className="fixed inset-0 z-[110] flex flex-col justify-end overflow-hidden rounded-[var(--window-radius)]"
+      onMouseDown={onClose}
+    >
       <div className="absolute inset-0 bg-black/60" />
       <div
         role="dialog"

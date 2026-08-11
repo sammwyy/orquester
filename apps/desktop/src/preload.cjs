@@ -32,7 +32,7 @@ contextBridge.exposeInMainWorld("orquesterDesktop", {
     toggleMaximize: () => ipcRenderer.send("orquester:window", "toggleMaximize"),
     close: () => ipcRenderer.send("orquester:window", "close"),
     setBackdrop: (enabled) => ipcRenderer.send("orquester:window:backdrop", enabled),
-    blurSupport: () => ipcRenderer.invoke("orquester:window:blur-support"),
+    capabilities: () => ipcRenderer.invoke("orquester:window:capabilities"),
     // Linux gets no native rounding: the window is transparent and the UI
     // draws the corners itself (squared off while maximized/fullscreen).
     cssRoundedCorners: process.platform === "linux",

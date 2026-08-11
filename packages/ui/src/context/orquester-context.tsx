@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useMemo } from "react";
 import type { ApiClient } from "../lib/api-client";
-import type { BlurStrategy, Runtime } from "../types";
+import type { Runtime, WindowCapabilities } from "../types";
 
 /** Live state of the native window, pushed by the desktop shell. */
 export interface WindowState {
@@ -25,8 +25,8 @@ export interface WindowControls {
   onStateChange?(listener: (state: WindowState) => void): () => void;
   /** Turn the native window backdrop on or off. */
   setBackdrop?(enabled: boolean): void;
-  /** Which blur backend the host system offers, if any. */
-  blurSupport?(): Promise<BlurStrategy | null>;
+  /** What this window can do (transparency, blur backend). */
+  capabilities?(): Promise<WindowCapabilities>;
 }
 
 export interface OrquesterContextValue {

@@ -4,36 +4,46 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import { useApi } from "../../context/orquester-context";
+import { useAppStore } from "../../store/app";
 import type { SessionSummary } from "../../types";
 
 const FONT_STACK =
   '"JetBrains Mono", "Cascadia Code", "Fira Code", "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace';
 
-// Standard 16-colour ANSI palette tuned for a dark, neutral background so
-// CLIs/TUIs render with the colours they expect (not washed-out grays).
-const THEME: ITheme = {
-  background: "#0a0a0a",
-  foreground: "#e4e4e7",
-  cursor: "#e4e4e7",
-  cursorAccent: "#0a0a0a",
-  selectionBackground: "#3f3f46",
-  black: "#1c1c1c",
-  red: "#f87171",
-  green: "#4ade80",
-  yellow: "#fbbf24",
-  blue: "#60a5fa",
-  magenta: "#c084fc",
-  cyan: "#22d3ee",
-  white: "#d4d4d8",
-  brightBlack: "#52525b",
-  brightRed: "#fca5a5",
-  brightGreen: "#86efac",
-  brightYellow: "#fde68a",
-  brightBlue: "#93c5fd",
-  brightMagenta: "#d8b4fe",
-  brightCyan: "#67e8f9",
-  brightWhite: "#fafafa"
-};
+/**
+ * xterm paints on a canvas, so it can't use classes: it reads the same theme
+ * variables the rest of the app is styled with (see globals.css).
+ */
+function readTheme(): ITheme {
+  const css = getComputedStyle(document.documentElement);
+  const value = (name: string) => css.getPropertyValue(`--term-${name}`).trim();
+  const background = value("bg");
+  const foreground = value("fg");
+
+  return {
+    background,
+    foreground,
+    cursor: foreground,
+    cursorAccent: background,
+    selectionBackground: value("selection"),
+    black: value("black"),
+    red: value("red"),
+    green: value("green"),
+    yellow: value("yellow"),
+    blue: value("blue"),
+    magenta: value("magenta"),
+    cyan: value("cyan"),
+    white: value("white"),
+    brightBlack: value("bright-black"),
+    brightRed: value("bright-red"),
+    brightGreen: value("bright-green"),
+    brightYellow: value("bright-yellow"),
+    brightBlue: value("bright-blue"),
+    brightMagenta: value("bright-magenta"),
+    brightCyan: value("bright-cyan"),
+    brightWhite: value("bright-white")
+  };
+}
 
 /**
  * xterm.js view bound to a daemon session. Keystrokes (including control codes
@@ -44,6 +54,9 @@ const THEME: ITheme = {
 export const TerminalView: React.FC<{ session: SessionSummary }> = ({ session }) => {
   const api = useApi();
   const containerRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<Terminal | null>(null);
+  const scheme = useAppStore((s) => s.appConfig.theme);
+  const mode = useAppStore((s) => s.resolvedMode);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -64,8 +77,9 @@ export const TerminalView: React.FC<{ session: SessionSummary }> = ({ session })
       allowProposedApi: true,
       drawBoldTextInBrightColors: true,
       macOptionIsMeta: true,
-      theme: THEME
+      theme: readTheme()
     });
+    termRef.current = term;
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(container);
@@ -107,8 +121,16 @@ export const TerminalView: React.FC<{ session: SessionSummary }> = ({ session })
       inputSub.dispose();
       resizeObserver.disconnect();
       term.dispose();
+      termRef.current = null;
     };
   }, [api, session.id]);
 
-  return <div ref={containerRef} className="h-full w-full overflow-hidden bg-[#0a0a0a] p-2" />;
+  // Re-read the palette when the theme changes; the session keeps streaming.
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.theme = readTheme();
+    }
+  }, [scheme, mode]);
+
+  return <div ref={containerRef} className="h-full w-full overflow-hidden bg-neutral-950 p-2" />;
 };

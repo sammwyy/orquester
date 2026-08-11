@@ -10,7 +10,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  default: "bg-neutral-200 text-neutral-900 hover:bg-white",
+  default: "bg-neutral-200 text-neutral-900 hover:bg-neutral-100",
   ghost: "text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100",
   outline: "border border-neutral-700 text-neutral-200 hover:bg-neutral-800"
 };

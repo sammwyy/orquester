@@ -27,7 +27,7 @@ export const Modal: React.FC<ModalProps> = ({ open, onClose, children, className
 
   return createPortal(
     <div
-      className="app-no-drag fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 sm:p-6"
+      className="app-no-drag fixed inset-0 z-[100] flex items-center justify-center overflow-hidden rounded-[var(--window-radius)] bg-black/60 p-3 sm:p-6"
       onMouseDown={onClose}
     >
       <div

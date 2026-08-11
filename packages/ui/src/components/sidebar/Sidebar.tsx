@@ -5,7 +5,7 @@ import { WorkspaceList } from "./WorkspaceList";
 import { ProjectList } from "./ProjectList";
 import { SidebarRail } from "./SidebarRail";
 import { ServerSwitcher } from "../servers";
-import { useGlassChrome, useIsDesktop } from "../../hooks";
+import { useChromeSurface, useIsDesktop } from "../../hooks";
 import { useAppStore } from "../../store/app";
 
 /**
@@ -14,7 +14,7 @@ import { useAppStore } from "../../store/app";
  */
 export const Sidebar: React.FC = () => {
   const isDesktop = useIsDesktop();
-  const glass = useGlassChrome();
+  const { blurred } = useChromeSurface();
   const view = useAppStore((s) => s.sidebarView);
   const currentWorkspace = useAppStore((s) => s.currentWorkspace);
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -32,8 +32,8 @@ export const Sidebar: React.FC = () => {
     return (
       <aside
         className={cn(
-          "flex w-64 shrink-0 flex-col border-r border-neutral-800",
-          glass ? "bg-neutral-900/80 backdrop-blur-2xl" : "bg-neutral-900/40"
+          "sidebar-surface flex w-64 shrink-0 flex-col border-r border-neutral-800",
+          blurred && "backdrop-blur-2xl"
         )}
       >
         {body}
@@ -46,12 +46,16 @@ export const Sidebar: React.FC = () => {
   return (
     <>
       {drawerOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setDrawer(false)} />
+        <div
+          className="fixed inset-0 z-40 rounded-[var(--window-radius)] bg-black/50"
+          onClick={() => setDrawer(false)}
+        />
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-neutral-800 shadow-xl transition-transform duration-200",
-          glass ? "bg-neutral-900/90 backdrop-blur-2xl" : "bg-neutral-900",
+          "sidebar-surface fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-neutral-800 shadow-xl transition-transform duration-200",
+          "rounded-l-[var(--window-radius)]",
+          blurred && "backdrop-blur-2xl",
           drawerOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >

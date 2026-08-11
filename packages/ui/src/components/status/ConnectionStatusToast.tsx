@@ -42,7 +42,7 @@ export const ConnectionStatusToast: React.FC = () => {
             <button
               type="button"
               onClick={() => void connect()}
-              className="rounded-full bg-neutral-200 px-3 py-0.5 text-xs font-medium text-neutral-900 hover:bg-white"
+              className="rounded-full bg-neutral-200 px-3 py-0.5 text-xs font-medium text-neutral-900 hover:bg-neutral-100"
             >
               Retry
             </button>

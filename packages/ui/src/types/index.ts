@@ -24,6 +24,20 @@ export type ConnectionStatus = "connected" | "connecting" | "disconnected" | "er
  */
 export type BlurStrategy = "vibrancy" | "acrylic" | "kwin";
 
+/** What the host window can actually do, as reported by the desktop shell. */
+export interface WindowCapabilities {
+  /** Blur backend behind the window, or null when the system has none. */
+  blur: BlurStrategy | null;
+  /** Whether the window surface can show what sits behind it. */
+  transparency: boolean;
+}
+
+/**
+ * Light/dark variant of the active colour scheme. "system" follows the OS and
+ * "dynamic" follows the time of day; both resolve to light or dark at runtime.
+ */
+export type ThemeMode = "system" | "light" | "dark" | "dynamic";
+
 /**
  * A daemon connection as the UI understands it. The `endpoint` is transport
  * agnostic: `unix:///path/to/daemon.sock` for a local socket or

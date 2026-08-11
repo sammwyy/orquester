@@ -21,20 +21,41 @@ export function useWindowState(): WindowState {
  */
 export function useRoundedWindow(): boolean {
   const { windowControls } = useOrquester();
+  const rounded = useAppStore((s) => s.appConfig.roundedWindow);
   const { maximized, fullScreen } = useWindowState();
 
-  return Boolean(windowControls?.cssRoundedCorners) && !maximized && !fullScreen;
+  return rounded && Boolean(windowControls?.cssRoundedCorners) && !maximized && !fullScreen;
+}
+
+/** Sidebar tint over an opaque shell — the look when nothing shows through. */
+const OPAQUE_TINT = 0.4;
+
+export interface ChromeSurface {
+  /** The shell stops painting so the sidebar can show the desktop. */
+  transparent: boolean;
+  /** The compositor blurs what shows through. */
+  blurred: boolean;
+  /** Alpha the sidebar surface is drawn with. */
+  alpha: number;
 }
 
 /**
- * Whether the sidebar renders translucent over the desktop. Desktop-only
- * (inside a browser tab there is nothing behind the page), and only where the
- * system can blur behind the window — plain transparency is not the effect.
+ * How the sidebar surface should be painted. Transparency and blur are asked
+ * for separately and each needs the window to support it — inside a browser tab
+ * neither is possible, since there is nothing behind the page.
  */
-export function useGlassChrome(): boolean {
+export function useChromeSurface(): ChromeSurface {
   const { runtime } = useOrquester();
-  const glass = useAppStore((s) => s.appConfig.glassSidebar);
-  const strategy = useAppStore((s) => s.blurStrategy);
+  const wantsTransparent = useAppStore((s) => s.appConfig.sidebarTransparent);
+  const wantsBlur = useAppStore((s) => s.appConfig.glassSidebar);
+  const opacity = useAppStore((s) => s.appConfig.sidebarOpacity);
+  const capabilities = useAppStore((s) => s.windowCapabilities);
 
-  return glass && strategy !== null && runtime === "desktop";
+  const transparent = runtime === "desktop" && capabilities.transparency && wantsTransparent;
+
+  return {
+    transparent,
+    blurred: transparent && wantsBlur && capabilities.blur !== null,
+    alpha: transparent ? opacity : OPAQUE_TINT
+  };
 }

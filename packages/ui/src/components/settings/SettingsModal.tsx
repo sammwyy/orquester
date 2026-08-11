@@ -1,9 +1,24 @@
 import React, { useEffect, useState } from "react";
-import { AppWindow, Boxes, ChevronLeft, ChevronRight, Download, Loader2, Palette, RefreshCw, Server } from "lucide-react";
+import {
+  AppWindow,
+  Boxes,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Download,
+  Loader2,
+  Monitor,
+  Moon,
+  Palette,
+  RefreshCw,
+  Server,
+  Sun
+} from "lucide-react";
 import type { DaemonConfig } from "@orquester/config";
-import type { BlurStrategy } from "../../types";
+import { COLOR_SCHEMES, THEME_MODES } from "../../lib/theme";
+import type { BlurStrategy, ThemeMode } from "../../types";
 import { cn } from "../../lib/cn";
-import { Button, Input, Modal, ModalCloseButton, Switch } from "../ui";
+import { Button, Input, Modal, ModalCloseButton, OptionCard, SegmentedControl, Slider, Switch } from "../ui";
 import { getRegistryIcon } from "../../icons";
 import { useIsDesktop, useRegistry } from "../../hooks";
 import { useApi, useOrquester } from "../../context/orquester-context";
@@ -11,16 +26,16 @@ import { useAppStore } from "../../store/app";
 
 type Section = "app" | "appearance" | "daemon" | "agents";
 /** Client settings live in this window; server settings belong to the daemon. */
-type Group = "client" | "server";
+type SectionGroup = "client" | "server";
 
-const GROUPS: { id: Group; label: string }[] = [
+const GROUPS: { id: SectionGroup; label: string }[] = [
   { id: "client", label: "Client" },
   { id: "server", label: "Server" }
 ];
 
 const SECTIONS: {
   id: Section;
-  group: Group;
+  group: SectionGroup;
   label: string;
   icon: React.ReactNode;
   desc: string;
@@ -55,7 +70,7 @@ const SECTIONS: {
   }
 ];
 
-const sectionsOf = (group: Group) => SECTIONS.filter((s) => s.group === group);
+const sectionsOf = (group: SectionGroup) => SECTIONS.filter((s) => s.group === group);
 
 const renderSection = (id: Section) =>
   id === "app" ? (
@@ -185,17 +200,46 @@ export const SettingsModal: React.FC = () => {
   );
 };
 
+/** iOS-style grouped list: a small caption over a rounded card of rows. */
+const Group: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <section className="space-y-1.5">
+    <h3 className="px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+      {title}
+    </h3>
+    <div className="divide-y divide-neutral-800 rounded-xl border border-neutral-800 bg-neutral-900/40 px-3">
+      {children}
+    </div>
+  </section>
+);
+
 const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({
   label,
   hint,
   children
 }) => (
-  <div className="flex items-center justify-between gap-4 py-2">
+  <div className="flex items-center justify-between gap-4 py-2.5">
     <div className="min-w-0">
       <p className="text-sm text-neutral-200">{label}</p>
       {hint && <p className="text-xs text-neutral-500">{hint}</p>}
     </div>
     <div className="shrink-0">{children}</div>
+  </div>
+);
+
+/** Field whose control needs the full width (option grids, sliders). */
+const StackedField: React.FC<{ label?: string; hint?: string; children: React.ReactNode }> = ({
+  label,
+  hint,
+  children
+}) => (
+  <div className="space-y-2.5 py-3">
+    {(label || hint) && (
+      <div className="min-w-0">
+        {label && <p className="text-sm text-neutral-200">{label}</p>}
+        {hint && <p className="text-xs text-neutral-500">{hint}</p>}
+      </div>
+    )}
+    {children}
   </div>
 );
 
@@ -219,21 +263,7 @@ const AgentsSettings: React.FC = () => {
 
   return (
     <div className="space-y-3">
-      <div className="inline-flex rounded-lg bg-neutral-800/60 p-0.5 text-xs">
-        {filters.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFilter(f.id)}
-            className={cn(
-              "rounded-md px-3 py-1 transition-colors",
-              filter === f.id ? "bg-neutral-700 text-neutral-100" : "text-neutral-400 hover:text-neutral-200"
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl value={filter} options={filters} onChange={setFilter} />
 
       <div className="divide-y divide-neutral-800 rounded-lg border border-neutral-800">
         {agents.length === 0 && (
@@ -305,64 +335,196 @@ const AppSettings: React.FC = () => {
   const active = connections.find((c) => c.id === activeId);
 
   return (
-    <div className="divide-y divide-neutral-800">
+    <div className="space-y-6">
       {runtime === "desktop" && (
-        <Field
-          label="Run in background"
-          hint="Closing the window keeps the daemon running in the tray."
-        >
-          <Switch
-            checked={appConfig.runInBackground}
-            onChange={(checked) => void updateAppConfig({ runInBackground: checked })}
-          />
-        </Field>
+        <Group title="Behaviour">
+          <Field
+            label="Run in background"
+            hint="Closing the window keeps the daemon running in the tray."
+          >
+            <Switch
+              checked={appConfig.runInBackground}
+              onChange={(checked) => void updateAppConfig({ runInBackground: checked })}
+            />
+          </Field>
+        </Group>
       )}
-      <Field label="Runtime">
-        <span className="text-sm text-neutral-400">{runtime}</span>
-      </Field>
-      <Field label="Active server">
-        <span className="text-sm text-neutral-400">{active?.name ?? "—"}</span>
-      </Field>
+
+      <Group title="About">
+        <Field label="Runtime">
+          <span className="text-sm text-neutral-400">{runtime}</span>
+        </Field>
+        <Field label="Active server">
+          <span className="text-sm text-neutral-400">{active?.name ?? "—"}</span>
+        </Field>
+      </Group>
     </div>
   );
 };
 
 const BLUR_HINT: Record<BlurStrategy, string> = {
-  vibrancy: "Translucent sidebar, blurred by macOS vibrancy.",
-  acrylic: "Translucent sidebar, blurred by Windows acrylic.",
-  kwin: "Translucent sidebar, blurred by KWin."
+  vibrancy: "Blurred by macOS vibrancy.",
+  acrylic: "Blurred by Windows acrylic.",
+  kwin: "Blurred by KWin."
 };
 
+const MODE_ICON: Record<ThemeMode, React.ReactNode> = {
+  system: <Monitor size={13} />,
+  light: <Sun size={13} />,
+  dark: <Moon size={13} />,
+  dynamic: <Clock size={13} />
+};
+
+/**
+ * A miniature of the app painted with a theme's own variables — the same
+ * `[data-scheme][data-mode]` selectors the real chrome uses, so a preview can
+ * never drift from the theme it advertises.
+ */
+const ThemePreview: React.FC<{ scheme: string; mode: "light" | "dark" }> = ({ scheme, mode }) => (
+  <span data-scheme={scheme} data-mode={mode} className="flex h-14 w-full bg-neutral-950">
+    <span className="flex h-full w-1/3 flex-col gap-1 bg-neutral-900 p-1.5">
+      <span className="h-1 w-full rounded-full bg-neutral-700" />
+      <span className="h-1 w-3/4 rounded-full bg-neutral-800" />
+      <span className="h-1 w-2/3 rounded-full bg-neutral-800" />
+    </span>
+    <span className="flex h-full flex-1 flex-col gap-1 p-1.5">
+      <span className="h-1.5 w-1/2 rounded-full bg-neutral-300" />
+      <span className="h-1 w-full rounded-full bg-neutral-700" />
+      <span className="h-1 w-4/5 rounded-full bg-neutral-800" />
+    </span>
+  </span>
+);
+
 const AppearanceSettings: React.FC = () => {
-  const { runtime } = useOrquester();
+  const { runtime, windowControls } = useOrquester();
   const appConfig = useAppStore((s) => s.appConfig);
   const updateAppConfig = useAppStore((s) => s.updateAppConfig);
-  const blurStrategy = useAppStore((s) => s.blurStrategy);
+  const capabilities = useAppStore((s) => s.windowCapabilities);
+  const resolvedMode = useAppStore((s) => s.resolvedMode);
+  const drawsCorners = Boolean(windowControls?.cssRoundedCorners);
+  const desktop = runtime === "desktop";
+  const canBlur = capabilities.blur !== null;
+  const transparent = appConfig.sidebarTransparent && capabilities.transparency;
 
   return (
-    <div className="divide-y divide-neutral-800">
-      <Field label="Custom titlebar" hint="Frameless window with in-app window controls.">
-        <Switch
-          checked={appConfig.useTitlebar}
-          onChange={(checked) => void updateAppConfig({ useTitlebar: checked })}
-        />
-      </Field>
-      {runtime === "desktop" && (
-        <Field
-          label="Glass sidebar"
-          hint={
-            blurStrategy
-              ? BLUR_HINT[blurStrategy]
-              : "No window blur on this system — needs macOS, Windows 11 or KDE/KWin."
-          }
+    <div className="space-y-6">
+      <Group title="Theme">
+        <StackedField>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {COLOR_SCHEMES.map((scheme) => (
+              <OptionCard
+                key={scheme.id}
+                label={scheme.label}
+                selected={appConfig.theme === scheme.id}
+                onSelect={() => void updateAppConfig({ theme: scheme.id })}
+              >
+                <ThemePreview scheme={scheme.id} mode={resolvedMode} />
+              </OptionCard>
+            ))}
+          </div>
+        </StackedField>
+
+        <StackedField
+          label="Appearance"
+          hint="System follows the OS; Dynamic follows the time of day."
         >
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {THEME_MODES.map((mode) => (
+              <OptionCard
+                key={mode.id}
+                label={mode.label}
+                selected={appConfig.themeMode === mode.id}
+                onSelect={() => void updateAppConfig({ themeMode: mode.id })}
+              >
+                <span className="relative block">
+                  <ThemePreview
+                    scheme={appConfig.theme}
+                    mode={mode.id === "light" ? "light" : mode.id === "dark" ? "dark" : resolvedMode}
+                  />
+                  <span className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900/80 text-neutral-300 backdrop-blur">
+                    {MODE_ICON[mode.id]}
+                  </span>
+                </span>
+              </OptionCard>
+            ))}
+          </div>
+        </StackedField>
+      </Group>
+
+      {desktop && (
+        <Group title="Sidebar">
+          <Field
+            label="Transparent"
+            hint={
+              capabilities.transparency
+                ? "Let the desktop show through the sidebar."
+                : "This window can't show what's behind it."
+            }
+          >
+            <Switch
+              checked={transparent}
+              disabled={!capabilities.transparency}
+              onChange={(checked) => void updateAppConfig({ sidebarTransparent: checked })}
+            />
+          </Field>
+
+          <StackedField label="Opacity">
+            <div className="flex items-center gap-3">
+              <Slider
+                min={0.3}
+                max={1}
+                step={0.05}
+                value={appConfig.sidebarOpacity}
+                disabled={!transparent}
+                onChange={(value) => void updateAppConfig({ sidebarOpacity: value })}
+              />
+              <span className="w-9 shrink-0 text-right text-xs tabular-nums text-neutral-400">
+                {Math.round(appConfig.sidebarOpacity * 100)}%
+              </span>
+            </div>
+          </StackedField>
+
+          <Field
+            label="Glass blur"
+            hint={
+              canBlur
+                ? (capabilities.blur && BLUR_HINT[capabilities.blur]) ?? ""
+                : "No window blur here — needs macOS, Windows 11 or KDE/KWin."
+            }
+          >
+            <Switch
+              checked={appConfig.glassSidebar && canBlur}
+              disabled={!canBlur || !transparent}
+              onChange={(checked) => void updateAppConfig({ glassSidebar: checked })}
+            />
+          </Field>
+        </Group>
+      )}
+
+      <Group title="Window">
+        <Field label="Custom titlebar" hint="Frameless window with in-app window controls.">
           <Switch
-            checked={appConfig.glassSidebar && blurStrategy !== null}
-            disabled={blurStrategy === null}
-            onChange={(checked) => void updateAppConfig({ glassSidebar: checked })}
+            checked={appConfig.useTitlebar}
+            onChange={(checked) => void updateAppConfig({ useTitlebar: checked })}
           />
         </Field>
-      )}
+        {desktop && (
+          <Field
+            label="Rounded corners"
+            hint={
+              drawsCorners
+                ? "Rounded while the window floats; square when maximized."
+                : "This platform rounds frameless windows itself."
+            }
+          >
+            <Switch
+              checked={appConfig.roundedWindow && drawsCorners}
+              disabled={!drawsCorners}
+              onChange={(checked) => void updateAppConfig({ roundedWindow: checked })}
+            />
+          </Field>
+        )}
+      </Group>
     </div>
   );
 };
@@ -423,15 +585,15 @@ const DaemonSettings: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {!isLocal && (
-        <div className="rounded-md border border-neutral-800 bg-neutral-950 p-3 text-xs text-neutral-400">
+        <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-3 text-xs text-neutral-400">
           Daemon settings can only be changed from the local app (unix socket). Connected over HTTP
           they are read-only.
         </div>
       )}
 
-      <div className="divide-y divide-neutral-800">
+      <Group title="Storage">
         <Field label="Workspaces directory" hint="Supports $userhome / $appdir variables.">
           <Input
             className="w-40 sm:w-64"
@@ -440,8 +602,10 @@ const DaemonSettings: React.FC = () => {
             onChange={(e) => setWorkspacesDir(e.target.value)}
           />
         </Field>
+      </Group>
 
-        <Field label="External HTTP access" hint="Expose the daemon to remote clients (token-gated).">
+      <Group title="External access">
+        <Field label="HTTP transport" hint="Expose the daemon to remote clients (token-gated).">
           <Switch checked={httpEnabled} disabled={!isLocal} onChange={setHttpEnabled} />
         </Field>
 
@@ -475,9 +639,9 @@ const DaemonSettings: React.FC = () => {
             </Field>
           </>
         )}
-      </div>
+      </Group>
 
-      {message && <p className="text-xs text-neutral-400">{message}</p>}
+      {message && <p className="px-1 text-xs text-neutral-400">{message}</p>}
 
       {isLocal && (
         <Button size="sm" disabled={busy} onClick={() => void save()}>

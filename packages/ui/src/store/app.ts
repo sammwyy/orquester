@@ -9,7 +9,6 @@ import type { HttpClient } from "../lib/http-client";
 import type { Transporter } from "../lib/transporter";
 import { workspaceService } from "../services";
 import type {
-  BlurStrategy,
   ConnectionStatus,
   EventMessage,
   ProjectSummary,
@@ -17,7 +16,9 @@ import type {
   RegistryKind,
   RegistryResponse,
   SessionSummary,
+  ThemeMode,
   UiConnection,
+  WindowCapabilities,
   WorkspaceSummary
 } from "../types";
 
@@ -100,8 +101,26 @@ let homeApi: ApiClient | null = null;
 export interface UiAppConfig {
   useTitlebar: boolean;
   runInBackground: boolean;
+  sidebarTransparent: boolean;
+  /** Sidebar alpha while transparent (0.3–1). */
+  sidebarOpacity: number;
   glassSidebar: boolean;
+  roundedWindow: boolean;
+  /** Colour scheme id (see COLOR_SCHEMES). */
+  theme: string;
+  themeMode: ThemeMode;
 }
+
+const DEFAULT_APP_CONFIG: UiAppConfig = {
+  useTitlebar: false,
+  runInBackground: false,
+  sidebarTransparent: false,
+  sidebarOpacity: 0.85,
+  glassSidebar: false,
+  roundedWindow: true,
+  theme: "mono",
+  themeMode: "dark"
+};
 
 /** Persist the remote-server list to the home daemon (shared across clients). */
 async function persistRemotes(connections: UiConnection[]): Promise<void> {
@@ -162,8 +181,10 @@ export interface AppState {
   // app config + settings modal
   appConfig: UiAppConfig;
   settingsOpen: boolean;
-  /** Blur backend the host offers; null (the default) disables the glass chrome. */
-  blurStrategy: BlurStrategy | null;
+  /** Theme mode in effect once system/dynamic have been resolved. */
+  resolvedMode: "light" | "dark";
+  /** What the host window can do; defaults deny everything until reported. */
+  windowCapabilities: WindowCapabilities;
   sidebarCollapsed: boolean;
   sidebarView: SidebarView;
   /** Mobile off-canvas sidebar drawer. */
@@ -208,7 +229,8 @@ export interface AppState {
   // app config + settings
   loadAppConfig: () => Promise<void>;
   setSettingsOpen: (open: boolean) => void;
-  setBlurStrategy: (strategy: BlurStrategy | null) => void;
+  setResolvedMode: (mode: "light" | "dark") => void;
+  setWindowCapabilities: (capabilities: WindowCapabilities) => void;
   toggleSidebar: () => void;
   setSidebarView: (view: SidebarView) => void;
   setSidebarDrawer: (open: boolean) => void;
@@ -245,9 +267,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   reconnectAttempt: 0,
   connections: [],
   activeConnectionId: null,
-  appConfig: { useTitlebar: false, runInBackground: false, glassSidebar: false },
+  appConfig: DEFAULT_APP_CONFIG,
   settingsOpen: false,
-  blurStrategy: null,
+  resolvedMode: "dark",
+  windowCapabilities: { blur: null, transparency: false },
   sidebarCollapsed: false,
   sidebarView: "workspaces",
   sidebarDrawerOpen: false,
@@ -377,11 +400,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       connections: [nextSetup.localConnection],
       activeConnectionId: nextSetup.localConnection.id,
-      appConfig: {
-        useTitlebar: nextSetup.defaultUseTitlebar,
-        runInBackground: false,
-        glassSidebar: false
-      },
+      appConfig: { ...DEFAULT_APP_CONFIG, useTitlebar: nextSetup.defaultUseTitlebar },
       api: homeApi
     });
     await get().connect();
@@ -398,7 +417,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           appConfig: {
             useTitlebar: config.useTitlebar ?? state.appConfig.useTitlebar,
             runInBackground: config.runInBackground ?? state.appConfig.runInBackground,
-            glassSidebar: config.glassSidebar ?? state.appConfig.glassSidebar
+            sidebarTransparent: config.sidebarTransparent ?? state.appConfig.sidebarTransparent,
+            sidebarOpacity: config.sidebarOpacity ?? state.appConfig.sidebarOpacity,
+            glassSidebar: config.glassSidebar ?? state.appConfig.glassSidebar,
+            roundedWindow: config.roundedWindow ?? state.appConfig.roundedWindow,
+            theme: config.theme ?? state.appConfig.theme,
+            themeMode: config.themeMode ?? state.appConfig.themeMode
           }
         }));
       }
@@ -421,7 +445,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setSettingsOpen: (open) => set({ settingsOpen: open }),
 
-  setBlurStrategy: (strategy) => set({ blurStrategy: strategy }),
+  setResolvedMode: (mode) => set({ resolvedMode: mode }),
+
+  setWindowCapabilities: (capabilities) => set({ windowCapabilities: capabilities }),
 
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 

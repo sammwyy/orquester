@@ -3,5 +3,10 @@
   "activeConnectionId": "local",
   "useTitlebar": true,
   "runInBackground": true,
-  "glassSidebar": true
+  "sidebarTransparent": true,
+  "sidebarOpacity": 0.8,
+  "glassSidebar": true,
+  "roundedWindow": true,
+  "theme": "mono",
+  "themeMode": "system"
 }

@@ -28,6 +28,8 @@ interface DaemonResponse {
  */
 const CSS_ROUNDED_CORNERS = process.platform === "linux";
 
+/** Whether the live window surface can show what sits behind it. */
+let windowTransparency = false;
 let daemon: RunningDaemon | undefined;
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
@@ -107,8 +109,11 @@ function readAppConfig(): Record<string, unknown> {
   }
 }
 const runInBackground = () => readAppConfig().runInBackground === true;
-/** The setting only counts when the system actually offers a blur backend. */
+/** Blur only counts when the system actually offers a backend for it. */
 const glassSidebar = () => readAppConfig().glassSidebar === true && blurStrategy() !== null;
+const sidebarTransparent = () => readAppConfig().sidebarTransparent === true;
+/** Corners are rounded unless the user turned them off (default on). */
+const roundedWindow = () => readAppConfig().roundedWindow !== false;
 
 /**
  * How this system can blur what sits behind a window. There is no portable way:
@@ -184,7 +189,7 @@ function applyBackdrop(win: BrowserWindow, enabled: boolean): void {
 }
 
 const KWIN_BLUR_PROPERTY = "_KDE_NET_WM_BLUR_BEHIND_REGION";
-/** Keep in sync with the shell's `rounded-xl` corner radius. */
+/** Keep in sync with the `--window-radius` the shell draws its corners with. */
 const WINDOW_RADIUS = 12;
 
 /** The window's X11 id, or undefined when this isn't an X11/XWayland surface. */
@@ -200,13 +205,44 @@ function x11WindowId(win: BrowserWindow): string | undefined {
 }
 
 /**
+ * xprop stores at most 64 cardinals, i.e. sixteen x/y/w/h quads, and silently
+ * truncates the rest — a truncated region blurs part of the window and leaves
+ * raw bands on the rest.
+ */
+const MAX_REGION_QUADS = 16;
+
+/**
+ * A rounded rectangle as x/y/w/h quads: one slab for the straight middle, then
+ * a staircase following the corner arc (each step shared by the top and bottom
+ * edges). Squaring the corners off instead would leave them blurred — a soft
+ * square poking out of a rounded window — and dropping them entirely shows the
+ * sharp desktop through the corner of a translucent panel.
+ */
+function roundedRegion(w: number, h: number, r: number): number[] {
+  if (r <= 0) {
+    return [0, 0, w, h];
+  }
+  const steps = Math.min(Math.floor((MAX_REGION_QUADS - 1) / 2), r);
+  const rects = [0, r, w, h - 2 * r];
+  for (let step = 0; step < steps; step += 1) {
+    const top = Math.round((step * r) / steps);
+    const bottom = Math.round(((step + 1) * r) / steps);
+    // Inset at the middle of the band, so the staircase straddles the arc
+    // instead of always falling inside or outside it.
+    const dy = r - (top + bottom) / 2;
+    const inset = Math.round(r - Math.sqrt(Math.max(0, r * r - dy * dy)));
+    const width = w - 2 * inset;
+    const height = bottom - top;
+    rects.push(inset, top, width, height, inset, h - bottom, width, height);
+  }
+  return rects;
+}
+
+/**
  * Ask KWin to blur whatever sits behind the window. This X11 property is the
  * only blur request a Linux app can make, and only KWin honours it (X11 or
  * XWayland) — Wayland has no such protocol, and GNOME/wlroots decide blur
  * themselves. Best effort: without KWin or xprop the sidebar stays clear glass.
- *
- * The region skips the rounded corners so the compositor doesn't fill them with
- * blurred pixels and square the window off again.
  */
 function applyKwinBlur(win: BrowserWindow, enabled: boolean): void {
   const id = x11WindowId(win);
@@ -215,14 +251,15 @@ function applyKwinBlur(win: BrowserWindow, enabled: boolean): void {
   }
   const args = ["-id", id];
   if (enabled) {
-    const { width, height } = win.getBounds();
-    const { scaleFactor } = screen.getDisplayNearestPoint(win.getBounds());
-    const w = Math.round(width * scaleFactor);
-    const h = Math.round(height * scaleFactor);
-    const r = Math.round(WINDOW_RADIUS * scaleFactor);
-    // Two overlapping rects approximate the rounded rectangle.
-    const region = [0, r, w, h - 2 * r, r, 0, w - 2 * r, h].join(", ");
-    args.push("-f", KWIN_BLUR_PROPERTY, "32c", "-set", KWIN_BLUR_PROPERTY, region);
+    const bounds = win.getBounds();
+    const { scaleFactor } = screen.getDisplayNearestPoint(bounds);
+    const rounded = roundedWindow() && !win.isMaximized() && !win.isFullScreen();
+    const region = roundedRegion(
+      Math.round(bounds.width * scaleFactor),
+      Math.round(bounds.height * scaleFactor),
+      rounded ? Math.round(WINDOW_RADIUS * scaleFactor) : 0
+    );
+    args.push("-f", KWIN_BLUR_PROPERTY, "32c", "-set", KWIN_BLUR_PROPERTY, region.join(", "));
   } else {
     args.push("-remove", KWIN_BLUR_PROPERTY);
   }
@@ -239,13 +276,7 @@ function ensureAppFiles(): void {
   fs.mkdirSync(logsDir, { recursive: true });
   const appConfigPath = path.join(dir, "app.json");
   if (!fs.existsSync(appConfigPath)) {
-    const defaults = {
-      version: 1,
-      activeConnectionId: "local",
-      useTitlebar: true,
-      runInBackground: false,
-      glassSidebar: false
-    };
+    const defaults = { version: 1, activeConnectionId: "local", useTitlebar: true, runInBackground: false };
     fs.writeFileSync(appConfigPath, `${JSON.stringify(defaults, null, 2)}\n`);
   }
   const remotesPath = path.join(dir, "remotes.json");
@@ -358,7 +389,10 @@ function registerIpc(): void {
       streams.delete(streamId);
     }
   });
-  ipcMain.handle("orquester:window:blur-support", () => blurStrategy());
+  ipcMain.handle("orquester:window:capabilities", () => ({
+    blur: blurStrategy(),
+    transparency: windowTransparency
+  }));
   ipcMain.on("orquester:window:backdrop", (_event, enabled: boolean) => {
     if (mainWindow) {
       applyBackdrop(mainWindow, enabled);
@@ -480,14 +514,17 @@ function createTray(): void {
 }
 
 function createWindow(): void {
+  // Transparency and blur are separate wishes: the sidebar can be see-through
+  // without any blur backend, and blur is only ever visible through a
+  // see-through sidebar.
   const glass = glassSidebar();
-  const macGlass = glass && blurStrategy() === "vibrancy";
-  // Windows draws acrylic behind the window itself, but only over a
-  // zero-alpha background — it does not need (and does not want) transparency.
-  const winGlass = glass && blurStrategy() === "acrylic";
+  const translucent = glass || sidebarTransparent();
   // The surface can't be made transparent after creation; the native backdrop
-  // (vibrancy/acrylic) can, and is re-applied from the renderer.
-  const transparent = CSS_ROUNDED_CORNERS || macGlass;
+  // (vibrancy/acrylic) can, and is re-applied from the renderer. Windows draws
+  // acrylic behind the window itself, over a zero-alpha background.
+  const transparent = CSS_ROUNDED_CORNERS || (translucent && process.platform === "darwin");
+  const winGlass = glass && blurStrategy() === "acrylic";
+  windowTransparency = transparent || winGlass;
 
   mainWindow = new BrowserWindow({
     width: 1320,
@@ -503,7 +540,7 @@ function createWindow(): void {
     // paints the corners. macOS and Windows round frameless windows natively.
     transparent,
     backgroundColor: transparent || winGlass ? "#00000000" : "#111111",
-    vibrancy: macGlass ? "sidebar" : undefined,
+    vibrancy: glass && blurStrategy() === "vibrancy" ? "sidebar" : undefined,
     backgroundMaterial: winGlass ? "acrylic" : undefined,
     webPreferences: {
       contextIsolation: true,
@@ -517,9 +554,10 @@ function createWindow(): void {
     mainWindow?.focus();
   });
 
-  // KWin's blur region is in window coordinates, so it has to follow resizes.
+  // KWin's blur region is in window coordinates and follows the corner radius,
+  // so it has to be redrawn on every resize and maximize.
   let blurResync: ReturnType<typeof setTimeout> | undefined;
-  mainWindow.on("resize", () => {
+  const resyncBlur = (delay = 150) => {
     if (!glassSidebar() || blurStrategy() !== "kwin") {
       return;
     }
@@ -528,8 +566,9 @@ function createWindow(): void {
       if (mainWindow) {
         applyKwinBlur(mainWindow, true);
       }
-    }, 150);
-  });
+    }, delay);
+  };
+  mainWindow.on("resize", () => resyncBlur());
 
   // The renderer squares off its corners while maximized/fullscreen.
   const sendState = () => {
@@ -539,6 +578,7 @@ function createWindow(): void {
         maximized: win.isMaximized(),
         fullScreen: win.isFullScreen()
       });
+      resyncBlur();
     }
   };
   mainWindow.on("maximize", sendState);

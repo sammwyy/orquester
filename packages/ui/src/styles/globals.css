@@ -2,13 +2,184 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theming is data, not logic.
+ *
+ * Every surface in the app is painted with Tailwind's `neutral` scale, and the
+ * preset points that scale at these variables — so a theme is eleven numbers
+ * per mode and no component ever branches on it. `data-mode` is always a
+ * resolved "light" or "dark"; system/dynamic are decided in JS and never reach
+ * the CSS. A new colour scheme is one block per mode, nothing else.
+ *
+ * The terminal can't use classes, so xterm reads the --term-* values instead.
+ */
+
+/* Shell corner radius. The app sets it live; overlays outside the shell (modals
+   are portalled to the body) clip to the same value so they never square the
+   window off. */
 :root {
+  --window-radius: 0px;
+}
+
+:root,
+[data-mode="dark"] {
   color-scheme: dark;
+
+  --n-50: 250 250 250;
+  --n-100: 245 245 245;
+  --n-200: 229 229 229;
+  --n-300: 212 212 212;
+  --n-400: 163 163 163;
+  --n-500: 115 115 115;
+  --n-600: 82 82 82;
+  --n-700: 64 64 64;
+  --n-800: 38 38 38;
+  --n-900: 23 23 23;
+  --n-950: 10 10 10;
+
+  --term-bg: rgb(var(--n-950));
+  --term-fg: rgb(var(--n-200));
+  --term-selection: #3f3f46;
+  --term-black: #1c1c1c;
+  --term-red: #f87171;
+  --term-green: #4ade80;
+  --term-yellow: #fbbf24;
+  --term-blue: #60a5fa;
+  --term-magenta: #c084fc;
+  --term-cyan: #22d3ee;
+  --term-white: #d4d4d8;
+  --term-bright-black: #52525b;
+  --term-bright-red: #fca5a5;
+  --term-bright-green: #86efac;
+  --term-bright-yellow: #fde68a;
+  --term-bright-blue: #93c5fd;
+  --term-bright-magenta: #d8b4fe;
+  --term-bright-cyan: #67e8f9;
+  --term-bright-white: #fafafa;
+}
+
+[data-mode="light"] {
+  color-scheme: light;
+
+  --n-50: 9 9 11;
+  --n-100: 24 24 27;
+  --n-200: 39 39 42;
+  --n-300: 63 63 70;
+  --n-400: 100 100 106;
+  --n-500: 124 124 132;
+  --n-600: 148 148 156;
+  --n-700: 208 208 212;
+  --n-800: 226 226 230;
+  --n-900: 240 240 243;
+  --n-950: 252 252 253;
+
+  --term-selection: #d4d4d8;
+  --term-black: #27272a;
+  --term-red: #b91c1c;
+  --term-green: #15803d;
+  --term-yellow: #a16207;
+  --term-blue: #1d4ed8;
+  --term-magenta: #7e22ce;
+  --term-cyan: #0e7490;
+  --term-white: #52525b;
+  --term-bright-black: #71717a;
+  --term-bright-red: #dc2626;
+  --term-bright-green: #16a34a;
+  --term-bright-yellow: #ca8a04;
+  --term-bright-blue: #2563eb;
+  --term-bright-magenta: #9333ea;
+  --term-bright-cyan: #0891b2;
+  --term-bright-white: #18181b;
+}
+
+/* Slate — cool, blue-leaning greys. */
+[data-scheme="slate"][data-mode="dark"] {
+  --n-50: 248 250 252;
+  --n-100: 241 245 249;
+  --n-200: 226 232 240;
+  --n-300: 203 213 225;
+  --n-400: 148 163 184;
+  --n-500: 100 116 139;
+  --n-600: 71 85 105;
+  --n-700: 51 65 85;
+  --n-800: 30 41 59;
+  --n-900: 15 23 42;
+  --n-950: 8 13 26;
+}
+
+[data-scheme="slate"][data-mode="light"] {
+  --n-50: 8 13 26;
+  --n-100: 15 23 42;
+  --n-200: 30 41 59;
+  --n-300: 51 65 85;
+  --n-400: 90 105 128;
+  --n-500: 110 126 148;
+  --n-600: 140 155 175;
+  --n-700: 200 210 222;
+  --n-800: 219 226 236;
+  --n-900: 236 240 246;
+  --n-950: 250 251 253;
+}
+
+/* Warm — sepia-leaning greys. */
+[data-scheme="warm"][data-mode="dark"] {
+  --n-50: 250 250 249;
+  --n-100: 245 245 244;
+  --n-200: 231 229 228;
+  --n-300: 214 211 209;
+  --n-400: 168 162 158;
+  --n-500: 120 113 108;
+  --n-600: 87 83 78;
+  --n-700: 68 64 60;
+  --n-800: 41 37 36;
+  --n-900: 28 25 23;
+  --n-950: 14 12 11;
+}
+
+[data-scheme="warm"][data-mode="light"] {
+  --n-50: 12 10 9;
+  --n-100: 28 25 23;
+  --n-200: 41 37 36;
+  --n-300: 68 64 60;
+  --n-400: 106 100 94;
+  --n-500: 128 121 114;
+  --n-600: 152 145 138;
+  --n-700: 214 209 203;
+  --n-800: 231 227 221;
+  --n-900: 244 241 237;
+  --n-950: 253 252 250;
 }
 
 body {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, sans-serif;
+}
+
+@layer components {
+  /* The sidebar/rail panel. Its alpha is a variable so the same class covers
+     the opaque tint and a user-set transparency over the desktop. */
+  .sidebar-surface {
+    background-color: rgb(var(--n-900) / var(--sidebar-alpha, 0.4));
+  }
+
+  /* Range inputs (see components/ui/slider.tsx); the track is painted inline. */
+  .ui-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 15px;
+    width: 15px;
+    border-radius: 9999px;
+    background-color: rgb(var(--n-100));
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  }
+
+  .ui-slider::-moz-range-thumb {
+    height: 15px;
+    width: 15px;
+    border: none;
+    border-radius: 9999px;
+    background-color: rgb(var(--n-100));
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  }
 }
 
 @layer utilities {
@@ -22,7 +193,7 @@ body {
     -webkit-app-region: no-drag;
   }
 
-  /* Subtle monochrome scrollbars. */
+  /* Subtle scrollbars, themed like everything else. */
   .overflow-y-auto::-webkit-scrollbar,
   .overflow-x-auto::-webkit-scrollbar {
     width: 8px;
@@ -31,7 +202,7 @@ body {
 
   .overflow-y-auto::-webkit-scrollbar-thumb,
   .overflow-x-auto::-webkit-scrollbar-thumb {
-    background-color: rgb(64 64 64);
+    background-color: rgb(var(--n-700));
     border-radius: 9999px;
   }
 }

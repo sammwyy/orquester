@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { AppWrapper, AppShell } from "./components/layout";
+import { useTheme } from "./hooks";
 import { OrquesterProvider, type WindowControls } from "./context/orquester-context";
 import { ApiClient } from "./lib/api-client";
 import { createTransporter } from "./lib/transporters";
@@ -50,17 +51,19 @@ export const OrquesterApp: React.FC<OrquesterAppProps> = ({
   const storeApi = useAppStore((s) => s.api);
   const api = storeApi ?? bootApi;
 
+  useTheme();
+
   const defaultTitlebar = useTitlebar ?? runtime === "desktop";
   // Live values from app config (settings can toggle them).
   const titlebar = useAppStore((s) => s.appConfig.useTitlebar);
   const glassSidebar = useAppStore((s) => s.appConfig.glassSidebar);
 
-  // What the host can blur behind the window decides whether glass is offered
-  // at all; the backdrop itself then follows the setting.
+  // What the window can do decides which appearance options are offered at all;
+  // the native backdrop itself then follows the setting.
   useEffect(() => {
     void windowControls
-      ?.blurSupport?.()
-      .then((strategy) => useAppStore.getState().setBlurStrategy(strategy))
+      ?.capabilities?.()
+      .then((capabilities) => useAppStore.getState().setWindowCapabilities(capabilities))
       .catch(() => undefined);
   }, [windowControls]);
 

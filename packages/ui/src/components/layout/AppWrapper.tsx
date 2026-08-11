@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { cn } from "../../lib/cn";
-import { useGlassChrome, useRoundedWindow, useViewportHeight } from "../../hooks";
+import { useChromeSurface, useRoundedWindow, useViewportHeight } from "../../hooks";
 
 export interface AppWrapperProps {
   children: React.ReactNode;
@@ -16,19 +16,33 @@ export interface AppWrapperProps {
 export const AppWrapper: React.FC<AppWrapperProps> = ({ children, className }) => {
   const height = useViewportHeight();
   const rounded = useRoundedWindow();
-  const glass = useGlassChrome();
+  const { transparent, alpha } = useChromeSurface();
+
+  // Portalled overlays live outside this element, so the radius travels as a
+  // variable instead of a class.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--window-radius", rounded ? "12px" : "0px");
+  }, [rounded]);
+
   return (
     <div
-      style={{ height: height || undefined }}
+      style={
+        {
+          height: height || undefined,
+          // The sidebar surface reads this (see globals.css).
+          "--sidebar-alpha": alpha
+        } as React.CSSProperties
+      }
       className={cn(
         "flex h-screen w-screen flex-col overflow-hidden text-neutral-200",
-        // Glass: the shell paints nothing so the sidebar can show the desktop;
-        // every other region opts back into an opaque background.
-        glass ? "bg-transparent" : "bg-neutral-950",
+        // When the sidebar is see-through the shell paints nothing; every other
+        // region opts back into an opaque background.
+        transparent ? "bg-transparent" : "bg-neutral-950",
         "select-none antialiased",
         // Frameless windows on platforms without native rounding: the shell
         // makes the surface transparent and the corners are drawn here.
-        rounded && "rounded-xl ring-1 ring-inset ring-white/10",
+        "rounded-[var(--window-radius)]",
+        rounded && "ring-1 ring-inset ring-neutral-800",
         className
       )}
     >
