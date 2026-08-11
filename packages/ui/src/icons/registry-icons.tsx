@@ -70,6 +70,7 @@ const specific: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>
   codex: Codex,
   cline: ClineIcon,
   deepseek: DeepSeek,
+  deepcode: DeepSeek,
   gemini: Gemini,
   grok: Grok,
   opencode: OpenCode,
