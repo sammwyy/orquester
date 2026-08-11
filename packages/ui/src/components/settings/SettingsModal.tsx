@@ -658,13 +658,25 @@ const QuotaSettings: React.FC = () => {
       {available.length > 0 && (
         <section className="space-y-2">
           <h3 className="px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">Available quota</h3>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">{available.map((quota) => <QuotaCard key={quota.id} quota={quota} resetFormat={resetFormat} now={now} workerEnabled={quotaWorkers[quota.id] !== false} onWorkerChange={(enabled) => void updateQuotaWorker(quota.id, enabled)} disabled={!isLocal} />)}</div>
+          <div className="columns-1 gap-2.5 sm:columns-2">
+            {available.map((quota) => (
+              <div key={quota.id} className="mb-2.5 break-inside-avoid">
+                <QuotaCard quota={quota} resetFormat={resetFormat} now={now} workerEnabled={quotaWorkers[quota.id] !== false} onWorkerChange={(enabled) => void updateQuotaWorker(quota.id, enabled)} disabled={!isLocal} />
+              </div>
+            ))}
+          </div>
         </section>
       )}
       {unavailable.length > 0 && (
         <section className="space-y-2">
           <h3 className="px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">Needs authentication or provider support</h3>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">{unavailable.map((quota) => <QuotaCard key={quota.id} quota={quota} resetFormat={resetFormat} now={now} workerEnabled={quotaWorkers[quota.id] !== false} onWorkerChange={(enabled) => void updateQuotaWorker(quota.id, enabled)} disabled={!isLocal} />)}</div>
+          <div className="columns-1 gap-2.5 sm:columns-2">
+            {unavailable.map((quota) => (
+              <div key={quota.id} className="mb-2.5 break-inside-avoid">
+                <QuotaCard quota={quota} resetFormat={resetFormat} now={now} workerEnabled={quotaWorkers[quota.id] !== false} onWorkerChange={(enabled) => void updateQuotaWorker(quota.id, enabled)} disabled={!isLocal} />
+              </div>
+            ))}
+          </div>
         </section>
       )}
     </div>
