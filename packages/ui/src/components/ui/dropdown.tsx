@@ -9,6 +9,7 @@ export interface DropdownProps {
   /** Tailwind width class for the panel. */
   width?: string;
   className?: string;
+  onOpenChange?: (open: boolean) => void;
 }
 
 interface DropdownContextValue {
@@ -43,14 +44,18 @@ export const Dropdown: React.FC<DropdownProps> = ({
   children,
   align = "left",
   width = "w-56",
-  className
+  className,
+  onOpenChange
 }) => {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<PanelPosition | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => {
+    setOpen(false);
+    onOpenChange?.(false);
+  }, [onOpenChange]);
 
   const updatePosition = useCallback(() => {
     const el = triggerRef.current;
@@ -123,7 +128,11 @@ export const Dropdown: React.FC<DropdownProps> = ({
         ref={triggerRef}
         type="button"
         className="inline-flex app-no-drag"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen((value) => {
+          const next = !value;
+          onOpenChange?.(next);
+          return next;
+        })}
         aria-expanded={open}
       >
         {trigger}

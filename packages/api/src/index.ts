@@ -166,6 +166,41 @@ export interface RegistryActionResult {
   output: string;
 }
 
+export type QuotaPeriod = "hourly" | "daily" | "weekly" | "monthly" | "rolling" | "unknown";
+export type QuotaUnit = "requests" | "tokens" | "credits" | "unknown";
+export type RegistryAuthStatus = "authenticated" | "unauthenticated" | "unknown";
+
+export interface RegistryAuthInfo {
+  status: RegistryAuthStatus;
+  /** Optional non-sensitive account label supplied by the provider. */
+  account?: string;
+  message?: string;
+}
+
+export interface QuotaWindow {
+  id: string;
+  label: string;
+  period: QuotaPeriod;
+  unit: QuotaUnit;
+  limit?: number;
+  used?: number;
+  remaining?: number;
+  percentUsed?: number;
+  resetsAt?: string;
+  /** Original provider text, retained when a timestamp cannot be normalized. */
+  resetLabel?: string;
+}
+
+export interface RegistryQuota {
+  id: string;
+  provider: string;
+  auth: RegistryAuthInfo;
+  supported: boolean;
+  fetchedAt: string;
+  windows: QuotaWindow[];
+  message?: string;
+}
+
 export interface OpenRequest {
   /** Registry entry id of an ide/file-explorer/browser target. */
   targetId: string;

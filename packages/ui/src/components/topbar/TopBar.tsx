@@ -5,6 +5,7 @@ import { TabStrip } from "./TabStrip";
 import { TabSwitcher } from "./TabSwitcher";
 import { NewTabMenu } from "./NewTabMenu";
 import { OpenOnMenu } from "./OpenOnMenu";
+import { QuotaMenu } from "./QuotaMenu";
 import { WindowControls } from "../layout/WindowControls";
 import { IconButton } from "../ui";
 import { useIsDesktop } from "../../hooks";
@@ -47,6 +48,7 @@ export const TopBar: React.FC = () => {
           )}
           <div className="flex-1" />
           {currentProject && <OpenOnMenu />}
+          <QuotaMenu />
           <SettingsButton />
         </div>
         {currentProject && (
@@ -83,6 +85,7 @@ export const TopBar: React.FC = () => {
             <OpenOnMenu />
           </div>
         )}
+        <QuotaMenu />
         <SettingsButton />
         {useTitlebar && <div className="mx-1 h-4 w-px self-center bg-neutral-800/80" />}
         {useTitlebar && <WindowControls />}

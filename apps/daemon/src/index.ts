@@ -13,6 +13,7 @@ import type {
   OpenResult,
   ProjectSummary,
   RegistryResponse,
+  RegistryQuota,
   ServerInfoResponse,
   SessionInputRequest,
   SessionResizeRequest,
@@ -121,6 +122,8 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
   const broadcaster = new Broadcaster();
   // Stream registry changes (install/update status, detected versions) to clients.
   registry.events.on("changed", (entry) => broadcaster.publish("registry", "registry.changed", entry));
+  registry.quotaEvents.on("changed", (quota) => broadcaster.publish("registry", "registry.quota.changed", quota));
+  broadcaster.onClientCountChange((count) => registry.setEventClientCount(count));
   await registry.init();
   sessions.lifecycle.on("created", (s: SessionSummary) =>
     broadcaster.publish("sessions", "session.created", s)
@@ -532,6 +535,10 @@ function createServer(
 
   app.get<{ Params: { id: string } }>("/api/registry/:id/version", async (request) =>
     registry.version(request.params.id)
+  );
+
+  app.get<{ Params: { id: string } }>("/api/registry/:id/quota", async (request): Promise<RegistryQuota> =>
+    registry.quota(request.params.id)
   );
 
   app.post<{ Params: { id: string } }>("/api/registry/:id/install", async (request) =>

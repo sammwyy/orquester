@@ -11,13 +11,26 @@ interface Sink {
  */
 export class Broadcaster {
   private sinks = new Set<Sink>();
+  private countListeners = new Set<(count: number) => void>();
+
+  onClientCountChange(listener: (count: number) => void): () => void {
+    this.countListeners.add(listener);
+    listener(this.sinks.size);
+    return () => this.countListeners.delete(listener);
+  }
+
+  private notifyCount(): void {
+    for (const listener of this.countListeners) listener(this.sinks.size);
+  }
 
   add(sink: Sink): void {
     this.sinks.add(sink);
+    this.notifyCount();
   }
 
   remove(sink: Sink): void {
     this.sinks.delete(sink);
+    this.notifyCount();
   }
 
   publish(channel: string, type: string, payload: unknown): void {
@@ -34,6 +47,7 @@ export class Broadcaster {
         sink.send(data);
       } catch {
         this.sinks.delete(sink);
+        this.notifyCount();
       }
     }
   }

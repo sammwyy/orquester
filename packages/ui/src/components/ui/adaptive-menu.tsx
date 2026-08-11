@@ -10,6 +10,7 @@ export interface AdaptiveMenuProps {
   width?: string;
   /** Heading shown on the mobile bottom sheet. */
   title?: string;
+  onOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -22,14 +23,15 @@ export const AdaptiveMenu: React.FC<AdaptiveMenuProps> = ({
   children,
   align,
   width,
-  title
+  title,
+  onOpenChange
 }) => {
   const isDesktop = useIsDesktop();
   const [open, setOpen] = useState(false);
 
   if (isDesktop) {
     return (
-      <Dropdown trigger={trigger} align={align} width={width}>
+      <Dropdown trigger={trigger} align={align} width={width} onOpenChange={onOpenChange}>
         {children}
       </Dropdown>
     );
@@ -37,10 +39,10 @@ export const AdaptiveMenu: React.FC<AdaptiveMenuProps> = ({
 
   return (
     <>
-      <button type="button" className="app-no-drag inline-flex" onClick={() => setOpen(true)}>
+      <button type="button" className="app-no-drag inline-flex" onClick={() => { setOpen(true); onOpenChange?.(true); }}>
         {trigger}
       </button>
-      <BottomSheet open={open} onClose={() => setOpen(false)} title={title}>
+      <BottomSheet open={open} onClose={() => { setOpen(false); onOpenChange?.(false); }} title={title}>
         {children}
       </BottomSheet>
     </>

@@ -1,8 +1,10 @@
 import type {
   OpenResult,
   RegistryActionResult,
+  RegistryAuthInfo,
   RegistryEntry,
   RegistryKind,
+  RegistryQuota,
   RegistryResponse
 } from "@orquester/api";
 import { REGISTRY, type RegistryEntryDef } from "@orquester/registry";
@@ -12,6 +14,8 @@ import { accessSync, constants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { AGENT_INTEGRATIONS } from "./integrations/agents";
+import { unsupportedQuota, type AgentCommandContext } from "./integrations/agents/types";
 
 /** Runtime shape after token expansion. */
 interface RegistryDef {
@@ -103,10 +107,15 @@ function osOpenerForKind(kind: RegistryKind): string[] {
  */
 export class RegistryService {
   private entries = new Map<string, RegistryEntry>();
+  private quotas = new Map<string, RegistryQuota>();
+  private quotaRequests = new Map<string, Promise<RegistryQuota>>();
+  private quotaTimer: ReturnType<typeof setInterval> | null = null;
   /** Emits "changed" with the updated RegistryEntry (broadcast to clients). */
   readonly events = new EventEmitter();
+  /** Emits "changed" with a refreshed RegistryQuota. */
+  readonly quotaEvents = new EventEmitter();
 
-  constructor(private readonly daemonDir: string) {}
+  constructor(private readonly daemonDir: string) { }
 
   async init(): Promise<void> {
     const defs: RegistryDef[] = [
@@ -123,6 +132,7 @@ export class RegistryService {
     ];
 
     this.entries.clear();
+    this.quotas.clear();
     for (const def of defs) {
       this.entries.set(def.id, this.resolveDef(def));
     }
@@ -187,10 +197,107 @@ export class RegistryService {
   /** Run the live version flag for an entry (manual endpoint). */
   async version(id: string): Promise<RegistryActionResult> {
     const entry = this.entries.get(id);
-    if (!entry?.resolvedBin || !entry.versionFlag) {
+    const integration = entry?.kind === "agent" ? AGENT_INTEGRATIONS.get(id) : undefined;
+    if (!entry?.resolvedBin || (!entry.versionFlag && !integration?.getVersion)) {
       return { ok: false, exitCode: -1, output: "No bin or version flag for this entry." };
     }
-    return run(`"${entry.resolvedBin}" ${entry.versionFlag}`);
+    if (integration?.getVersion) {
+      const version = await integration.getVersion({
+        bin: entry.resolvedBin,
+        call: (args) => runExecutable(entry.resolvedBin as string, args)
+      });
+      return version
+        ? { ok: true, exitCode: 0, output: version }
+        : { ok: false, exitCode: 1, output: "The provider did not return a version." };
+    }
+    const versionFlag = entry.versionFlag;
+    if (!versionFlag) {
+      return { ok: false, exitCode: -1, output: "No version flag for this entry." };
+    }
+    return runExecutable(entry.resolvedBin, [versionFlag]);
+  }
+
+  /** Ask the agent integration for account/provider quota without exposing credentials. */
+  async quota(id: string): Promise<RegistryQuota> {
+    const cached = this.quotas.get(id);
+    if (cached) return cached;
+    return this.refreshQuota(id);
+  }
+
+  setEventClientCount(count: number): void {
+    if (count > 0 && !this.quotaTimer) {
+      void this.refreshAllQuotas();
+      this.quotaTimer = setInterval(() => void this.refreshAllQuotas(), 60_000);
+    } else if (count === 0 && this.quotaTimer) {
+      clearInterval(this.quotaTimer);
+      this.quotaTimer = null;
+    }
+  }
+
+  private async refreshAllQuotas(): Promise<void> {
+    await Promise.allSettled(
+      [...this.entries.values()]
+        .filter((entry) => entry.kind === "agent" && entry.enabled)
+        .map((entry) => this.refreshQuota(entry.id))
+    );
+  }
+
+  private async refreshQuota(id: string): Promise<RegistryQuota> {
+    const pending = this.quotaRequests.get(id);
+    if (pending) return pending;
+    const request = this.readQuota(id)
+      .then((quota) => {
+        this.quotas.set(id, quota);
+        this.quotaEvents.emit("changed", { ...quota });
+        return quota;
+      })
+      .finally(() => this.quotaRequests.delete(id));
+    this.quotaRequests.set(id, request);
+    return request;
+  }
+
+  private async readQuota(id: string): Promise<RegistryQuota> {
+    const entry = this.entries.get(id);
+    const integration = entry?.kind === "agent" ? AGENT_INTEGRATIONS.get(id) : undefined;
+    if (!entry || entry.kind !== "agent") {
+      return unsupportedQuota(id, entry?.name ?? id);
+    }
+    if (!entry.resolvedBin || !entry.enabled) {
+      return {
+        id,
+        provider: entry.name,
+        auth: { status: "unknown", message: "The agent is not installed or cannot be resolved." },
+        supported: false,
+        fetchedAt: new Date().toISOString(),
+        windows: [],
+        message: "The agent is not installed or cannot be resolved."
+      };
+    }
+    if (!integration?.getQuota) {
+      return unsupportedQuota(id, entry.name);
+    }
+    try {
+      const context: AgentCommandContext = {
+        bin: entry.resolvedBin,
+        call: (args) => runExecutable(entry.resolvedBin as string, args),
+        appServerCall: (method, params) => runAppServerCall(entry.resolvedBin as string, method, params)
+      };
+      const quota = await integration.getQuota(context);
+      if (integration.getAuthStatus) {
+        quota.auth = await integration.getAuthStatus(context);
+      }
+      return quota;
+    } catch {
+      return {
+        id,
+        provider: entry.name,
+        auth: { status: "unknown", message: "Authentication status could not be read." },
+        supported: false,
+        fetchedAt: new Date().toISOString(),
+        windows: [],
+        message: "The provider quota could not be read."
+      };
+    }
   }
 
   /** Run an install/update command, broadcasting status; re-resolve on success. */
@@ -233,13 +340,28 @@ export class RegistryService {
 
   private async detectVersion(id: string): Promise<void> {
     const entry = this.entries.get(id);
-    if (!entry?.resolvedBin || !entry.versionFlag) {
+    const integration = entry?.kind === "agent" ? AGENT_INTEGRATIONS.get(id) : undefined;
+    if (!entry?.resolvedBin || (!entry.versionFlag && !integration?.getVersion)) {
       return;
     }
-    const result = await run(`"${entry.resolvedBin}" ${entry.versionFlag}`);
+    if (integration?.getVersion) {
+      const version = await integration.getVersion({
+        bin: entry.resolvedBin,
+        call: (args) => runExecutable(entry.resolvedBin as string, args)
+      });
+      if (version) {
+        this.patch(id, { version });
+      }
+      return;
+    }
+    const versionFlag = entry.versionFlag;
+    if (!versionFlag) {
+      return;
+    }
+    const result = await runExecutable(entry.resolvedBin, [versionFlag]);
     if (result.ok) {
-      const version = result.output.split("\n").find((l) => l.trim())?.trim().slice(0, 80);
-      this.patch(id, { version });
+      const version = result.output.split(/\r?\n/).find((l) => l.trim())?.trim().slice(0, 80);
+      if (version) this.patch(id, { version });
     }
   }
 
@@ -316,5 +438,91 @@ function run(command: string): Promise<RegistryActionResult> {
       const exitCode = error && typeof error.code === "number" ? error.code : error ? 1 : 0;
       resolve({ ok: !error, exitCode, output });
     });
+  });
+}
+
+function runExecutable(file: string, args: readonly string[]): Promise<RegistryActionResult> {
+  return new Promise((resolve) => {
+    const child = spawn(file, [...args], { stdio: ["ignore", "pipe", "pipe"] });
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+    const append = (target: "stdout" | "stderr", chunk: Buffer) => {
+      if (target === "stdout") stdout = `${stdout}${chunk.toString()}`.slice(0, 64_000);
+      else stderr = `${stderr}${chunk.toString()}`.slice(0, 64_000);
+    };
+    child.stdout?.on("data", (chunk: Buffer) => append("stdout", chunk));
+    child.stderr?.on("data", (chunk: Buffer) => append("stderr", chunk));
+    const finish = (result: RegistryActionResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const timeout = setTimeout(() => {
+      child.kill();
+      finish({ ok: false, exitCode: 124, output: "Command timed out." });
+    }, 60_000);
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      finish({ ok: false, exitCode: 1, output: error.message.slice(0, 64_000) });
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      const output = `${stdout}${stderr}`.slice(0, 64_000);
+      finish({ ok: code === 0, exitCode: code ?? 1, output });
+    });
+  });
+}
+
+function runAppServerCall(file: string, method: string, params?: unknown): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(file, ["app-server", "--listen", "stdio://"], {
+      stdio: ["pipe", "pipe", "ignore"]
+    });
+    let buffer = "";
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      child.kill();
+      callback();
+    };
+    const timeout = setTimeout(() => finish(() => reject(new Error("Codex app-server timed out."))), 15_000);
+    child.stdout?.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString();
+      let newline = buffer.indexOf("\n");
+      while (newline !== -1) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (line) {
+          try {
+            const message = JSON.parse(line) as { id?: number; result?: unknown; error?: unknown };
+            if (message.id === 2) {
+              if (message.error) finish(() => reject(new Error("Codex app-server request failed.")));
+              else finish(() => resolve(message.result));
+            }
+          } catch {
+            // Ignore non-JSON output; app-server messages are newline-delimited JSON.
+          }
+        }
+        newline = buffer.indexOf("\n");
+      }
+    });
+    child.once("error", (error) => finish(() => reject(error)));
+    const send = (message: Record<string, unknown>) => child.stdin?.write(`${JSON.stringify(message)}\n`);
+    send({
+      method: "initialize",
+      id: 1,
+      params: {
+        clientInfo: { name: "orquester", version: "0.0.0" },
+        capabilities: { experimentalApi: true }
+      }
+    });
+    setTimeout(() => {
+      if (settled) return;
+      send({ method: "initialized" });
+      send({ method, id: 2, params });
+    }, 150);
   });
 }

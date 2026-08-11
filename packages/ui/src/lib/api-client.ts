@@ -12,6 +12,7 @@ import type {
   OpenTargetSummary,
   ProjectSummary,
   RegistryActionResult,
+  RegistryQuota,
   RegistryResponse,
   ServerInfoResponse,
   SessionSummary,
@@ -207,6 +208,10 @@ export class ApiClient {
 
   registryVersion(id: string): Promise<RegistryActionResult> {
     return this.send("GET", `/api/registry/${encodeURIComponent(id)}/version`);
+  }
+
+  registryQuota(id: string, signal?: AbortSignal): Promise<RegistryQuota> {
+    return this.send("GET", `/api/registry/${encodeURIComponent(id)}/quota`, { signal });
   }
 
   /** Launch an ide/file-explorer/browser target on a path. */

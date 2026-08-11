@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { create } from "zustand";
+import type { RegistryQuota } from "@orquester/api";
 import { ApiClient, ApiError } from "../lib/api-client";
 import { createTransporter } from "../lib/transporters";
 import { toRemoteConfig, toUiConnection } from "../lib/connections";
@@ -109,6 +110,8 @@ export interface UiAppConfig {
   /** Colour scheme id (see COLOR_SCHEMES). */
   theme: string;
   themeMode: ThemeMode;
+  quotaResetFormat: "relative" | "absolute" | "both";
+  showQuotaMenu: boolean;
 }
 
 const DEFAULT_APP_CONFIG: UiAppConfig = {
@@ -119,7 +122,9 @@ const DEFAULT_APP_CONFIG: UiAppConfig = {
   glassSidebar: false,
   roundedWindow: true,
   theme: "mono",
-  themeMode: "dark"
+  themeMode: "dark",
+  quotaResetFormat: "relative",
+  showQuotaMenu: false
 };
 
 /** Persist the remote-server list to the home daemon (shared across clients). */
@@ -200,6 +205,7 @@ export interface AppState {
 
   // data
   registry: RegistryResponse;
+  quotaById: Record<string, RegistryQuota>;
   workspaces: WorkspaceSummary[];
   workspacesLoading: boolean;
   projects: ProjectSummary[];
@@ -235,6 +241,7 @@ export interface AppState {
   setSidebarView: (view: SidebarView) => void;
   setSidebarDrawer: (open: boolean) => void;
   updateAppConfig: (patch: Partial<UiAppConfig>) => Promise<void>;
+  setQuota: (quota: RegistryQuota) => void;
 
   // auth
   submitPassword: (password: string) => Promise<void>;
@@ -279,6 +286,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentWorkspace: null,
   currentProject: null,
   registry: EMPTY_REGISTRY,
+  quotaById: {},
   workspaces: [],
   workspacesLoading: false,
   projects: [],
@@ -422,7 +430,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             glassSidebar: config.glassSidebar ?? state.appConfig.glassSidebar,
             roundedWindow: config.roundedWindow ?? state.appConfig.roundedWindow,
             theme: config.theme ?? state.appConfig.theme,
-            themeMode: config.themeMode ?? state.appConfig.themeMode
+            themeMode: config.themeMode ?? state.appConfig.themeMode,
+            quotaResetFormat: config.quotaResetFormat ?? state.appConfig.quotaResetFormat,
+            showQuotaMenu: config.showQuotaMenu ?? state.appConfig.showQuotaMenu
           }
         }));
       }
@@ -467,6 +477,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const result = adapter ? adapter.save(full) : homeApi?.updateAppConfig(appConfig);
     await result?.catch(() => undefined);
   },
+
+  setQuota: (quota) => set((state) => ({ quotaById: { ...state.quotaById, [quota.id]: quota } })),
 
   submitPassword: async (password) => {
     const api = get().api;
@@ -718,6 +730,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
 
   applyEvent: (event) => {
+    if (event.channel === "registry" && event.type === "registry.quota.changed") {
+      const quota = event.payload as RegistryQuota;
+      set((state) => ({ quotaById: { ...state.quotaById, [quota.id]: quota } }));
+      return;
+    }
     if (event.channel === "registry" && event.type === "registry.changed") {
       const entry = event.payload as RegistryEntry;
       set((state) => ({ registry: applyRegistryEntry(state.registry, entry) }));

@@ -243,7 +243,10 @@ export const appConfigSchema = z.object({
   /** Colour scheme id; matches a `[data-scheme]` block in the UI stylesheet. */
   theme: z.string().min(1).default("mono"),
   /** Which variant of that scheme to show. */
-  themeMode: z.enum(["system", "light", "dark", "dynamic"]).default("dark")
+  themeMode: z.enum(["system", "light", "dark", "dynamic"]).default("dark"),
+  /** How quota reset timestamps are rendered in the client. */
+  quotaResetFormat: z.enum(["relative", "absolute", "both"]).default("relative"),
+  showQuotaMenu: z.boolean().default(false)
 })
   // Clients own this file; a daemon that predates a field must hand it back
   // untouched instead of silently dropping the client's setting.

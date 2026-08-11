@@ -8,5 +8,7 @@
   "glassSidebar": true,
   "roundedWindow": true,
   "theme": "mono",
-  "themeMode": "system"
+  "themeMode": "system",
+  "quotaResetFormat": "relative",
+  "showQuotaMenu": true
 }

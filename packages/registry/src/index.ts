@@ -1,4 +1,5 @@
 import type { RegistryKind } from "@orquester/api";
+import { AGENT_DEFS } from "./agents";
 
 export type { RegistryKind };
 
@@ -28,53 +29,7 @@ export const REGISTRY = {
     { id: "sh", name: "sh", kind: "shell", bin: ["sh"] as const }
   ] as const,
 
-  agents: [
-    {
-      id: "claude",
-      name: "Claude Code",
-      kind: "agent",
-      bin: ["claude"] as const,
-      versionFlag: "--version",
-      installCmd: "npm install -g @anthropic-ai/claude-code",
-      updateCmd: "npm update -g @anthropic-ai/claude-code"
-    },
-    {
-      id: "codex",
-      name: "Codex",
-      kind: "agent",
-      bin: ["codex"] as const,
-      versionFlag: "--version",
-      installCmd: "npm install -g @openai/codex",
-      updateCmd: "npm update -g @openai/codex"
-    },
-    {
-      id: "deepseek",
-      name: "DeepSeek",
-      kind: "agent",
-      bin: ["deepseek"] as const,
-      versionFlag: "--version",
-      installCmd: "npm install -g @deepseek-ai/deepseek-cli",
-      updateCmd: "npm update -g @deepseek-ai/deepseek-cli"
-    },
-    {
-      id: "gemini",
-      name: "Gemini CLI",
-      kind: "agent",
-      bin: ["gemini"] as const,
-      versionFlag: "--version",
-      installCmd: "npm install -g @google/gemini-cli",
-      updateCmd: "npm update -g @google/gemini-cli"
-    },
-    {
-      id: "opencode",
-      name: "OpenCode",
-      kind: "agent",
-      bin: ["opencode"] as const,
-      versionFlag: "--version",
-      installCmd: "npm install -g opencode-ai",
-      updateCmd: "npm update -g opencode-ai"
-    }
-  ] as const,
+  agents: AGENT_DEFS,
 
   ides: [
     {
