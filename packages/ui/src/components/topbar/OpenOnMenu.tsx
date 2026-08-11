@@ -39,7 +39,7 @@ export const OpenOnMenu: React.FC = () => {
   };
 
   const trigger = (
-    <span className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-neutral-300 hover:bg-neutral-800">
+    <span className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800">
       <ExternalLink size={13} className="text-neutral-500" />
       <span className="hidden sm:inline">Open on</span>
       <ChevronDown size={13} className="text-neutral-500" />

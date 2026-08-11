@@ -70,6 +70,11 @@ export class SessionManager {
       session.emitter.emit("output", data);
     });
     pty.onExit(({ exitCode }) => {
+      // An explicit close() already deleted this session and told clients so;
+      // the pty dying from that kill is expected, not a fresh lifecycle event.
+      if (!this.sessions.has(id)) {
+        return;
+      }
       session.summary.status = "exited";
       session.summary.exitCode = exitCode;
       session.pty = null;

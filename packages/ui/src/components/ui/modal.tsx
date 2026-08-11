@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "../../lib/cn";
@@ -10,24 +10,54 @@ export interface ModalProps {
   className?: string;
 }
 
-/** Centered modal dialog rendered in a portal; closes on backdrop click / Escape. */
+/** Matches the CSS `-out` animation durations below — the DOM lingers this long after `open` goes false. */
+const CLOSE_MS = 150;
+
+/**
+ * Centered modal dialog rendered in a portal; closes on backdrop click / Escape.
+ * Stays mounted for one beat after `open` goes false so the closing animation
+ * (the reverse of the opening one) gets to play instead of just vanishing.
+ */
 export const Modal: React.FC<ModalProps> = ({ open, onClose, children, className }) => {
+  const [rendered, setRendered] = useState(open);
+  const [closing, setClosing] = useState(false);
+
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setRendered(true);
+      setClosing(false);
+      return;
+    }
+    if (!rendered) {
+      return;
+    }
+    setClosing(true);
+    const timer = setTimeout(() => {
+      setRendered(false);
+      setClosing(false);
+    }, CLOSE_MS);
+    return () => clearTimeout(timer);
+  }, [open, rendered]);
+
+  useEffect(() => {
+    if (!rendered || closing) {
       return;
     }
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [rendered, closing, onClose]);
 
-  if (!open) {
+  if (!rendered) {
     return null;
   }
 
   return createPortal(
     <div
-      className="app-no-drag fixed inset-0 z-[100] flex items-center justify-center overflow-hidden rounded-[var(--window-radius)] bg-black/60 p-3 sm:p-6"
+      className={cn(
+        "app-no-drag fixed inset-0 z-[100] flex items-center justify-center overflow-hidden rounded-[var(--window-radius)] bg-black/50 p-3 backdrop-blur-sm sm:p-6",
+        closing ? "animate-overlay-out" : "animate-overlay-in"
+      )}
       onMouseDown={onClose}
     >
       <div
@@ -35,7 +65,9 @@ export const Modal: React.FC<ModalProps> = ({ open, onClose, children, className
         aria-modal="true"
         onMouseDown={(e) => e.stopPropagation()}
         className={cn(
-          "flex max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 shadow-2xl",
+          "flex max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-neutral-800/70",
+          "bg-neutral-900/95 shadow-2xl shadow-black/50 backdrop-blur-2xl",
+          closing ? "animate-panel-out" : "animate-panel-in",
           className
         )}
       >
@@ -51,7 +83,7 @@ export const ModalCloseButton: React.FC<{ onClose: () => void }> = ({ onClose })
     type="button"
     aria-label="Close"
     onClick={onClose}
-    className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+    className="flex h-7 w-7 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
   >
     <X size={16} />
   </button>

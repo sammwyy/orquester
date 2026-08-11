@@ -104,7 +104,7 @@ export const SettingsModal: React.FC = () => {
     const current = section ?? "app";
     return (
       <Modal open={open} onClose={close} className="h-[85vh] max-w-4xl">
-        <nav className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-neutral-800 bg-neutral-950/40 p-2">
+        <nav className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-neutral-800/70 bg-neutral-950/30 p-2">
           {GROUPS.map((group) => (
             <React.Fragment key={group.id}>
               <p className="px-2 pb-1 pt-3 text-[10px] font-medium uppercase tracking-wider text-neutral-500 first:pt-1">
@@ -116,7 +116,7 @@ export const SettingsModal: React.FC = () => {
                   type="button"
                   onClick={() => setSection(s.id)}
                   className={cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                    "flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
                     current === s.id
                       ? "bg-neutral-800 text-neutral-100"
                       : "text-neutral-400 hover:bg-neutral-800/60"
@@ -130,7 +130,7 @@ export const SettingsModal: React.FC = () => {
           ))}
         </nav>
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-800 px-4">
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-800/70 px-4">
             <span className="text-sm font-medium text-neutral-100">{labelOf(current)}</span>
             <ModalCloseButton onClose={close} />
           </div>
@@ -144,13 +144,13 @@ export const SettingsModal: React.FC = () => {
   return (
     <Modal open={open} onClose={close} className="h-[88vh]">
       <div className="flex w-full flex-col">
-        <div className="flex h-12 shrink-0 items-center gap-1 border-b border-neutral-800 px-2">
+        <div className="flex h-12 shrink-0 items-center gap-1 border-b border-neutral-800/70 px-2">
           {section ? (
             <button
               type="button"
               aria-label="Back"
               onClick={() => setSection(null)}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-300 hover:bg-neutral-800"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-neutral-800"
             >
               <ChevronLeft size={18} />
             </button>
@@ -176,9 +176,9 @@ export const SettingsModal: React.FC = () => {
                       key={s.id}
                       type="button"
                       onClick={() => setSection(s.id)}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left hover:bg-neutral-800/60"
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-neutral-800/60"
                     >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-800 text-neutral-300">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-800 text-neutral-300">
                         {s.icon}
                       </span>
                       <span className="min-w-0 flex-1">
@@ -206,7 +206,7 @@ const Group: React.FC<{ title: string; children: React.ReactNode }> = ({ title, 
     <h3 className="px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
       {title}
     </h3>
-    <div className="divide-y divide-neutral-800 rounded-xl border border-neutral-800 bg-neutral-900/40 px-3">
+    <div className="divide-y divide-neutral-800/80 rounded-xl border border-neutral-800/70 bg-neutral-900/40 px-3">
       {children}
     </div>
   </section>
@@ -265,7 +265,7 @@ const AgentsSettings: React.FC = () => {
     <div className="space-y-3">
       <SegmentedControl value={filter} options={filters} onChange={setFilter} />
 
-      <div className="divide-y divide-neutral-800 rounded-lg border border-neutral-800">
+      <div className="divide-y divide-neutral-800/80 rounded-xl border border-neutral-800/70">
         {agents.length === 0 && (
           <p className="px-3 py-4 text-sm text-neutral-600">No agents in this view.</p>
         )}
@@ -587,7 +587,7 @@ const DaemonSettings: React.FC = () => {
   return (
     <div className="space-y-6">
       {!isLocal && (
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-3 text-xs text-neutral-400">
+        <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-3 text-xs text-neutral-400">
           Daemon settings can only be changed from the local app (unix socket). Connected over HTTP
           they are read-only.
         </div>

@@ -44,7 +44,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
       role="menu"
       style={{ position: "fixed", top, left, width: WIDTH }}
       onMouseDown={(e) => e.stopPropagation()}
-      className="z-[120] overflow-hidden rounded-md border border-neutral-800 bg-neutral-900 p-1 shadow-xl shadow-black/40"
+      className="animate-menu-in z-[120] overflow-hidden rounded-xl border border-neutral-800/80 bg-neutral-900/95 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl"
     >
       {items.map((item) => (
         <button
@@ -57,11 +57,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
             onClose();
           }}
           className={cn(
-            "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition-colors",
+            "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
             "disabled:pointer-events-none disabled:opacity-40",
             item.danger
-              ? "text-red-400 hover:bg-red-500/10"
-              : "text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
+              ? "text-red-400 hover:bg-red-500/10 active:bg-red-500/20"
+              : "text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 active:bg-neutral-700/80"
           )}
         >
           {item.icon && (

@@ -39,7 +39,7 @@ export const AuthModal: React.FC = () => {
     >
       <div className="w-full p-5">
         <div className="mb-3 flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-neutral-800 text-neutral-300">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-neutral-800 text-neutral-300">
             <Lock size={16} />
           </span>
           <div className="min-w-0">

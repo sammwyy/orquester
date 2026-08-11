@@ -12,7 +12,7 @@ export const ProjectSwitcher: React.FC = () => {
   const openProject = useAppStore((s) => s.openProject);
 
   const trigger = (
-    <span className="flex h-7 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-neutral-100 hover:bg-neutral-800">
+    <span className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800">
       <Box size={14} className="text-neutral-500" />
       <span className="max-w-[200px] truncate">{currentProject?.name ?? "No project"}</span>
       <ChevronDown size={13} className="text-neutral-500" />

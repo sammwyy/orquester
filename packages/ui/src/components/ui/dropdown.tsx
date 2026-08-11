@@ -143,8 +143,10 @@ export const Dropdown: React.FC<DropdownProps> = ({
               maxHeight: position.maxHeight
             }}
             className={cn(
-              "z-50 overflow-y-auto rounded-md border border-neutral-800",
-              "bg-neutral-900 p-1 shadow-xl shadow-black/40 app-no-drag",
+              "animate-menu-in app-no-drag z-50 overflow-y-auto rounded-xl border border-neutral-800/80",
+              "bg-neutral-900/95 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl",
+              position.bottom !== undefined ? "origin-bottom" : "origin-top",
+              align === "right" && (position.bottom !== undefined ? "origin-bottom-right" : "origin-top-right"),
               width,
               className
             )}
@@ -177,8 +179,8 @@ export const DropdownItem: React.FC<DropdownItemProps> = ({
       type="button"
       role="menuitem"
       className={cn(
-        "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-neutral-300",
-        "transition-colors hover:bg-neutral-800 hover:text-neutral-100",
+        "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-neutral-300",
+        "transition-colors hover:bg-neutral-800 hover:text-neutral-100 active:bg-neutral-700/80",
         "disabled:pointer-events-none disabled:opacity-40",
         className
       )}
@@ -203,7 +205,7 @@ export const DropdownLabel: React.FC<{ children: React.ReactNode }> = ({ childre
 );
 
 export const DropdownSeparator: React.FC = () => (
-  <div className="my-1 h-px bg-neutral-800" />
+  <div className="mx-1 my-1 h-px bg-neutral-800/80" />
 );
 
 export const DropdownEmpty: React.FC<{ children: React.ReactNode }> = ({ children }) => (

@@ -33,9 +33,9 @@ export const TabStrip: React.FC = () => {
             aria-selected={active}
             onClick={() => activateTab(tab.id)}
             className={cn(
-              "group flex h-7 cursor-pointer items-center gap-1.5 rounded-md pl-2 pr-1 text-xs",
+              "group flex h-7 cursor-pointer items-center gap-1.5 rounded-lg pl-2 pr-1 text-xs transition-colors",
               active
-                ? "bg-neutral-800 text-neutral-100"
+                ? "bg-neutral-800 text-neutral-100 shadow-sm shadow-black/20 ring-1 ring-inset ring-neutral-700/60"
                 : "text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200"
             )}
           >
@@ -51,7 +51,7 @@ export const TabStrip: React.FC = () => {
                 event.stopPropagation();
                 void closeTab(tab.id);
               }}
-              className="flex h-4 w-4 items-center justify-center rounded text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-100 group-hover:opacity-100"
+              className="flex h-4 w-4 items-center justify-center rounded-full text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-100 group-hover:opacity-100"
             >
               <X size={12} />
             </button>

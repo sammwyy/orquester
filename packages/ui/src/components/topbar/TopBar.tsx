@@ -35,7 +35,7 @@ export const TopBar: React.FC = () => {
 
   if (!isDesktop) {
     return (
-      <header className="flex shrink-0 flex-col border-b border-neutral-800 bg-neutral-900/60">
+      <header className="flex shrink-0 flex-col border-b border-neutral-800/70 bg-neutral-900/60">
         <div className="flex h-11 items-center gap-1 px-1">
           <IconButton label="Open menu" onClick={() => setSidebarDrawer(true)}>
             <Menu size={18} />
@@ -50,7 +50,7 @@ export const TopBar: React.FC = () => {
           <SettingsButton />
         </div>
         {currentProject && (
-          <div className="flex h-11 items-center gap-1 border-t border-neutral-800 px-2">
+          <div className="flex h-11 items-center gap-1 border-t border-neutral-800/70 px-2">
             <TabSwitcher />
             <div className="flex-1" />
             <NewTabMenu />
@@ -61,12 +61,12 @@ export const TopBar: React.FC = () => {
   }
 
   return (
-    <header className="app-drag flex h-11 shrink-0 items-stretch border-b border-neutral-800 bg-neutral-900/60">
+    <header className="app-drag flex h-11 shrink-0 items-stretch border-b border-neutral-800/70 bg-neutral-900/60">
       <div className="flex flex-1 items-center gap-2 overflow-hidden pl-2">
         {currentProject ? (
           <>
             <ProjectSwitcher />
-            <div className="h-4 w-px bg-neutral-800" />
+            <div className="h-4 w-px shrink-0 bg-neutral-800/80" />
             <div className="flex items-center gap-1 overflow-x-auto">
               <TabStrip />
               <NewTabMenu />
@@ -84,7 +84,7 @@ export const TopBar: React.FC = () => {
           </div>
         )}
         <SettingsButton />
-        {useTitlebar && <div className="mx-1 h-4 w-px self-center bg-neutral-800" />}
+        {useTitlebar && <div className="mx-1 h-4 w-px self-center bg-neutral-800/80" />}
         {useTitlebar && <WindowControls />}
       </div>
     </header>

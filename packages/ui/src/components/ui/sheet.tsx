@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/cn";
 import { DropdownContext } from "./dropdown";
@@ -10,22 +10,47 @@ export interface BottomSheetProps {
   children: React.ReactNode;
 }
 
+/** Matches the CSS `-out` animation durations below — the DOM lingers this long after `open` goes false. */
+const CLOSE_MS = 180;
+
 /**
  * Mobile bottom sheet: slides up from the bottom, full-width, large touch
  * targets, respects the safe-area inset. Provides DropdownContext so the same
- * DropdownItem/Label/Separator render here as in a desktop dropdown.
+ * DropdownItem/Label/Separator render here as in a desktop dropdown. Stays
+ * mounted for one beat after `open` goes false so it can slide back down
+ * instead of just disappearing.
  */
 export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onClose, title, children }) => {
+  const [rendered, setRendered] = useState(open);
+  const [closing, setClosing] = useState(false);
+
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setRendered(true);
+      setClosing(false);
+      return;
+    }
+    if (!rendered) {
+      return;
+    }
+    setClosing(true);
+    const timer = setTimeout(() => {
+      setRendered(false);
+      setClosing(false);
+    }, CLOSE_MS);
+    return () => clearTimeout(timer);
+  }, [open, rendered]);
+
+  useEffect(() => {
+    if (!rendered || closing) {
       return;
     }
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [rendered, closing, onClose]);
 
-  if (!open) {
+  if (!rendered) {
     return null;
   }
 
@@ -34,14 +59,21 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onClose, title, 
       className="fixed inset-0 z-[110] flex flex-col justify-end overflow-hidden rounded-[var(--window-radius)]"
       onMouseDown={onClose}
     >
-      <div className="absolute inset-0 bg-black/60" />
+      <div
+        className={cn(
+          "absolute inset-0 bg-black/50 backdrop-blur-sm",
+          closing ? "animate-overlay-out" : "animate-overlay-in"
+        )}
+      />
       <div
         role="dialog"
         aria-modal="true"
         onMouseDown={(e) => e.stopPropagation()}
         className={cn(
-          "relative max-h-[75vh] overflow-y-auto rounded-t-2xl border-t border-neutral-800 bg-neutral-900",
-          "pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl"
+          "relative max-h-[75vh] overflow-y-auto rounded-t-2xl border-t border-neutral-800/70",
+          "bg-neutral-900/95 backdrop-blur-2xl",
+          "pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl shadow-black/50",
+          closing ? "animate-sheet-out" : "animate-sheet-in"
         )}
       >
         <div className="sticky top-0 flex items-center justify-center bg-neutral-900 pb-1 pt-2">

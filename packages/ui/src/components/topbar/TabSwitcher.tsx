@@ -17,7 +17,7 @@ export const TabSwitcher: React.FC = () => {
   const active = tabs.find((t) => t.id === activeId);
 
   const trigger = (
-    <span className="flex h-8 min-w-0 items-center gap-1.5 rounded-md bg-neutral-800/60 px-2 text-sm text-neutral-200">
+    <span className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg bg-neutral-800/60 px-2 text-sm text-neutral-200 transition-colors">
       <span className="text-neutral-500">{active ? tabIcon(active, 14) : <FolderTree size={14} />}</span>
       <span className="max-w-[42vw] truncate">{active ? tabLabel(active) : "No tabs"}</span>
       <ChevronDown size={14} className="text-neutral-500" />
