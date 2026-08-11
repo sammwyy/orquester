@@ -25,10 +25,12 @@ interface RegistryDef {
   name: string;
   kind: RegistryKind;
   bin: string[];
+  binDeps?: string[];
   enabled?: boolean;
   versionFlag?: string;
   installCmd?: string;
   updateCmd?: string;
+  websiteUrl?: string;
 }
 
 interface RuntimeRegistryEntry {
@@ -36,12 +38,14 @@ interface RuntimeRegistryEntry {
   name: string;
   kind: RegistryKind;
   bin: string[];
+  binDeps?: string[];
   enabled: boolean;
   resolvedBin?: string;
   versionFlag?: string;
   version?: string;
   installCmd?: string;
   updateCmd?: string;
+  websiteUrl?: string;
   installState: RegistryEntry["installState"];
   installError?: string;
 }
@@ -100,6 +104,8 @@ function materialize(list: readonly RegistryEntryDef[]): RegistryDef[] {
     if (s.versionFlag) d.versionFlag = s.versionFlag;
     if (s.installCmd) d.installCmd = s.installCmd;
     if (s.updateCmd) d.updateCmd = s.updateCmd;
+    if (s.binDeps) d.binDeps = [...s.binDeps];
+    if (s.websiteUrl) d.websiteUrl = s.websiteUrl;
     return d;
   });
 }
@@ -113,6 +119,9 @@ function publicEntry(entry: RuntimeRegistryEntry): RegistryEntry {
     version: entry.version,
     canInstall: Boolean(entry.installCmd),
     canUpdate: Boolean(entry.updateCmd),
+    installCommand: entry.installCmd,
+    websiteUrl: entry.websiteUrl,
+    missingDependencies: (entry.binDeps ?? []).filter((dependency) => !resolveBin([dependency])),
     installState: entry.installState,
     installError: entry.installError
   };
@@ -143,10 +152,12 @@ export class RegistryService {
   private quotaTimer: ReturnType<typeof setInterval> | null = null;
   private eventClientCount = 0;
   private quotaWorkers: Record<string, boolean>;
+  private elevatedInputs = new Map<string, { write: (password: string) => void; cancel: () => void }>();
   /** Emits "changed" with the updated RegistryEntry (broadcast to clients). */
   readonly events = new EventEmitter();
   /** Emits "changed" with a refreshed RegistryQuota. */
   readonly quotaEvents = new EventEmitter();
+  readonly installEvents = new EventEmitter();
 
   constructor(private readonly daemonDir: string, quotaWorkers: Record<string, boolean> = {}) {
     this.quotaWorkers = quotaWorkers;
@@ -212,13 +223,28 @@ export class RegistryService {
   }
 
   /** Start an install (background); status flows via `events`. Returns immediately. */
-  install(id: string): { started: boolean } {
+  install(id: string, elevated = false): { started: boolean } {
     const entry = this.entries.get(id);
     if (!entry?.installCmd || entry.installState === "installing") {
       return { started: false };
     }
-    this.runManaged(id, entry.installCmd);
+    this.runManaged(id, elevated ? elevateCommand(entry.installCmd) : entry.installCmd, elevated);
     return { started: true };
+  }
+
+  provideInstallPassword(id: string, password: string): boolean {
+    const write = this.elevatedInputs.get(id);
+    if (!write || !password) return false;
+    write.write(password);
+    return true;
+  }
+
+  cancelInstallPassword(id: string): boolean {
+    const input = this.elevatedInputs.get(id);
+    if (!input) return false;
+    this.elevatedInputs.delete(id);
+    input.cancel();
+    return true;
   }
 
   /** Start an update (background); same semantics as install. */
@@ -354,15 +380,22 @@ export class RegistryService {
   }
 
   /** Run an install/update command, broadcasting status; re-resolve on success. */
-  private runManaged(id: string, command: string): void {
+  private runManaged(id: string, command: string, elevated = false): void {
     this.patch(id, { installState: "installing", installError: undefined });
-    void run(command).then((result) => {
+    const resultPromise = elevated
+      ? runElevated(command, (input) => {
+          this.elevatedInputs.set(id, input);
+          this.installEvents.emit("sudo.required", { id });
+        })
+      : run(command);
+    void resultPromise.then((result) => {
+      this.elevatedInputs.delete(id);
       if (result.ok) {
         const entry = this.entries.get(id);
         const resolvedBin = entry ? resolveBin(entry.bin) : undefined;
         this.patch(id, {
           resolvedBin,
-          enabled: Boolean(resolvedBin),
+          enabled: Boolean(resolvedBin) && (entry?.binDeps ?? []).every((dependency) => Boolean(resolveBin([dependency]))),
           installState: "idle",
           installError: undefined,
           version: undefined
@@ -426,10 +459,12 @@ export class RegistryService {
       kind: def.kind,
       bin: def.bin,
       resolvedBin,
-      enabled: Boolean(resolvedBin) && def.enabled !== false,
+      enabled: Boolean(resolvedBin) && (def.binDeps ?? []).every((dependency) => Boolean(resolveBin([dependency]))) && def.enabled !== false,
       versionFlag: def.versionFlag,
       installCmd: def.installCmd,
       updateCmd: def.updateCmd,
+      binDeps: def.binDeps,
+      websiteUrl: def.websiteUrl,
       installState: "idle"
     };
   }
@@ -479,7 +514,9 @@ function normalizeDef(item: unknown, defaultKind: RegistryKind): RegistryDef | n
     enabled: typeof obj.enabled === "boolean" ? obj.enabled : undefined,
     versionFlag: typeof obj.versionFlag === "string" ? obj.versionFlag : undefined,
     installCmd: typeof obj.installCmd === "string" ? obj.installCmd : undefined,
-    updateCmd: typeof obj.updateCmd === "string" ? obj.updateCmd : undefined
+    updateCmd: typeof obj.updateCmd === "string" ? obj.updateCmd : undefined,
+    binDeps: Array.isArray(obj.binDeps) ? obj.binDeps.filter((dependency): dependency is string => typeof dependency === "string") : undefined,
+    websiteUrl: typeof obj.websiteUrl === "string" ? obj.websiteUrl : undefined
   };
 }
 
@@ -522,6 +559,59 @@ function runExecutable(file: string, args: readonly string[]): Promise<RegistryA
     child.once("close", (code) => {
       clearTimeout(timeout);
       const output = `${stdout}${stderr}`.slice(0, 64_000);
+      finish({ ok: code === 0, exitCode: code ?? 1, output });
+    });
+  });
+}
+
+function elevateCommand(command: string): string {
+  if (process.platform === "win32") {
+    const escaped = command.replace(/'/g, "''");
+    return `powershell -NoProfile -Command "Start-Process cmd.exe -ArgumentList '/c','${escaped}' -Verb RunAs -Wait"`;
+  }
+  return `sudo -S -p '[ORQUESTER_SUDO_PROMPT]' sh -c ${shellQuote(command)}`;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function runElevated(
+  command: string,
+  onPrompt: (input: { write: (password: string) => void; cancel: () => void }) => void
+): Promise<RegistryActionResult> {
+  return new Promise((resolve) => {
+    const child = spawn(process.platform === "win32" ? "cmd.exe" : "/bin/sh", process.platform === "win32" ? ["/c", command] : ["-c", command], {
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+    let prompted = false;
+    const finish = (result: RegistryActionResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+    const timeout = setTimeout(() => {
+      child.kill();
+      finish({ ok: false, exitCode: 124, output: "Command timed out." });
+    }, 10 * 60_000);
+    child.stdout?.on("data", (chunk: Buffer) => { stdout = `${stdout}${chunk.toString()}`.slice(-64_000); });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr = `${stderr}${chunk.toString()}`.slice(-64_000);
+      if (!prompted && stderr.includes("[ORQUESTER_SUDO_PROMPT]")) {
+        prompted = true;
+        onPrompt({
+          write: (password) => child.stdin?.write(`${password}\n`),
+          cancel: () => child.kill()
+        });
+      }
+    });
+    child.once("error", (error) => finish({ ok: false, exitCode: 1, output: error.message }));
+    child.once("close", (code) => {
+      const output = `${stdout}${stderr}`.replace(/\[ORQUESTER_SUDO_PROMPT\]/g, "").slice(0, 64_000);
       finish({ ok: code === 0, exitCode: code ?? 1, output });
     });
   });

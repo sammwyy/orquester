@@ -2,7 +2,7 @@ import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentInte
 
 export const opencodeDefinition: AgentDefinition = {
   id: "opencode", name: "OpenCode", kind: "agent", bin: ["opencode"],
-  versionFlag: "--version", installCmd: "npm install -g opencode-ai", updateCmd: "npm update -g opencode-ai"
+  versionFlag: "--version", installCmd: "npm install -g opencode-ai", updateCmd: "npm update -g opencode-ai", websiteUrl: "https://opencode.ai/"
 };
 
 export const opencodeIntegration: AgentIntegration = {

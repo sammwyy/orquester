@@ -3,7 +3,7 @@ import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentInte
 
 export const claudeDefinition: AgentDefinition = {
   id: "claude", name: "Claude Code", kind: "agent", bin: ["claude"],
-  versionFlag: "--version", installCmd: "npm install -g @anthropic-ai/claude-code", updateCmd: "npm update -g @anthropic-ai/claude-code"
+  versionFlag: "--version", installCmd: "npm install -g @anthropic-ai/claude-code", updateCmd: "npm update -g @anthropic-ai/claude-code", websiteUrl: "https://www.anthropic.com/claude-code"
 };
 
 export const claudeIntegration: AgentIntegration = {

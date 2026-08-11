@@ -7,9 +7,11 @@ export interface RegistryEntryDef {
   name: string;
   kind: RegistryKind;
   bin: readonly string[];
+  binDeps?: readonly string[];
   versionFlag?: string;
   installCmd?: string;
   updateCmd?: string;
+  websiteUrl?: string;
 }
 
 export const REGISTRY = {

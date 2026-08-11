@@ -5,9 +5,11 @@ export interface AgentDefinition {
   name: string;
   kind: "agent";
   bin: readonly string[];
+  binDeps?: readonly string[];
   versionFlag?: string;
   installCmd?: string;
   updateCmd?: string;
+  websiteUrl?: string;
 }
 
 export interface AgentCommandContext {

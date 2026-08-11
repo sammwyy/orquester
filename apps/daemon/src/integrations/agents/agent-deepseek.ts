@@ -2,7 +2,7 @@ import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentInte
 
 export const deepseekDefinition: AgentDefinition = {
   id: "deepseek", name: "DeepSeek", kind: "agent", bin: ["deepseek"],
-  versionFlag: "--version", installCmd: "npm install -g @deepseek-ai/deepseek-cli", updateCmd: "npm update -g @deepseek-ai/deepseek-cli"
+  versionFlag: "--version", installCmd: "npm install -g @deepseek-ai/deepseek-cli", updateCmd: "npm update -g @deepseek-ai/deepseek-cli", websiteUrl: "https://www.deepseek.com/"
 };
 
 export const deepseekIntegration: AgentIntegration = {

@@ -186,8 +186,16 @@ export class ApiClient {
     return this.send("GET", "/api/registry", { signal });
   }
 
-  installRegistryEntry(id: string): Promise<RegistryActionResult> {
-    return this.send("POST", `/api/registry/${encodeURIComponent(id)}/install`);
+  installRegistryEntry(id: string, elevated = false): Promise<RegistryActionResult> {
+    return this.send("POST", `/api/registry/${encodeURIComponent(id)}/install`, { body: { elevated } });
+  }
+
+  provideInstallPassword(id: string, password: string): Promise<{ accepted: boolean }> {
+    return this.send("POST", `/api/registry/${encodeURIComponent(id)}/install/password`, { body: { password } });
+  }
+
+  cancelInstallPassword(id: string): Promise<{ cancelled: boolean }> {
+    return this.send("DELETE", `/api/registry/${encodeURIComponent(id)}/install/password`);
   }
 
   updateRegistryEntry(id: string): Promise<RegistryActionResult> {

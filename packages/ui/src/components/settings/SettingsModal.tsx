@@ -5,7 +5,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Copy,
   Download,
+  ExternalLink,
   Gauge,
   Loader2,
   Monitor,
@@ -13,14 +15,15 @@ import {
   Palette,
   RefreshCw,
   Server,
+  ShieldCheck,
   Sun
 } from "lucide-react";
-import type { RegistryQuota, QuotaWindow } from "@orquester/api";
+import type { RegistryEntry, RegistryQuota, QuotaWindow } from "@orquester/api";
 import type { DaemonConfig } from "@orquester/config";
 import { COLOR_SCHEMES, THEME_MODES } from "../../lib/theme";
 import type { BlurStrategy, ThemeMode } from "../../types";
 import { cn } from "../../lib/cn";
-import { Button, Input, Modal, ModalCloseButton, OptionCard, SegmentedControl, Slider, Switch } from "../ui";
+import { Button, Dropdown, DropdownItem, DropdownLabel, DropdownSeparator, Input, Modal, ModalCloseButton, OptionCard, SegmentedControl, Slider, Switch } from "../ui";
 import { getRegistryIcon } from "../../icons";
 import { useIsDesktop, useRegistry } from "../../hooks";
 import { useApi, useOrquester } from "../../context/orquester-context";
@@ -256,9 +259,66 @@ const StackedField: React.FC<{ label?: string; hint?: string; children: React.Re
 
 type AgentFilter = "all" | "installed" | "available";
 
+const AgentInstallActions: React.FC<{
+  agent: RegistryEntry;
+  onInstall: (elevated?: boolean) => void;
+}> = ({ agent, onInstall }) => {
+  const [copied, setCopied] = useState(false);
+  const command = agent.installCommand ?? "Installation command unavailable.";
+  const blocked = agent.missingDependencies.length > 0;
+
+  const copyCommand = async () => {
+    if (!agent.installCommand) return;
+    await navigator.clipboard?.writeText(agent.installCommand);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1_500);
+  };
+
+  const trigger = (
+    <span className="flex items-center gap-1 rounded-lg">
+      <span
+        role="button"
+        tabIndex={blocked ? -1 : 0}
+        aria-disabled={blocked}
+        className={cn("inline-flex h-7 items-center gap-1 rounded-lg bg-blue-500 px-2 text-xs font-medium text-white", blocked && "cursor-not-allowed opacity-50")}
+        onClick={(event) => { event.stopPropagation(); if (!blocked) onInstall(); }}
+        onKeyDown={(event) => { if (!blocked && (event.key === "Enter" || event.key === " ")) onInstall(); }}
+      >
+        <Download size={13} /> {blocked ? `Missing ${agent.missingDependencies.join(", ")}` : "Install"}
+      </span>
+      <span className="inline-flex h-7 items-center rounded-lg border border-neutral-700 px-1.5 text-neutral-300" aria-label="Installation options">
+        <ChevronRight size={13} className="rotate-90" />
+      </span>
+    </span>
+  );
+
+  return (
+    <Dropdown trigger={trigger} align="right" width="w-72" side="left">
+      <DropdownLabel>Installation options</DropdownLabel>
+      <div className="mx-2 mb-2 rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-2">
+        <p className="mb-1 text-[10px] uppercase tracking-wider text-neutral-600">Command preview</p>
+        <code className="block break-all text-[11px] text-neutral-300">{command}</code>
+      </div>
+      <DropdownItem icon={<Copy size={14} />} disabled={!agent.installCommand} onClick={() => void copyCommand()}>
+        {copied ? "Copied" : "Copy install command"}
+      </DropdownItem>
+      <DropdownItem icon={<ShieldCheck size={14} />} disabled={blocked} onClick={() => onInstall(true)}>
+        Install as administrator
+      </DropdownItem>
+      {agent.websiteUrl && <>
+        <DropdownSeparator />
+        <DropdownItem icon={<ExternalLink size={14} />} onClick={() => window.open(agent.websiteUrl, "_blank", "noopener,noreferrer")}>
+          Open official website
+        </DropdownItem>
+      </>}
+    </Dropdown>
+  );
+};
+
 const AgentsSettings: React.FC = () => {
   const registry = useRegistry();
-  const installAgent = useAppStore((s) => s.installAgent);
+  const api = useApi();
+  const installAgent = (id: string, elevated = false) => void api.installRegistryEntry(id, elevated);
   const updateAgent = useAppStore((s) => s.updateAgent);
   const [filter, setFilter] = useState<AgentFilter>("all");
 
@@ -295,10 +355,12 @@ const AgentsSettings: React.FC = () => {
                     ? agent.enabled
                       ? "Updating…"
                       : "Installing…"
-                    : failed
-                      ? `Failed${agent.installError ? `: ${firstLine(agent.installError)}` : ""}`
-                      : agent.enabled
-                        ? agent.version ?? "installed"
+                      : failed
+                        ? `Failed${agent.installError ? `: ${firstLine(agent.installError)}` : ""}`
+                        : agent.missingDependencies.length > 0
+                          ? `Missing ${agent.missingDependencies.join(", ")}`
+                        : agent.enabled
+                          ? agent.version ?? "installed"
                         : "Not installed"}
                 </p>
               </div>
@@ -309,9 +371,7 @@ const AgentsSettings: React.FC = () => {
                     {agent.enabled ? "Updating…" : "Installing…"}
                   </span>
                 ) : failed ? (
-                  <Button size="sm" variant="outline" onClick={() => void installAgent(agent.id)}>
-                    <RefreshCw size={13} /> Retry
-                  </Button>
+                  <AgentInstallActions agent={agent} onInstall={(elevated) => installAgent(agent.id, elevated)} />
                 ) : agent.enabled ? (
                   <Button
                     size="sm"
@@ -322,9 +382,7 @@ const AgentsSettings: React.FC = () => {
                     <RefreshCw size={13} /> Update
                   </Button>
                 ) : (
-                  <Button size="sm" disabled={!agent.canInstall} onClick={() => void installAgent(agent.id)}>
-                    <Download size={13} /> Install
-                  </Button>
+                  <AgentInstallActions agent={agent} onInstall={(elevated) => installAgent(agent.id, elevated)} />
                 )}
               </div>
             </div>

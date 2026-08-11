@@ -2,7 +2,7 @@ import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentInte
 
 export const geminiDefinition: AgentDefinition = {
   id: "gemini", name: "Gemini CLI", kind: "agent", bin: ["gemini"],
-  versionFlag: "--version", installCmd: "npm install -g @google/gemini-cli", updateCmd: "npm update -g @google/gemini-cli"
+  versionFlag: "--version", installCmd: "npm install -g @google/gemini-cli", updateCmd: "npm update -g @google/gemini-cli", websiteUrl: "https://github.com/google-gemini/gemini-cli"
 };
 
 export const geminiIntegration: AgentIntegration = {

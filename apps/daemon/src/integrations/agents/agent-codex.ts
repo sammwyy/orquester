@@ -2,7 +2,7 @@ import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentInte
 
 export const codexDefinition: AgentDefinition = {
   id: "codex", name: "Codex", kind: "agent", bin: ["codex"],
-  versionFlag: "--version", installCmd: "npm install -g @openai/codex", updateCmd: "npm update -g @openai/codex"
+  versionFlag: "--version", installCmd: "npm install -g @openai/codex", updateCmd: "npm update -g @openai/codex", websiteUrl: "https://openai.com/codex/"
 };
 
 export const codexIntegration: AgentIntegration = {

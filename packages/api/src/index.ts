@@ -137,6 +137,9 @@ export interface RegistryEntry {
   version?: string;
   canInstall: boolean;
   canUpdate: boolean;
+  installCommand?: string;
+  websiteUrl?: string;
+  missingDependencies: string[];
   /** Live install/update status (daemon-managed, streamed over events). */
   installState: RegistryInstallState;
   /** Captured output when `installState === "error"`. */

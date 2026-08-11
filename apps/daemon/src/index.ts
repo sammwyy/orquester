@@ -123,6 +123,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
   // Stream registry changes (install/update status, detected versions) to clients.
   registry.events.on("changed", (entry) => broadcaster.publish("registry", "registry.changed", entry));
   registry.quotaEvents.on("changed", (quota) => broadcaster.publish("registry", "registry.quota.changed", quota));
+  registry.installEvents.on("sudo.required", (payload) => broadcaster.publish("registry", "registry.install.sudoRequired", payload));
   broadcaster.onClientCountChange((count) => registry.setEventClientCount(count));
   await registry.init();
   sessions.lifecycle.on("created", (s: SessionSummary) =>
@@ -543,9 +544,27 @@ function createServer(
     registry.quota(request.params.id)
   );
 
-  app.post<{ Params: { id: string } }>("/api/registry/:id/install", async (request) =>
-    registry.install(request.params.id)
-  );
+  app.post<{ Params: { id: string }; Body: { elevated?: boolean } }>("/api/registry/:id/install", async (request, reply) => {
+    if (options.mode !== "local") {
+      return reply.code(403).send({ code: "LOCAL_ONLY", message: "Installation is only available on a local daemon." });
+    }
+    return registry.install(request.params.id, request.body?.elevated === true);
+  });
+
+  app.post<{ Params: { id: string }; Body: { password?: string } }>("/api/registry/:id/install/password", async (request, reply) => {
+    if (options.mode !== "local") {
+      return reply.code(403).send({ code: "LOCAL_ONLY", message: "Administrator installation is only available locally." });
+    }
+    const password = request.body?.password;
+    if (typeof password !== "string" || password.length === 0) {
+      return reply.code(400).send({ code: "PASSWORD_REQUIRED", message: "A password is required." });
+    }
+    return { accepted: services.registry.provideInstallPassword(request.params.id, password) };
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/registry/:id/install/password", async (request) => ({
+    cancelled: services.registry.cancelInstallPassword(request.params.id)
+  }));
 
   app.post<{ Params: { id: string } }>("/api/registry/:id/update", async (request) =>
     registry.update(request.params.id)

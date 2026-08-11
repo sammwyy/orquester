@@ -3,7 +3,7 @@ import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentInte
 
 export const grokDefinition: AgentDefinition = {
   id: "grok", name: "Grok Build", kind: "agent", bin: ["grok"],
-  versionFlag: "--version", installCmd: "curl -fsSL https://x.ai/cli/install.sh | bash", updateCmd: "grok update"
+  versionFlag: "--version", installCmd: "curl -fsSL https://x.ai/cli/install.sh | bash", updateCmd: "grok update", websiteUrl: "https://x.ai/"
 };
 
 export const grokIntegration: AgentIntegration = {

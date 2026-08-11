@@ -10,6 +10,8 @@ export interface DropdownProps {
   width?: string;
   className?: string;
   onOpenChange?: (open: boolean) => void;
+  preferUp?: boolean;
+  side?: "auto" | "left";
 }
 
 interface DropdownContextValue {
@@ -45,7 +47,9 @@ export const Dropdown: React.FC<DropdownProps> = ({
   align = "left",
   width = "w-56",
   className,
-  onOpenChange
+  onOpenChange,
+  preferUp = false,
+  side = "auto"
 }) => {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<PanelPosition | null>(null);
@@ -65,8 +69,16 @@ export const Dropdown: React.FC<DropdownProps> = ({
     const rect = el.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom - MARGIN;
     const spaceAbove = rect.top - MARGIN;
+    if (side === "left") {
+      setPosition({
+        top: Math.max(MARGIN, Math.min(rect.top, window.innerHeight - 120)),
+        right: Math.max(MARGIN, window.innerWidth - rect.left + GAP),
+        maxHeight: window.innerHeight - MARGIN * 2
+      });
+      return;
+    }
     // Flip upward when there isn't room below (e.g. the sidebar-footer switcher).
-    const openUp = spaceBelow < 280 && spaceAbove > spaceBelow;
+    const openUp = preferUp || (spaceAbove > 120 && spaceBelow < 280 && spaceAbove > spaceBelow);
 
     const vertical = openUp
       ? { bottom: window.innerHeight - rect.top + GAP }
@@ -79,7 +91,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
       ...horizontal,
       maxHeight: Math.max(120, (openUp ? spaceAbove : spaceBelow) - GAP)
     });
-  }, [align]);
+  }, [align, preferUp, side]);
 
   // Position before paint to avoid a flash at the wrong spot.
   useLayoutEffect(() => {
@@ -152,7 +164,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
               maxHeight: position.maxHeight
             }}
             className={cn(
-              "animate-menu-in app-no-drag z-50 overflow-y-auto rounded-xl border border-neutral-800/80",
+              "animate-menu-in app-no-drag z-[200] overflow-y-auto rounded-xl border border-neutral-800/80",
               "bg-neutral-900/95 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-xl",
               position.bottom !== undefined ? "origin-bottom" : "origin-top",
               align === "right" && (position.bottom !== undefined ? "origin-bottom-right" : "origin-top-right"),

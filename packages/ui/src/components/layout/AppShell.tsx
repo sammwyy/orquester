@@ -2,7 +2,7 @@ import React from "react";
 import { Sidebar } from "../sidebar";
 import { TopBar } from "../topbar";
 import { MainView } from "../main";
-import { SettingsModal } from "../settings";
+import { SettingsModal, SudoPasswordModal } from "../settings";
 import { AuthModal } from "../auth";
 import { MobileKeyBar } from "../terminal";
 import { ConnectionStatusToast } from "../status";
@@ -20,6 +20,7 @@ export const AppShell: React.FC = () => (
       <MobileKeyBar />
     </div>
     <SettingsModal />
+    <SudoPasswordModal />
     <AuthModal />
     <ConnectionStatusToast />
   </div>

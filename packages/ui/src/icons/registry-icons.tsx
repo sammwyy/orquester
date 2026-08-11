@@ -15,6 +15,7 @@ import DeepSeek from "./agents/deepseek.svg?react";
 import Gemini from "./agents/gemini.svg?react";
 import Grok from "./agents/grok.svg?react";
 import OpenCode from "./agents/opencode.svg?react";
+import Cline from "./agents/cline.png";
 
 // IDEs - bare ids, matching daemon where possible; filename variants mapped to id
 import Antigravity from "./ides/antigravity.svg?react";
@@ -59,10 +60,15 @@ const generic: Partial<Record<RegistryKind, React.ComponentType<React.SVGProps<S
   browser: Globe
 };
 
+const ClineIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <img src={Cline} width={props.width} height={props.height} className={props.className} style={props.style} alt="" />
+);
+
 const specific: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   // agents (bare ids)
   claude: Claude,
   codex: Codex,
+  cline: ClineIcon,
   deepseek: DeepSeek,
   gemini: Gemini,
   grok: Grok,

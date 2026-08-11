@@ -198,6 +198,7 @@ export interface AppState {
   // auth (web → password-protected HTTP daemon)
   authPrompt: { connectionId: string } | null;
   authSalt: string | null;
+  sudoPrompt: { agentId: string } | null;
 
   // navigation
   currentWorkspace: string | null;
@@ -266,6 +267,7 @@ export interface AppState {
   activateTab: (id: string) => void;
 
   applyEvent: (event: EventMessage) => void;
+  clearSudoPrompt: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -283,6 +285,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarDrawerOpen: false,
   authPrompt: null,
   authSalt: null,
+  sudoPrompt: null,
   currentWorkspace: null,
   currentProject: null,
   registry: EMPTY_REGISTRY,
@@ -730,6 +733,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
 
   applyEvent: (event) => {
+    if (event.channel === "registry" && event.type === "registry.install.sudoRequired") {
+      const payload = event.payload as { id?: string };
+      if (payload.id) set({ sudoPrompt: { agentId: payload.id } });
+      return;
+    }
     if (event.channel === "registry" && event.type === "registry.quota.changed") {
       const quota = event.payload as RegistryQuota;
       set((state) => ({ quotaById: { ...state.quotaById, [quota.id]: quota } }));
@@ -750,7 +758,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { id } = event.payload as { id: string };
       set((state) => removeSession(state, id));
     }
-  }
+  },
+  clearSudoPrompt: () => set({ sudoPrompt: null })
 }));
 
 /** First remaining tab id for a project (session preferred, then file tab). */
