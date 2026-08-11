@@ -1,4 +1,9 @@
-import { firstOutputLine, unsupportedQuota, type AgentIntegration } from "./types";
+import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentIntegration } from "./types";
+
+export const opencodeDefinition: AgentDefinition = {
+  id: "opencode", name: "OpenCode", kind: "agent", bin: ["opencode"],
+  versionFlag: "--version", installCmd: "npm install -g opencode-ai", updateCmd: "npm update -g opencode-ai"
+};
 
 export const opencodeIntegration: AgentIntegration = {
   id: "opencode",

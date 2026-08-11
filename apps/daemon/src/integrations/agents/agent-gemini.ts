@@ -1,4 +1,9 @@
-import { firstOutputLine, unsupportedQuota, type AgentIntegration } from "./types";
+import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentIntegration } from "./types";
+
+export const geminiDefinition: AgentDefinition = {
+  id: "gemini", name: "Gemini CLI", kind: "agent", bin: ["gemini"],
+  versionFlag: "--version", installCmd: "npm install -g @google/gemini-cli", updateCmd: "npm update -g @google/gemini-cli"
+};
 
 export const geminiIntegration: AgentIntegration = {
   id: "gemini",

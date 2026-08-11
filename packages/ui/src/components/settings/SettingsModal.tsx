@@ -316,13 +316,13 @@ const AgentsSettings: React.FC = () => {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={!agent.updateCmd}
+                    disabled={!agent.canUpdate}
                     onClick={() => void updateAgent(agent.id)}
                   >
                     <RefreshCw size={13} /> Update
                   </Button>
                 ) : (
-                  <Button size="sm" disabled={!agent.installCmd} onClick={() => void installAgent(agent.id)}>
+                  <Button size="sm" disabled={!agent.canInstall} onClick={() => void installAgent(agent.id)}>
                     <Download size={13} /> Install
                   </Button>
                 )}

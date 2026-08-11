@@ -132,20 +132,11 @@ export interface RegistryEntry {
   id: string;
   name: string;
   kind: RegistryKind;
-  /** Candidate binaries (names and/or absolute install paths); first found wins (cached). */
-  bin: string[];
-  /** True only when a candidate bin resolved AND the entry is not disabled. */
+  /** True when the daemon found the tool installed and usable. */
   enabled: boolean;
-  /** Absolute path of the resolved bin, when found. */
-  resolvedBin?: string;
-  /** Flag to print a version (agents only), e.g. "--version". */
-  versionFlag?: string;
-  /** Installed version, detected by running the version flag at startup (cached). */
   version?: string;
-  /** Shell command to install the bin (agents only). */
-  installCmd?: string;
-  /** Shell command to update the bin (agents only). */
-  updateCmd?: string;
+  canInstall: boolean;
+  canUpdate: boolean;
   /** Live install/update status (daemon-managed, streamed over events). */
   installState: RegistryInstallState;
   /** Captured output when `installState === "error"`. */

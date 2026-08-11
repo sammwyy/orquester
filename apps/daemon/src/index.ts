@@ -553,6 +553,9 @@ function createServer(
 
   // Launch an ide/file-explorer/browser on a path (fire-and-forget).
   app.post("/api/open", async (request, reply): Promise<OpenResult | void> => {
+    if (options.mode !== "local") {
+      return reply.code(403).send({ code: "LOCAL_ONLY", message: "Opening host applications is only available on a local daemon." });
+    }
     const body = (request.body ?? {}) as OpenRequest;
     if (!body.targetId || !body.path) {
       return reply.code(400).send({ code: "INVALID_REQUEST", message: "targetId and path required." });

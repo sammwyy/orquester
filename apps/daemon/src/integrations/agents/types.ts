@@ -1,5 +1,15 @@
 import type { RegistryActionResult, RegistryAuthInfo, RegistryQuota } from "@orquester/api";
 
+export interface AgentDefinition {
+  id: string;
+  name: string;
+  kind: "agent";
+  bin: readonly string[];
+  versionFlag?: string;
+  installCmd?: string;
+  updateCmd?: string;
+}
+
 export interface AgentCommandContext {
   bin: string;
   call(args: readonly string[]): Promise<RegistryActionResult>;

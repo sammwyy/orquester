@@ -1,5 +1,10 @@
 import type { QuotaWindow } from "@orquester/api";
-import { firstOutputLine, unsupportedQuota, type AgentIntegration } from "./types";
+import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentIntegration } from "./types";
+
+export const claudeDefinition: AgentDefinition = {
+  id: "claude", name: "Claude Code", kind: "agent", bin: ["claude"],
+  versionFlag: "--version", installCmd: "npm install -g @anthropic-ai/claude-code", updateCmd: "npm update -g @anthropic-ai/claude-code"
+};
 
 export const claudeIntegration: AgentIntegration = {
   id: "claude",

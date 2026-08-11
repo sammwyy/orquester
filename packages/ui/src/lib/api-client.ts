@@ -1,5 +1,4 @@
 import type {
-  AgentSummary,
   AuthInfoResponse,
   CreateProjectRequest,
   CreateSessionRequest,
@@ -9,7 +8,6 @@ import type {
   FsReadResponse,
   HealthResponse,
   OpenResult,
-  OpenTargetSummary,
   ProjectSummary,
   RegistryActionResult,
   RegistryQuota,
@@ -182,17 +180,7 @@ export class ApiClient {
     });
   }
 
-  // Catalog (agents / open targets)
-
-  listAgents(signal?: AbortSignal): Promise<AgentSummary[]> {
-    return this.send("GET", "/api/agents", { signal });
-  }
-
-  listOpenTargets(signal?: AbortSignal): Promise<OpenTargetSummary[]> {
-    return this.send("GET", "/api/open-targets", { signal });
-  }
-
-  // Registry (shells & agents)
+  // Registry state and actions
 
   listRegistry(signal?: AbortSignal): Promise<RegistryResponse> {
     return this.send("GET", "/api/registry", { signal });

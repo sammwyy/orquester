@@ -15,7 +15,8 @@ import { accessSync, constants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { AGENT_INTEGRATIONS } from "./integrations/agents";
+import { AGENT_DEFS, AGENT_INTEGRATIONS } from "./integrations/agents";
+import { HOST_BROWSERS, HOST_FILE_EXPLORERS, HOST_IDES } from "./host-registry";
 import { unsupportedQuota, type AgentCommandContext } from "./integrations/agents/types";
 
 /** Runtime shape after token expansion. */
@@ -28,6 +29,21 @@ interface RegistryDef {
   versionFlag?: string;
   installCmd?: string;
   updateCmd?: string;
+}
+
+interface RuntimeRegistryEntry {
+  id: string;
+  name: string;
+  kind: RegistryKind;
+  bin: string[];
+  enabled: boolean;
+  resolvedBin?: string;
+  versionFlag?: string;
+  version?: string;
+  installCmd?: string;
+  updateCmd?: string;
+  installState: RegistryEntry["installState"];
+  installError?: string;
 }
 
 function expand(tokens: readonly string[]): string[] {
@@ -88,11 +104,25 @@ function materialize(list: readonly RegistryEntryDef[]): RegistryDef[] {
   });
 }
 
+function publicEntry(entry: RuntimeRegistryEntry): RegistryEntry {
+  return {
+    id: entry.id,
+    name: entry.name,
+    kind: entry.kind,
+    enabled: entry.enabled,
+    version: entry.version,
+    canInstall: Boolean(entry.installCmd),
+    canUpdate: Boolean(entry.updateCmd),
+    installState: entry.installState,
+    installError: entry.installError
+  };
+}
+
 const DEFAULT_SHELLS: RegistryDef[] = materialize(REGISTRY.shells as readonly RegistryEntryDef[]);
-const DEFAULT_AGENTS: RegistryDef[] = materialize(REGISTRY.agents as readonly RegistryEntryDef[]);
-const DEFAULT_IDES: RegistryDef[] = materialize(REGISTRY.ides as readonly RegistryEntryDef[]);
-const DEFAULT_FILE_EXPLORERS: RegistryDef[] = materialize(REGISTRY.fileExplorers as readonly RegistryEntryDef[]);
-const DEFAULT_BROWSERS: RegistryDef[] = materialize(REGISTRY.browsers as readonly RegistryEntryDef[]);
+const DEFAULT_AGENTS: RegistryDef[] = materialize(AGENT_DEFS);
+const DEFAULT_IDES: RegistryDef[] = materialize(HOST_IDES);
+const DEFAULT_FILE_EXPLORERS: RegistryDef[] = materialize(HOST_FILE_EXPLORERS);
+const DEFAULT_BROWSERS: RegistryDef[] = materialize(HOST_BROWSERS);
 
 /** The platform's generic "open this" command. */
 function osOpenerForKind(kind: RegistryKind): string[] {
@@ -107,7 +137,7 @@ function osOpenerForKind(kind: RegistryKind): string[] {
  * was found (and it was not explicitly disabled).
  */
 export class RegistryService {
-  private entries = new Map<string, RegistryEntry>();
+  private entries = new Map<string, RuntimeRegistryEntry>();
   private quotas = new Map<string, RegistryQuota>();
   private quotaRequests = new Map<string, Promise<RegistryQuota>>();
   private quotaTimer: ReturnType<typeof setInterval> | null = null;
@@ -148,7 +178,9 @@ export class RegistryService {
 
   list(): RegistryResponse {
     const byKind = (kind: RegistryKind) =>
-      [...this.entries.values()].filter((entry) => entry.kind === kind);
+      [...this.entries.values()]
+        .filter((entry) => entry.kind === kind)
+        .map((entry) => publicEntry(entry));
     return {
       shells: byKind("shell"),
       agents: byKind("agent"),
@@ -158,7 +190,7 @@ export class RegistryService {
     };
   }
 
-  get(id: string): RegistryEntry | undefined {
+  get(id: string): RuntimeRegistryEntry | undefined {
     return this.entries.get(id);
   }
 
@@ -342,13 +374,13 @@ export class RegistryService {
     });
   }
 
-  private patch(id: string, partial: Partial<RegistryEntry>): void {
+  private patch(id: string, partial: Partial<RuntimeRegistryEntry>): void {
     const entry = this.entries.get(id);
     if (!entry) {
       return;
     }
     Object.assign(entry, partial);
-    this.events.emit("changed", { ...entry });
+    this.events.emit("changed", publicEntry(entry));
   }
 
   private async detectVersions(): Promise<void> {
@@ -386,7 +418,7 @@ export class RegistryService {
     }
   }
 
-  private resolveDef(def: RegistryDef): RegistryEntry {
+  private resolveDef(def: RegistryDef): RuntimeRegistryEntry {
     const resolvedBin = resolveBin(def.bin);
     return {
       id: def.id,

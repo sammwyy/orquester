@@ -1,5 +1,10 @@
 import type { QuotaWindow } from "@orquester/api";
-import { firstOutputLine, unsupportedQuota, type AgentIntegration } from "./types";
+import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentIntegration } from "./types";
+
+export const grokDefinition: AgentDefinition = {
+  id: "grok", name: "Grok Build", kind: "agent", bin: ["grok"],
+  versionFlag: "--version", installCmd: "curl -fsSL https://x.ai/cli/install.sh | bash", updateCmd: "grok update"
+};
 
 export const grokIntegration: AgentIntegration = {
   id: "grok",

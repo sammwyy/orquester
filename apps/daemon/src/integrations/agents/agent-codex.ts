@@ -1,4 +1,9 @@
-import { firstOutputLine, unsupportedQuota, type AgentIntegration } from "./types";
+import { firstOutputLine, unsupportedQuota, type AgentDefinition, type AgentIntegration } from "./types";
+
+export const codexDefinition: AgentDefinition = {
+  id: "codex", name: "Codex", kind: "agent", bin: ["codex"],
+  versionFlag: "--version", installCmd: "npm install -g @openai/codex", updateCmd: "npm update -g @openai/codex"
+};
 
 export const codexIntegration: AgentIntegration = {
   id: "codex",
