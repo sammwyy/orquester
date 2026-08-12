@@ -216,7 +216,7 @@ mod win {
     pub async fn control(request: &MediaControlRequest) -> MediaStatusResponse {
         if let Some(action) = request.action {
             let volume = request.volume.unwrap_or_default();
-            let _ = run_blocking(move || match action {
+            let applied = run_blocking(move || match action {
                 MediaAction::Volume => set_master_volume(volume),
                 MediaAction::PlayPause | MediaAction::Next | MediaAction::Previous => {
                     let session = current_session()?;
@@ -231,6 +231,12 @@ mod win {
                 }
             })
             .await;
+            let mut status = read_status().await;
+            if action == MediaAction::Volume && applied.is_some() {
+                status.volume = volume.clamp(0.0, 1.0);
+                status.volume_available = true;
+            }
+            return status;
         }
         read_status().await
     }
