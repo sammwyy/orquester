@@ -134,7 +134,17 @@ impl SystemResourcesWatcher {
             *task = Some(tokio::spawn(async move {
                 let mut previous: Option<String> = None;
                 while active_flag.load(std::sync::atomic::Ordering::SeqCst) {
-                    let resources = service.read(&workspaces_dir);
+                    // Mutex + sysinfo refresh + a fresh disk listing are all
+                    // blocking; the one-shot HTTP handler already offloads
+                    // this via spawn_blocking, and this poll loop (every 3s
+                    // for as long as any /events client is connected) must
+                    // too, or it stalls its tokio worker thread each tick.
+                    let service = service.clone();
+                    let workspaces_dir = workspaces_dir.clone();
+                    let resources = match tokio::task::spawn_blocking(move || service.read(&workspaces_dir)).await {
+                        Ok(resources) => resources,
+                        Err(_) => break,
+                    };
                     let serialized = serde_json::to_string(&resources).unwrap_or_default();
                     if previous.as_ref() != Some(&serialized) {
                         previous = Some(serialized);
