@@ -682,6 +682,17 @@ function createWindow(): void {
   }
 }
 
+// Two instances racing to check/spawn the daemon (checkExistingDaemon /
+// startIntegratedDaemon below) would both see no daemon running and both
+// spawn one, fighting over the same unix socket/named pipe.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    showWindow();
+  });
+}
+
 app.whenReady().then(async () => {
   ensureAppFiles();
   const socketPath = socketPathFor();
