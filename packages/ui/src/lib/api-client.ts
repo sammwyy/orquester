@@ -11,7 +11,17 @@ import type {
   FsSearchResponse,
   FsCopyRequest,
   FsMoveRequest,
+  GitBranchesResponse,
+  GitCheckoutRequest,
+  GitCommitDetail,
+  GitCommitRequest,
+  GitFilesRequest,
+  GitLogResponse,
+  GitStashActionRequest,
+  GitStashCreateRequest,
+  GitStashListResponse,
   GitStatusResponse,
+  GitWorkingDiffResponse,
   IntegrationsResponse,
   HealthResponse,
   MediaControlRequest,
@@ -71,7 +81,8 @@ export class ApiClient {
     });
 
     if (!response.ok) {
-      throw new ApiError(response.status, method, path);
+      const payload = response.data as { message?: string } | undefined;
+      throw new ApiError(response.status, method, path, payload?.message);
     }
 
     return response.data;
@@ -204,6 +215,69 @@ export class ApiClient {
     return this.send("POST", "/api/git/init", { body: request });
   }
 
+  gitBranches(projectPath: string, signal?: AbortSignal): Promise<GitBranchesResponse> {
+    return this.send("GET", "/api/git/branches", { query: { path: projectPath }, signal });
+  }
+
+  gitLog(
+    projectPath: string,
+    options: { branch?: string; limit?: number; skip?: number } = {},
+    signal?: AbortSignal
+  ): Promise<GitLogResponse> {
+    return this.send("GET", "/api/git/log", {
+      query: { path: projectPath, branch: options.branch, limit: options.limit, skip: options.skip },
+      signal
+    });
+  }
+
+  gitCommit(projectPath: string, hash: string, signal?: AbortSignal): Promise<GitCommitDetail> {
+    return this.send("GET", "/api/git/commit", { query: { path: projectPath, hash }, signal });
+  }
+
+  gitCheckout(request: GitCheckoutRequest): Promise<GitStatusResponse> {
+    return this.send("POST", "/api/git/checkout", { body: request });
+  }
+
+  gitStashes(projectPath: string, signal?: AbortSignal): Promise<GitStashListResponse> {
+    return this.send("GET", "/api/git/stash", { query: { path: projectPath }, signal });
+  }
+
+  createGitStash(request: GitStashCreateRequest): Promise<GitStatusResponse> {
+    return this.send("POST", "/api/git/stash", { body: request });
+  }
+
+  applyGitStash(request: GitStashActionRequest): Promise<GitStatusResponse> {
+    return this.send("POST", "/api/git/stash/apply", { body: request });
+  }
+
+  popGitStash(request: GitStashActionRequest): Promise<GitStatusResponse> {
+    return this.send("POST", "/api/git/stash/pop", { body: request });
+  }
+
+  dropGitStash(request: GitStashActionRequest): Promise<{ ok: true }> {
+    return this.send("DELETE", "/api/git/stash", { body: request });
+  }
+
+  gitWorkingDiff(projectPath: string, file: string, staged: boolean, signal?: AbortSignal): Promise<GitWorkingDiffResponse> {
+    return this.send("GET", "/api/git/diff", { query: { path: projectPath, file, staged }, signal });
+  }
+
+  stageGitFiles(request: GitFilesRequest): Promise<GitStatusResponse> {
+    return this.send("POST", "/api/git/stage", { body: request });
+  }
+
+  unstageGitFiles(request: GitFilesRequest): Promise<GitStatusResponse> {
+    return this.send("POST", "/api/git/unstage", { body: request });
+  }
+
+  discardGitFiles(request: GitFilesRequest): Promise<GitStatusResponse> {
+    return this.send("POST", "/api/git/discard", { body: request });
+  }
+
+  commitGitChanges(request: GitCommitRequest): Promise<GitStatusResponse> {
+    return this.send("POST", "/api/git/commit", { body: request });
+  }
+
   batteryStatus(signal?: AbortSignal): Promise<BatteryStatusResponse> {
     return this.send("GET", "/api/system/battery", { signal });
   }
@@ -329,9 +403,11 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     method: string,
-    path: string
+    path: string,
+    /** The daemon's own error message, when the response body carried one (e.g. git's stderr). */
+    public readonly serverMessage?: string
   ) {
-    super(`Orquester API ${method} ${path} failed with status ${status}`);
+    super(serverMessage ?? `Orquester API ${method} ${path} failed with status ${status}`);
     this.name = "ApiError";
   }
 }

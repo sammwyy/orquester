@@ -81,7 +81,7 @@ const extOf = (name: string) => {
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
 };
 
-const FileTypeIcon: React.FC<{ name: string; size?: number; className?: string }> = ({ name, size = 14, className }) => {
+export const FileTypeIcon: React.FC<{ name: string; size?: number; className?: string }> = ({ name, size = 14, className }) => {
   const spec = FILE_ICON_BY_EXT[extOf(name)];
   const Icon = spec?.icon ?? File;
   return <Icon size={size} className={cn("shrink-0", spec?.className ?? "text-neutral-600", className)} />;

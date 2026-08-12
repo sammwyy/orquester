@@ -1,8 +1,13 @@
 import React from "react";
-import { Circle, FolderTree, X } from "lucide-react";
+import { Circle, FolderTree, GitGraph, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { getRegistryIcon } from "../../icons";
 import { useActiveTabId, useAppStore, useProjectTabs } from "../../store/app";
+
+const TOOL_ICONS = {
+  files: <FolderTree size={13} />,
+  git: <GitGraph size={13} />
+};
 
 /** Tabs for the current project — daemon sessions plus local tool tabs. */
 export const TabStrip: React.FC = () => {
@@ -20,12 +25,7 @@ export const TabStrip: React.FC = () => {
       {tabs.map((tab) => {
         const active = tab.id === activeTabId;
         const title = tab.type === "session" ? tab.session.title : tab.title;
-        const icon =
-          tab.type === "session" ? (
-            getRegistryIcon(tab.session.kind, tab.session.refId, 13)
-          ) : (
-            <FolderTree size={13} />
-          );
+        const icon = tab.type === "session" ? getRegistryIcon(tab.session.kind, tab.session.refId, 13) : TOOL_ICONS[tab.type];
         return (
           <div
             key={tab.id}

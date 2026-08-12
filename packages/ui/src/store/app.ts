@@ -148,17 +148,26 @@ function buildTransporter(connection: UiConnection): Transporter {
   return createTransporter(connection, { httpClient: setup?.httpClient });
 }
 
-/** A client-local, non-PTY tab (e.g. the file browser). */
-export interface FileTab {
+/** A built-in, client-local (non-PTY) tool. */
+export type ToolKind = "files" | "git";
+
+/** A client-local, non-PTY tab (e.g. the file browser or the git tree). */
+export interface ToolTab {
   id: string;
   projectPath: string;
+  kind: ToolKind;
   title: string;
 }
 
 /** A tab in the current project: a daemon session or a local tool tab. */
 export type ProjectTab =
   | { id: string; type: "session"; session: SessionSummary }
-  | { id: string; type: "files"; title: string };
+  | { id: string; type: ToolKind; title: string };
+
+const TOOL_TITLES: Record<ToolKind, string> = {
+  files: "Files",
+  git: "Git Tree"
+};
 
 /** Which list the sidebar shows: the workspace browser or the active tree. */
 export type SidebarView = "workspaces" | "active";
@@ -236,9 +245,9 @@ export interface AppState {
 
   /** All daemon sessions; a project's sessions are its tabs. */
   sessions: SessionSummary[];
-  /** Client-local tool tabs (file browser) per project path. */
-  fileTabsByProject: Record<string, FileTab[]>;
-  /** Client-local active tab id per project path (session or file tab). */
+  /** Client-local tool tabs (file browser, git tree) per project path. */
+  toolTabsByProject: Record<string, ToolTab[]>;
+  /** Client-local active tab id per project path (session or tool tab). */
   activeTabByProject: Record<string, string | null>;
 
   setApi: (api: ApiClient) => void;
@@ -296,7 +305,7 @@ export interface AppState {
   installAgent: (id: string) => Promise<void>;
   updateAgent: (id: string) => Promise<void>;
   openTab: (kind: RegistryKind, refId: string, title?: string) => Promise<void>;
-  openFileBrowser: () => void;
+  openTool: (kind: ToolKind) => void;
   closeTab: (id: string) => Promise<void>;
   activateTab: (id: string) => void;
 
@@ -338,7 +347,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   projects: [],
   projectsLoading: false,
   sessions: [],
-  fileTabsByProject: {},
+  toolTabsByProject: {},
   activeTabByProject: {},
 
   setApi: (api) => set({ api }),
@@ -676,7 +685,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     set((state) => {
       const active = state.activeTabByProject[project.path];
-      const fallback = firstTabId(state.sessions, state.fileTabsByProject, project.path);
+      const fallback = firstTabId(state.sessions, state.toolTabsByProject, project.path);
       return {
         currentProject: project,
         // Opening a project reveals the main view — close the mobile drawer.
@@ -852,17 +861,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  openFileBrowser: () =>
+  openTool: (kind) =>
     set((state) => {
       const project = state.currentProject;
       if (!project) {
         return state;
       }
-      const tab: FileTab = { id: crypto.randomUUID(), projectPath: project.path, title: "Files" };
+      const tab: ToolTab = { id: crypto.randomUUID(), projectPath: project.path, kind, title: TOOL_TITLES[kind] };
       return {
-        fileTabsByProject: {
-          ...state.fileTabsByProject,
-          [project.path]: [...(state.fileTabsByProject[project.path] ?? []), tab]
+        toolTabsByProject: {
+          ...state.toolTabsByProject,
+          [project.path]: [...(state.toolTabsByProject[project.path] ?? []), tab]
         },
         activeTabByProject: { ...state.activeTabByProject, [project.path]: tab.id }
       };
@@ -871,7 +880,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   closeTab: async (id) => {
     const api = get().api;
     const isSession = get().sessions.some((s) => s.id === id);
-    set((state) => (isSession ? removeSession(state, id) : removeFileTab(state, id)));
+    set((state) => (isSession ? removeSession(state, id) : removeToolTab(state, id)));
     if (isSession) {
       await api?.closeSession(id).catch(() => undefined);
     }
@@ -937,14 +946,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearSudoPrompt: () => set({ sudoPrompt: null })
 }));
 
-/** First remaining tab id for a project (session preferred, then file tab). */
+/** First remaining tab id for a project (session preferred, then tool tab). */
 function firstTabId(
   sessions: SessionSummary[],
-  fileTabs: Record<string, FileTab[]>,
+  toolTabs: Record<string, ToolTab[]>,
   path: string
 ): string | null {
   return (
-    sessions.find((s) => s.projectPath === path)?.id ?? fileTabs[path]?.[0]?.id ?? null
+    sessions.find((s) => s.projectPath === path)?.id ?? toolTabs[path]?.[0]?.id ?? null
   );
 }
 
@@ -952,12 +961,12 @@ function reassignActive(
   activeTabByProject: Record<string, string | null>,
   removedId: string,
   sessions: SessionSummary[],
-  fileTabs: Record<string, FileTab[]>
+  toolTabs: Record<string, ToolTab[]>
 ): Record<string, string | null> {
   const next = { ...activeTabByProject };
   for (const [path, activeId] of Object.entries(next)) {
     if (activeId === removedId) {
-      next[path] = firstTabId(sessions, fileTabs, path);
+      next[path] = firstTabId(sessions, toolTabs, path);
     }
   }
   return next;
@@ -967,25 +976,25 @@ function removeSession(state: AppState, id: string): Partial<AppState> {
   const sessions = state.sessions.filter((s) => s.id !== id);
   return {
     sessions,
-    activeTabByProject: reassignActive(state.activeTabByProject, id, sessions, state.fileTabsByProject)
+    activeTabByProject: reassignActive(state.activeTabByProject, id, sessions, state.toolTabsByProject)
   };
 }
 
-function removeFileTab(state: AppState, id: string): Partial<AppState> {
-  const fileTabsByProject: Record<string, FileTab[]> = {};
-  for (const [path, tabs] of Object.entries(state.fileTabsByProject)) {
-    fileTabsByProject[path] = tabs.filter((t) => t.id !== id);
+function removeToolTab(state: AppState, id: string): Partial<AppState> {
+  const toolTabsByProject: Record<string, ToolTab[]> = {};
+  for (const [path, tabs] of Object.entries(state.toolTabsByProject)) {
+    toolTabsByProject[path] = tabs.filter((t) => t.id !== id);
   }
   return {
-    fileTabsByProject,
-    activeTabByProject: reassignActive(state.activeTabByProject, id, state.sessions, fileTabsByProject)
+    toolTabsByProject,
+    activeTabByProject: reassignActive(state.activeTabByProject, id, state.sessions, toolTabsByProject)
   };
 }
 
-/** Combined tabs (sessions + file tabs) of the currently open project. */
+/** Combined tabs (sessions + tool tabs) of the currently open project. */
 export function useProjectTabs(): ProjectTab[] {
   const sessions = useAppStore((s) => s.sessions);
-  const fileTabsByProject = useAppStore((s) => s.fileTabsByProject);
+  const toolTabsByProject = useAppStore((s) => s.toolTabsByProject);
   const project = useAppStore((s) => s.currentProject);
   return useMemo(() => {
     if (!project) {
@@ -994,13 +1003,13 @@ export function useProjectTabs(): ProjectTab[] {
     const sessionTabs: ProjectTab[] = sessions
       .filter((s) => s.projectPath === project.path)
       .map((session) => ({ id: session.id, type: "session", session }));
-    const fileTabs: ProjectTab[] = (fileTabsByProject[project.path] ?? []).map((tab) => ({
+    const toolTabs: ProjectTab[] = (toolTabsByProject[project.path] ?? []).map((tab) => ({
       id: tab.id,
-      type: "files",
+      type: tab.kind,
       title: tab.title
     }));
-    return [...sessionTabs, ...fileTabs];
-  }, [sessions, fileTabsByProject, project]);
+    return [...sessionTabs, ...toolTabs];
+  }, [sessions, toolTabsByProject, project]);
 }
 
 /** A project with at least one open tab. */
@@ -1033,7 +1042,7 @@ function resolveProjectPath(
 /** Projects that currently hold tabs, grouped by workspace. */
 export function useActiveWorkspaces(): ActiveWorkspace[] {
   const sessions = useAppStore((s) => s.sessions);
-  const fileTabsByProject = useAppStore((s) => s.fileTabsByProject);
+  const toolTabsByProject = useAppStore((s) => s.toolTabsByProject);
   const workspaces = useAppStore((s) => s.workspaces);
 
   return useMemo(() => {
@@ -1052,9 +1061,9 @@ export function useActiveWorkspaces(): ActiveWorkspace[] {
         push(session.projectPath, { id: session.id, type: "session", session });
       }
     }
-    for (const [path, tabs] of Object.entries(fileTabsByProject)) {
+    for (const [path, tabs] of Object.entries(toolTabsByProject)) {
       for (const tab of tabs) {
-        push(path, { id: tab.id, type: "files", title: tab.title });
+        push(path, { id: tab.id, type: tab.kind, title: tab.title });
       }
     }
 
@@ -1074,7 +1083,7 @@ export function useActiveWorkspaces(): ActiveWorkspace[] {
         projects: projects.sort((a, b) => a.project.name.localeCompare(b.project.name))
       }))
       .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
-  }, [sessions, fileTabsByProject, workspaces]);
+  }, [sessions, toolTabsByProject, workspaces]);
 }
 
 export function useActiveTabId(): string | null {

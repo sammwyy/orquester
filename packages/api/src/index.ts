@@ -73,6 +73,106 @@ export interface GitInitRequest {
   path: string;
 }
 
+export interface GitBranchSummary {
+  name: string;
+  remote: boolean;
+  current: boolean;
+  commitHash: string;
+  upstream?: string;
+  ahead: number;
+  behind: number;
+}
+
+export interface GitBranchesResponse {
+  branches: GitBranchSummary[];
+  /** null when HEAD is detached. */
+  currentBranch: string | null;
+  detachedAt: string | null;
+}
+
+/** One row of a `git log`, with parent hashes so the client can lay out the DAG. */
+export interface GitCommitSummary {
+  hash: string;
+  parents: string[];
+  author: string;
+  authorEmail: string;
+  date: string;
+  subject: string;
+  /** Branch/tag/HEAD decorations pointing at this commit. */
+  refs: string[];
+}
+
+export interface GitLogResponse {
+  commits: GitCommitSummary[];
+  hasMore: boolean;
+}
+
+export interface GitCommitFile {
+  path: string;
+  /** Raw git status letter: A, M, D, R100, etc. */
+  status: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface GitCommitDetail {
+  hash: string;
+  parents: string[];
+  author: string;
+  authorEmail: string;
+  date: string;
+  subject: string;
+  body: string;
+  files: GitCommitFile[];
+  /** Unified diff patch text for the whole commit. */
+  diff: string;
+}
+
+export interface GitCheckoutRequest {
+  path: string;
+  ref: string;
+}
+
+/** A stash is internally a commit, so its diff is fetched the same way as any commit's (via `hash`/`ref`). */
+export interface GitStashSummary {
+  index: number;
+  ref: string;
+  hash: string;
+  branch: string;
+  message: string;
+  date: string;
+}
+
+export interface GitStashListResponse {
+  stashes: GitStashSummary[];
+}
+
+export interface GitStashActionRequest {
+  path: string;
+  ref: string;
+}
+
+export interface GitStashCreateRequest {
+  path: string;
+  message?: string;
+  includeUntracked?: boolean;
+}
+
+export interface GitWorkingDiffResponse {
+  diff: string;
+}
+
+/** Shared shape for stage/unstage/discard — an explicit path list, not an implicit "all". */
+export interface GitFilesRequest {
+  path: string;
+  files: string[];
+}
+
+export interface GitCommitRequest {
+  path: string;
+  message: string;
+}
+
 export interface BatteryStatusResponse {
   hasBattery: boolean;
   percentage?: number;

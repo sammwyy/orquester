@@ -50,7 +50,8 @@ export {
   useProjectTabs,
   useActiveTabId,
   type AppState,
-  type FileTab,
+  type ToolTab,
+  type ToolKind,
   type ProjectTab
 } from "./store/app";
 export * from "./hooks";

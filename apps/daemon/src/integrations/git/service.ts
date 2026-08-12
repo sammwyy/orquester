@@ -1,9 +1,17 @@
 import { execFile } from "node:child_process";
 import { watch, type FSWatcher } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { GitStatusResponse } from "@orquester/api";
+import type {
+  GitBranchesResponse,
+  GitBranchSummary,
+  GitCommitDetail,
+  GitCommitFile,
+  GitLogResponse,
+  GitStashSummary,
+  GitStatusResponse
+} from "@orquester/api";
 
 const execFileAsync = promisify(execFile);
 
@@ -72,6 +80,260 @@ export async function readGitStatus(projectPath: string): Promise<GitStatusRespo
       path: line.slice(3)
     }))
   };
+}
+
+// Field/record separators for machine-parseable `git log`/`for-each-ref` output —
+// control characters no commit message or ref name will ever contain, so
+// splitting never mistakes message content for a field boundary.
+const FIELD_SEP = "\x1f";
+const RECORD_SEP = "\x1e";
+
+async function currentHeadInfo(projectPath: string): Promise<{ branch: string | null; detachedAt: string | null }> {
+  try {
+    const branch = (await git(projectPath, ["symbolic-ref", "-q", "--short", "HEAD"])).trim();
+    return { branch: branch || null, detachedAt: null };
+  } catch {
+    const hash = await git(projectPath, ["rev-parse", "HEAD"]).then((out) => out.trim()).catch(() => "");
+    return { branch: null, detachedAt: hash || null };
+  }
+}
+
+function parseTrack(track: string): { ahead: number; behind: number } {
+  let ahead = 0;
+  let behind = 0;
+  for (const match of track.matchAll(/ahead (\d+)|behind (\d+)/g)) {
+    if (match[1]) ahead = Number(match[1]);
+    if (match[2]) behind = Number(match[2]);
+  }
+  return { ahead, behind };
+}
+
+/** Local + remote-tracking branches, with ahead/behind vs their upstream and which one HEAD is on. */
+export async function listBranches(projectPath: string): Promise<GitBranchesResponse> {
+  await assertProjectRepository(projectPath);
+  // %(refname) (full) is only used to reliably filter out a remote's symbolic HEAD
+  // pointer — its refname:short collapses to a bare "origin", not "origin/HEAD",
+  // so filtering on the short name alone would let it through as a fake branch.
+  const format = `%(refname)${FIELD_SEP}%(refname:short)${FIELD_SEP}%(objectname)${FIELD_SEP}%(upstream:short)${FIELD_SEP}%(HEAD)${FIELD_SEP}%(upstream:track)`;
+  const [localOut, remoteOut, head] = await Promise.all([
+    git(projectPath, ["for-each-ref", "refs/heads", `--format=${format}`]).catch(() => ""),
+    git(projectPath, ["for-each-ref", "refs/remotes", `--format=${format}`]).catch(() => ""),
+    currentHeadInfo(projectPath)
+  ]);
+
+  const parseRefs = (output: string, remote: boolean): GitBranchSummary[] =>
+    output
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .filter((line) => !line.split(FIELD_SEP)[0]?.endsWith("/HEAD"))
+      .map((line) => {
+        const [, name = "", commitHash = "", upstream = "", headMarker = "", track = ""] = line.split(FIELD_SEP);
+        return {
+          name,
+          remote,
+          current: !remote && headMarker === "*",
+          commitHash,
+          upstream: upstream || undefined,
+          ...parseTrack(track)
+        };
+      });
+
+  return {
+    branches: [...parseRefs(localOut, false), ...parseRefs(remoteOut, true)],
+    currentBranch: head.branch,
+    detachedAt: head.detachedAt
+  };
+}
+
+/** Commit log with parent hashes (for the graph) and ref decorations, newest first. */
+export async function readLog(
+  projectPath: string,
+  options: { branch?: string; limit: number; skip: number }
+): Promise<GitLogResponse> {
+  await assertProjectRepository(projectPath);
+  const format = `%H${FIELD_SEP}%P${FIELD_SEP}%an${FIELD_SEP}%ae${FIELD_SEP}%aI${FIELD_SEP}%D${FIELD_SEP}%s${RECORD_SEP}`;
+  const output = await git(projectPath, [
+    "log",
+    options.branch || "--all",
+    `--format=${format}`,
+    "-n",
+    String(options.limit + 1),
+    `--skip=${options.skip}`
+  ]).catch(() => "");
+
+  const records = output.split(RECORD_SEP).map((record) => record.trim()).filter(Boolean);
+  const commits = records.slice(0, options.limit).map((record) => {
+    const [hash = "", parents = "", author = "", authorEmail = "", date = "", refs = "", subject = ""] =
+      record.split(FIELD_SEP);
+    return {
+      hash,
+      parents: parents.split(" ").filter(Boolean),
+      author,
+      authorEmail,
+      date,
+      subject,
+      refs: refs.split(",").map((ref) => ref.trim()).filter(Boolean)
+    };
+  });
+
+  return { commits, hasMore: records.length > options.limit };
+}
+
+/** Full detail for one commit: message body, per-file stats, and the unified diff patch. */
+export async function readCommit(projectPath: string, hash: string): Promise<GitCommitDetail> {
+  await assertProjectRepository(projectPath);
+  const format = `%H${FIELD_SEP}%P${FIELD_SEP}%an${FIELD_SEP}%ae${FIELD_SEP}%aI${FIELD_SEP}%s${FIELD_SEP}%b`;
+  const metaOut = await git(projectPath, ["show", "-s", `--format=${format}`, hash]);
+
+  const [metaHash = "", parents = "", author = "", authorEmail = "", date = "", subject = "", ...bodyParts] =
+    metaOut.split(FIELD_SEP);
+  const parentHashes = parents.split(" ").filter(Boolean);
+
+  // A merge commit's `git show` defaults to a "combined diff" (against ALL parents at
+  // once — different hunk syntax our parser doesn't speak, and often empty for a clean
+  // merge with nothing to reconcile). Diffing against just the first parent instead
+  // matches what every other git client shows for a merge, and — since a stash is
+  // internally a merge commit too (parent 1 = original HEAD) — this is also exactly
+  // "what would applying this stash change," with no special-casing needed for stashes.
+  const isMerge = parentHashes.length > 0;
+  const range = isMerge ? [`${parentHashes[0]}..${metaHash}`] : [hash];
+  // `git diff` takes no --format (it never prints a commit header); `git show` needs
+  // --format= to suppress one, for the root-commit case where there's no parent to diff against.
+  const [statusOut, numstatOut, diffOut] = await Promise.all([
+    git(projectPath, isMerge ? ["diff", "--name-status", ...range] : ["show", "--format=", "--name-status", ...range]).catch(() => ""),
+    git(projectPath, isMerge ? ["diff", "--numstat", ...range] : ["show", "--format=", "--numstat", ...range]).catch(() => ""),
+    git(projectPath, isMerge ? ["diff", ...range] : ["show", "--format=", ...range]).catch(() => "")
+  ]);
+
+  const statusByPath = new Map<string, string>();
+  for (const line of statusOut.split(/\r?\n/).filter(Boolean)) {
+    const [status = "", ...rest] = line.split("\t");
+    const path = rest[rest.length - 1];
+    if (path) statusByPath.set(path, status);
+  }
+
+  const files: GitCommitFile[] = numstatOut
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const [additions, deletions, path = ""] = line.split("\t");
+      return {
+        path,
+        status: statusByPath.get(path) ?? "M",
+        additions: Number(additions) || 0,
+        deletions: Number(deletions) || 0
+      };
+    });
+
+  return {
+    hash: metaHash,
+    parents: parentHashes,
+    author,
+    authorEmail,
+    date,
+    subject,
+    body: bodyParts.join(FIELD_SEP).trim(),
+    files,
+    diff: diffOut
+  };
+}
+
+/** Switches branches; throws with git's own message (e.g. dirty working tree) on failure. */
+export async function checkoutRef(projectPath: string, ref: string): Promise<GitStatusResponse> {
+  await assertProjectRepository(projectPath);
+  await git(projectPath, ["checkout", ref]);
+  return readGitStatus(projectPath);
+}
+
+const STASH_SUBJECT_RE = /^(?:On|WIP on) ([^:]+): (.*)$/;
+
+export async function listStashes(projectPath: string): Promise<GitStashSummary[]> {
+  await assertProjectRepository(projectPath);
+  const format = `%H${FIELD_SEP}%gd${FIELD_SEP}%gs${FIELD_SEP}%aI`;
+  const output = await git(projectPath, ["stash", "list", `--format=${format}`]).catch(() => "");
+  return output
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line, index) => {
+      const [hash = "", ref = "", subject = "", date = ""] = line.split(FIELD_SEP);
+      const match = subject.match(STASH_SUBJECT_RE);
+      return { index, ref, hash, branch: match?.[1] ?? "", message: match?.[2] ?? subject, date };
+    });
+}
+
+/** Applies a stash without removing it; throws with git's own message on conflict. */
+export async function applyStash(projectPath: string, ref: string): Promise<void> {
+  await assertProjectRepository(projectPath);
+  await git(projectPath, ["stash", "apply", ref]);
+}
+
+/** Applies a stash and removes it; throws (leaving the stash intact) on conflict. */
+export async function popStash(projectPath: string, ref: string): Promise<void> {
+  await assertProjectRepository(projectPath);
+  await git(projectPath, ["stash", "pop", ref]);
+}
+
+export async function dropStash(projectPath: string, ref: string): Promise<void> {
+  await assertProjectRepository(projectPath);
+  await git(projectPath, ["stash", "drop", ref]);
+}
+
+/** Stashes the current working tree changes (and index); throws if there's nothing to stash. */
+export async function createStash(projectPath: string, message?: string, includeUntracked?: boolean): Promise<void> {
+  await assertProjectRepository(projectPath);
+  const args = ["stash", "push"];
+  if (includeUntracked) args.push("-u");
+  if (message) args.push("-m", message);
+  await git(projectPath, args);
+}
+
+/**
+ * Diff for one working-tree file, staged or unstaged. `git diff`/`git diff --cached`
+ * always exit 0 (unlike `--no-index`), so no special error handling is needed there —
+ * but untracked files never show up in a diff at all, so those are synthesized as an
+ * all-added patch from the raw file content instead of shelling out to diff.
+ */
+export async function readWorkingDiff(projectPath: string, file: string, staged: boolean): Promise<string> {
+  await assertProjectRepository(projectPath);
+  if (!staged) {
+    const status = await git(projectPath, ["status", "--porcelain=v1", "--", file]).catch(() => "");
+    if (status.startsWith("??")) {
+      const content = await readFile(join(projectPath, file), "utf8").catch(() => "");
+      // A trailing newline splits into a trailing "" element that isn't really an extra line.
+      const lines = content.length ? content.replace(/\r?\n$/, "").split(/\r?\n/) : [];
+      const body = lines.map((line) => `+${line}`).join("\n");
+      return `diff --git a/${file} b/${file}\nnew file mode 100644\nindex 0000000..0000000\n--- /dev/null\n+++ b/${file}\n@@ -0,0 +1,${lines.length} @@\n${body}\n`;
+    }
+  }
+  return git(projectPath, staged ? ["diff", "--cached", "--", file] : ["diff", "--", file]).catch(() => "");
+}
+
+export async function stageFiles(projectPath: string, files: string[]): Promise<void> {
+  await assertProjectRepository(projectPath);
+  await git(projectPath, ["add", "--", ...files]);
+}
+
+export async function unstageFiles(projectPath: string, files: string[]): Promise<void> {
+  await assertProjectRepository(projectPath);
+  await git(projectPath, ["restore", "--staged", "--", ...files]);
+}
+
+/**
+ * Discards uncommitted changes to the given paths. Tracked and untracked files need
+ * different commands (`restore` only knows tracked paths; `clean` only touches
+ * untracked ones) — running both and swallowing the "doesn't apply" failure from
+ * whichever one doesn't match avoids having to know each path's type up front.
+ */
+export async function discardFiles(projectPath: string, files: string[]): Promise<void> {
+  await assertProjectRepository(projectPath);
+  await git(projectPath, ["clean", "-fd", "--", ...files]).catch(() => undefined);
+  await git(projectPath, ["restore", "--", ...files]).catch(() => undefined);
+}
+
+export async function commitChanges(projectPath: string, message: string): Promise<GitStatusResponse> {
+  await assertProjectRepository(projectPath);
+  await git(projectPath, ["commit", "-m", message]);
+  return readGitStatus(projectPath);
 }
 
 export interface GitProjectWatcher {

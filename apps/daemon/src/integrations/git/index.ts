@@ -1,7 +1,21 @@
 export {
+  applyStash,
+  checkoutRef,
+  commitChanges,
+  createStash,
+  discardFiles,
+  dropStash,
   initializeGit,
   isGitAvailable,
+  listBranches,
+  listStashes,
+  popStash,
+  readCommit,
   readGitStatus,
+  readLog,
+  readWorkingDiff,
+  stageFiles,
+  unstageFiles,
   watchGitProjects,
   type GitProjectWatcher
 } from "./service";
