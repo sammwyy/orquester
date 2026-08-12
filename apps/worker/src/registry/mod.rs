@@ -353,27 +353,29 @@ impl RegistryService {
     }
 
     async fn run_managed(&self, id: &str, install: bool, elevated: bool) -> bool {
-        let (command, already_running) = {
-            let entries = self.entries.read().await;
-            let Some(entry) = entries.get(id) else { return false };
+        // The "is one already running" check and the "mark it running" write
+        // must happen under one lock hold — two separate acquisitions let two
+        // concurrent install/update calls both observe Idle and both proceed,
+        // double-spawning the same command.
+        let (base_command, public) = {
+            let mut entries = self.entries.write().await;
+            let Some(entry) = entries.get_mut(id) else { return false };
+            if entry.install_state == RegistryInstallState::Installing {
+                return false;
+            }
             let command = if install { entry.install_command.clone() } else { entry.update_command.clone() };
-            (command, entry.install_state == RegistryInstallState::Installing)
+            let Some(base_command) = command else { return false };
+            entry.install_state = RegistryInstallState::Installing;
+            entry.install_error = None;
+            (base_command, to_public(entry))
         };
-        let Some(base_command) = command else { return false };
-        if already_running {
-            return false;
-        }
+        self.broadcaster.publish("registry", "registry.changed", &public);
+
         // Windows-only elevation: wraps the command in a native UAC prompt
         // via Start-Process -Verb RunAs. No password piping needed (unlike
         // the TS worker's posix sudo path) since the OS handles the prompt
         // itself, out-of-band from our child process's stdio.
         let command = if elevated { elevate_command_windows(&base_command) } else { base_command };
-
-        patch_entry(&self.entries, &self.broadcaster, id, |e| {
-            e.install_state = RegistryInstallState::Installing;
-            e.install_error = None;
-        })
-        .await;
 
         let entries = self.entries.clone();
         let broadcaster = self.broadcaster.clone();
