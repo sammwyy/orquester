@@ -125,14 +125,16 @@ const formatBytes = (bytes: number): string => {
   return `${new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)} ${units[unit]}`;
 };
 
+const formatPercentage = (value: number): string => `${Math.round(Number.isFinite(value) ? value : 0)}%`;
+
 const ResourcesLabel: React.FC = () => {
   const resources = useAppStore((state) => state.systemResources);
   if (!resources) return <span>Resources…</span>;
   return (
     <span className="flex items-center gap-2 text-current/80">
-      <span className="flex items-center gap-0.5"><Cpu size={11} />{resources.cpu.percentage}%</span>
-      <span className="flex items-center gap-0.5"><MemoryStick size={11} />{resources.memory.percentage}%</span>
-      <span className="flex items-center gap-0.5"><HardDrive size={11} />{resources.disk.percentage}%</span>
+      <span className="flex items-center gap-0.5"><Cpu size={11} />{formatPercentage(resources.cpu.percentage)}</span>
+      <span className="flex items-center gap-0.5"><MemoryStick size={11} />{formatPercentage(resources.memory.percentage)}</span>
+      <span className="flex items-center gap-0.5"><HardDrive size={11} />{formatPercentage(resources.disk.percentage)}</span>
     </span>
   );
 };
@@ -206,7 +208,7 @@ const ResourceCard: React.FC<{
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <p className="text-[11px] text-neutral-200">{label}</p>
-          <p className="text-[11px] tabular-nums text-neutral-300">{usage.percentage}%</p>
+          <p className="text-[11px] tabular-nums text-neutral-300">{formatPercentage(usage.percentage)}</p>
         </div>
         <p className="mt-0.5 truncate text-[10px] text-neutral-500">{detail}</p>
       </div>
@@ -335,7 +337,6 @@ const MediaContent: React.FC = () => {
           max="1"
           step="0.01"
           value={volume}
-          disabled={!media.volumeAvailable}
           className="h-1 min-w-0 flex-1 accent-neutral-300"
           onChange={(event) => {
             const nextVolume = Number(event.target.value);

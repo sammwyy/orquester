@@ -133,8 +133,6 @@ mod win {
         }
 
         let key = thumbnail_key(&player, &title, &artist, &album);
-        let volume = master_volume();
-        let volume_available = volume.is_ok();
         Ok(MediaStatusResponse {
             available: true,
             player: if player.is_empty() {
@@ -158,8 +156,8 @@ mod win {
                 Some(album.trim().to_string())
             },
             state: status_to_state(status),
-            volume: volume.unwrap_or(0.0),
-            volume_available,
+            volume: 0.0,
+            volume_available: false,
             thumbnail_key: Some(key),
         })
     }
@@ -180,8 +178,14 @@ mod win {
 
     pub async fn read_status() -> MediaStatusResponse {
         run_blocking(|| {
-            let session = current_session()?;
-            read_session_status(&session)
+            let volume = master_volume();
+            let mut status = current_session()
+                .and_then(|session| read_session_status(&session))
+                .unwrap_or_else(|_| stopped());
+            let volume_available = volume.is_ok();
+            status.volume = volume.unwrap_or(0.0);
+            status.volume_available = volume_available;
+            Ok(status)
         })
         .await
         .unwrap_or_else(stopped)
@@ -212,13 +216,18 @@ mod win {
     pub async fn control(request: &MediaControlRequest) -> MediaStatusResponse {
         if let Some(action) = request.action {
             let volume = request.volume.unwrap_or_default();
-            let _ = run_blocking(move || {
-                let session = current_session()?;
-                match action {
-                    MediaAction::PlayPause => session.TryTogglePlayPauseAsync()?.get().map(|_| ()),
-                    MediaAction::Next => session.TrySkipNextAsync()?.get().map(|_| ()),
-                    MediaAction::Previous => session.TrySkipPreviousAsync()?.get().map(|_| ()),
-                    MediaAction::Volume => set_master_volume(volume),
+            let _ = run_blocking(move || match action {
+                MediaAction::Volume => set_master_volume(volume),
+                MediaAction::PlayPause | MediaAction::Next | MediaAction::Previous => {
+                    let session = current_session()?;
+                    match action {
+                        MediaAction::PlayPause => {
+                            session.TryTogglePlayPauseAsync()?.get().map(|_| ())
+                        }
+                        MediaAction::Next => session.TrySkipNextAsync()?.get().map(|_| ()),
+                        MediaAction::Previous => session.TrySkipPreviousAsync()?.get().map(|_| ()),
+                        MediaAction::Volume => unreachable!(),
+                    }
                 }
             })
             .await;
