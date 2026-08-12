@@ -269,6 +269,7 @@ export interface AppState {
   loadBatteryStatus: () => Promise<void>;
   loadIntegrations: () => Promise<void>;
   setIntegrations: (integrations: IntegrationStatus[]) => void;
+  updateIntegration: (id: string, enabled: boolean) => Promise<void>;
   loadSystemResources: () => Promise<void>;
   loadMediaStatus: () => Promise<void>;
   controlMedia: (request: MediaControlRequest) => Promise<void>;
@@ -721,6 +722,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setIntegrations: (integrations) => set({ integrations }),
+
+  updateIntegration: async (id, enabled) => {
+    const api = get().api;
+    if (!api) return;
+    const next = Object.fromEntries(get().integrations.map((integration) => [integration.id, integration.id === id ? enabled : integration.enabled]));
+    try {
+      set({ integrations: (await api.updateIntegrations(next)).integrations });
+    } catch {
+      // Keep the current local state when the worker rejects the update.
+    }
+  },
 
   loadSystemResources: async () => {
     const api = get().api;

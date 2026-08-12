@@ -3,6 +3,13 @@
   "quotaWorkers": {
     "grok": true
   },
+  "integrations": {
+    "git": true,
+    "battery": true,
+    "system-resources": true,
+    "media": true,
+    "keep-awake": true
+  },
   "workspacesDir": "$appdir/workspaces",
   "logsDir": "$appdir/daemon/logs",
   "transports": {

@@ -1,5 +1,5 @@
 import React from "react";
-import { Battery, BatteryCharging, Cpu, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, MemoryStick, Music2, Pause, Play, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { Battery, BatteryCharging, Cpu, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, LockKeyhole, LockKeyholeOpen, MemoryStick, Music2, Pause, Play, SkipBack, SkipForward, Volume2 } from "lucide-react";
 import { registerStatusModule } from "./registry";
 import { useApi } from "../../context/orquester-context";
 import { useAppStore } from "../../store/app";
@@ -66,6 +66,39 @@ const BatteryLabel: React.FC = () => {
       {status.pluggedIn ? <BatteryCharging size={13} /> : <Battery size={13} />}
       <span>{percentage}%</span>
     </span>
+  );
+};
+
+const BatteryContent: React.FC = () => {
+  const battery = useAppStore((state) => state.batteryStatus);
+  const keepAwake = useAppStore((state) => state.integrations.find((integration) => integration.id === "keep-awake"));
+  const updateIntegration = useAppStore((state) => state.updateIntegration);
+  if (!battery?.hasBattery) return <p className="text-xs text-neutral-500">Battery information unavailable.</p>;
+  return (
+    <div className="w-64 max-w-[calc(100vw-2rem)]">
+      <div className="flex items-center justify-between border-b border-neutral-700/50 pb-2.5">
+        <div>
+          <p className="text-xs font-medium text-neutral-100">Battery</p>
+          <p className="mt-0.5 text-[10px] text-neutral-500">{battery.pluggedIn ? "Connected to power" : "Running on battery"}</p>
+        </div>
+        <span className="text-sm tabular-nums text-neutral-300">{battery.percentage ?? 0}%</span>
+      </div>
+      {keepAwake && (
+        <button
+          type="button"
+          disabled={!keepAwake.available}
+          className="mt-2 flex w-full items-center gap-2 rounded-md px-1.5 py-2 text-left hover:bg-white/5 disabled:opacity-40"
+          onClick={() => void updateIntegration("keep-awake", !keepAwake.enabled)}
+        >
+          {keepAwake.enabled ? <LockKeyhole size={14} className="text-amber-300" /> : <LockKeyholeOpen size={14} className="text-neutral-500" />}
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] text-neutral-200">Keep Awake</span>
+            <span className="block text-[10px] text-neutral-500">{keepAwake.enabled ? "Idle sleep is prevented" : "Allow normal idle sleep"}</span>
+          </span>
+          <span className={`h-2 w-2 rounded-full ${keepAwake.enabled ? "bg-amber-300" : "bg-neutral-600"}`} />
+        </button>
+      )}
+    </div>
   );
 };
 
@@ -269,7 +302,8 @@ registerStatusModule({
   id: "system.battery",
   label: <BatteryLabel />,
   side: "right",
-  integration: "battery"
+  integration: "battery",
+  content: BatteryContent
 });
 
 registerStatusModule({

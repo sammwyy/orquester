@@ -2,9 +2,10 @@ import type { IntegrationStatus } from "@orquester/api";
 import { readBatteryStatus } from "./battery";
 import { isGitAvailable } from "./git";
 import { isMediaAvailable } from "./media";
+import { isKeepAwakeAvailable } from "./keep-awake";
 
 export async function getIntegrationAvailability(): Promise<IntegrationStatus[]> {
-  const [gitAvailable, battery, mediaAvailable] = await Promise.all([isGitAvailable(), readBatteryStatus(), isMediaAvailable()]);
+  const [gitAvailable, battery, mediaAvailable, keepAwakeAvailable] = await Promise.all([isGitAvailable(), readBatteryStatus(), isMediaAvailable(), isKeepAwakeAvailable()]);
   return [
     {
       id: "git",
@@ -36,6 +37,14 @@ export async function getIntegrationAvailability(): Promise<IntegrationStatus[]>
       enabled: true,
       available: mediaAvailable,
       ...(mediaAvailable ? {} : { unavailableReason: "No supported media session is available on this worker." })
+    },
+    {
+      id: "keep-awake",
+      name: "Keep Awake",
+      description: "Prevent this worker from sleeping or becoming idle while enabled.",
+      enabled: true,
+      available: keepAwakeAvailable,
+      ...(keepAwakeAvailable ? {} : { unavailableReason: "This worker cannot control its idle or sleep state." })
     }
   ];
 }
