@@ -55,10 +55,6 @@ pub fn daemon_config_dir(base_dir: &str) -> String {
     join_path(&[base_dir, "daemon"])
 }
 
-pub fn daemon_logs_dir(base_dir: &str) -> String {
-    join_path(&[&daemon_config_dir(base_dir), "logs"])
-}
-
 pub fn app_config_path(base_dir: &str) -> String {
     join_path(&[&app_config_dir(base_dir), "app.json"])
 }
@@ -76,14 +72,6 @@ pub fn default_socket_path(base_dir: &str, platform: &str) -> String {
         return "\\\\.\\pipe\\orquester-daemon".to_string();
     }
     join_path(&[&daemon_config_dir(base_dir), "daemon.sock"])
-}
-
-pub fn local_date_stamp(date: chrono::DateTime<chrono::Local>) -> String {
-    date.format("%Y-%m-%d").to_string()
-}
-
-pub fn daily_log_file(logs_dir: &str) -> String {
-    join_path(&[logs_dir, &format!("{}.log", local_date_stamp(chrono::Local::now()))])
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

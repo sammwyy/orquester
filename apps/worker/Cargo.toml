@@ -20,7 +20,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 bcrypt = "0.15"
 portable-pty = "0.8"
 sysinfo = "0.31"
-notify = "6"
 bytes = "1"
 futures = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }

@@ -37,10 +37,7 @@ pub async fn events(State(state): State<AppState>) -> Response {
         Ok::<Bytes, std::io::Error>(Bytes::from(format!("{line}\n")))
     });
 
-    let services = state.services.clone();
-    let body_stream = stream::select(subscription, heartbeat).inspect(move |_| {
-        let _ = &services;
-    });
+    let body_stream = stream::select(subscription, heartbeat);
 
     // Client-count teardown: the stream has no natural "on drop" hook in axum
     // 0.7's Body::from_stream, so this wraps the stream to decrement on end —
