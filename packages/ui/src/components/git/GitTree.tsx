@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   Archive,
   ArrowDown,
+  ArrowDownToLine,
   ArrowRightLeft,
   ArrowUp,
+  CloudDownload,
   CornerUpLeft,
   GitBranch,
   GitCommitHorizontal,
@@ -20,6 +22,7 @@ import { cn } from "../../lib/cn";
 import { useApi } from "../../context/orquester-context";
 import { ApiError } from "../../lib/api-client";
 import { Dropdown, DropdownItem, Input } from "../ui";
+import { Avatar } from "./Avatar";
 import { CommitDetail } from "./CommitDetail";
 import { WorkingChanges } from "./WorkingChanges";
 import { layoutGraph, laneColor, type GraphRow } from "./graph";
@@ -27,9 +30,9 @@ import { layoutGraph, laneColor, type GraphRow } from "./graph";
 type SidebarTab = "branches" | "stash";
 
 const LOG_PAGE_SIZE = 150;
-const ROW_H = 36;
-const LANE_W = 16;
-const DOT_R = 4;
+const ROW_H = 40;
+const LANE_W = 18;
+const DOT_R = 4.5;
 
 interface RefBadge {
   text: string;
@@ -59,11 +62,11 @@ function parseRefBadges(refs: string[]): RefBadge[] {
 const RefPill: React.FC<{ badge: RefBadge }> = ({ badge }) => (
   <span
     className={cn(
-      "flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
-      badge.kind === "head" && "bg-neutral-100 text-neutral-900",
-      badge.kind === "branch" && "bg-emerald-500/15 text-emerald-300",
+      "flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+      badge.kind === "head" && "bg-neutral-100 text-neutral-900 shadow-sm shadow-black/20",
+      badge.kind === "branch" && "bg-emerald-500/15 text-emerald-300 ring-1 ring-inset ring-emerald-500/20",
       badge.kind === "remote" && "bg-neutral-800 text-neutral-400",
-      badge.kind === "tag" && "bg-amber-500/15 text-amber-300"
+      badge.kind === "tag" && "bg-amber-500/15 text-amber-300 ring-1 ring-inset ring-amber-500/20"
     )}
   >
     {badge.kind === "tag" && <Tag size={9} />}
@@ -99,20 +102,52 @@ const GraphCell: React.FC<{ row: GraphRow; maxLanes: number; isHead: boolean }> 
   const cy = ROW_H / 2;
   const verticalRange = (half: "top" | "bottom" | "full"): [number, number] =>
     half === "top" ? [0, cy] : half === "bottom" ? [cy, ROW_H] : [0, ROW_H];
+  const filterId = useId();
 
   return (
     <svg width={width} height={ROW_H} className="shrink-0 overflow-visible">
+      {isHead && (
+        <defs>
+          <filter id={filterId} x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+      )}
       {row.segments.map((segment, index) => {
         if (segment.kind === "line") {
           const [y1, y2] = verticalRange(segment.half);
           const x = cx(segment.col);
-          return <line key={index} x1={x} y1={y1} x2={x} y2={y2} stroke={laneColor(segment.colorIndex)} strokeWidth={2} />;
+          return (
+            <line
+              key={index}
+              x1={x}
+              y1={y1}
+              x2={x}
+              y2={y2}
+              stroke={laneColor(segment.colorIndex)}
+              strokeWidth={2}
+              strokeLinecap="round"
+            />
+          );
         }
         if (segment.kind === "curve") {
           const x1 = cx(segment.fromCol);
           const x2 = cx(segment.toCol);
-          const path = `M ${x1} ${cy} C ${x1} ${(cy + ROW_H) / 2}, ${x2} ${(cy + ROW_H) / 2}, ${x2} ${ROW_H}`;
-          return <path key={index} d={path} fill="none" stroke={laneColor(segment.colorIndex)} strokeWidth={2} />;
+          const path = `M ${x1} ${cy} C ${x1} ${cy + (ROW_H - cy) * 0.65}, ${x2} ${ROW_H - (ROW_H - cy) * 0.65}, ${x2} ${ROW_H}`;
+          return (
+            <path
+              key={index}
+              d={path}
+              fill="none"
+              stroke={laneColor(segment.colorIndex)}
+              strokeWidth={2}
+              strokeLinecap="round"
+            />
+          );
         }
         const x = cx(segment.col);
         return (
@@ -121,9 +156,10 @@ const GraphCell: React.FC<{ row: GraphRow; maxLanes: number; isHead: boolean }> 
             cx={x}
             cy={cy}
             r={segment.isMerge ? DOT_R + 1.5 : DOT_R}
-            fill={isHead ? "#f5f5f5" : laneColor(segment.colorIndex)}
+            fill={isHead ? "#fafafa" : laneColor(segment.colorIndex)}
             stroke={isHead ? laneColor(segment.colorIndex) : "rgba(0,0,0,0.35)"}
             strokeWidth={isHead ? 2.5 : 1}
+            filter={isHead ? `url(#${filterId})` : undefined}
           />
         );
       })}
@@ -160,13 +196,14 @@ const CommitRow: React.FC<{
       type="button"
       onClick={onSelect}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-lg px-2 text-left transition-colors",
+        "flex w-full items-center gap-3 rounded-lg px-2 text-left transition-colors",
         active ? "bg-neutral-800" : "hover:bg-neutral-900/70"
       )}
       style={{ height: ROW_H }}
     >
       {showGraph ? <GraphCell row={row} maxLanes={maxLanes} isHead={isHead} /> : <FlatDot isHead={isHead} />}
-      <span className={cn("min-w-0 flex-1 truncate text-[12.5px]", active ? "text-neutral-100" : "text-neutral-300")}>
+      <Avatar name={row.commit.author} size={22} className="ring-1 ring-inset ring-black/20" />
+      <span className={cn("min-w-0 flex-1 truncate text-[13px]", active ? "font-medium text-neutral-100" : "text-neutral-300")}>
         {row.commit.subject}
       </span>
       {badges.length > 0 && (
@@ -176,9 +213,6 @@ const CommitRow: React.FC<{
           ))}
         </span>
       )}
-      <span className="shrink-0 truncate text-[11px] text-neutral-500" title={row.commit.author}>
-        {row.commit.author}
-      </span>
       <span className="w-8 shrink-0 text-right font-mono text-[10px] text-neutral-600">
         {formatRelative(row.commit.date)}
       </span>
@@ -191,9 +225,11 @@ const BranchRow: React.FC<{
   branch: GitBranchSummary;
   selected: boolean;
   checkingOut: boolean;
+  pulling: boolean;
   onSelect: () => void;
   onCheckout: () => void;
-}> = ({ branch, selected, checkingOut, onSelect, onCheckout }) => (
+  onPull: () => void;
+}> = ({ branch, selected, checkingOut, pulling, onSelect, onCheckout, onPull }) => (
   <div
     role="button"
     tabIndex={0}
@@ -222,6 +258,19 @@ const BranchRow: React.FC<{
         <ArrowDown size={10} />
         {branch.behind}
       </span>
+    )}
+    {branch.current && branch.behind > 0 && (
+      <button
+        type="button"
+        title={`Pull ${branch.behind} commit${branch.behind === 1 ? "" : "s"} from ${branch.upstream ?? "upstream"}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onPull();
+        }}
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-emerald-400 opacity-0 transition-opacity hover:bg-emerald-500/20 group-hover:opacity-100"
+      >
+        {pulling ? <LoaderCircle size={11} className="animate-spin" /> : <ArrowDownToLine size={11} />}
+      </button>
     )}
     {!branch.current && !branch.remote && (
       <button
@@ -313,6 +362,8 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
+  const [pulling, setPulling] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [notARepo, setNotARepo] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("branches");
   const [stashes, setStashes] = useState<GitStashSummary[]>([]);
@@ -411,6 +462,36 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
     }
   };
 
+  const fetchRemote = async () => {
+    setFetching(true);
+    setError(null);
+    try {
+      const res = await api.fetchGitRemote(rootPath);
+      setBranches(res.branches);
+      setCurrentBranch(res.currentBranch);
+      await loadLog(selectedBranch, 0);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not fetch.");
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const pull = async () => {
+    setPulling(true);
+    setError(null);
+    try {
+      await api.pullGitBranch(rootPath);
+      await loadBranches();
+      await loadLog(selectedBranch, 0);
+      await loadWorkingStatus();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not pull — resolve the conflict from a terminal.");
+    } finally {
+      setPulling(false);
+    }
+  };
+
   const runStashAction = async (ref: string, action: "apply" | "pop" | "drop") => {
     setStashBusy(ref);
     setError(null);
@@ -505,6 +586,14 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
             )}
             <button
               type="button"
+              title="Fetch"
+              onClick={() => void fetchRemote()}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
+            >
+              {fetching ? <LoaderCircle size={12} className="animate-spin" /> : <CloudDownload size={12} />}
+            </button>
+            <button
+              type="button"
               title="Refresh"
               onClick={refresh}
               className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
@@ -521,8 +610,10 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
                 branch={{ name: "All branches", remote: false, current: false, commitHash: "", ahead: 0, behind: 0 }}
                 selected={selectedBranch === undefined}
                 checkingOut={false}
+                pulling={false}
                 onSelect={() => setSelectedBranch(undefined)}
                 onCheckout={() => undefined}
+                onPull={() => undefined}
               />
               {localBranches.map((branch) => (
                 <BranchRow
@@ -530,8 +621,10 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
                   branch={branch}
                   selected={selectedBranch === branch.name}
                   checkingOut={checkingOut === branch.name}
+                  pulling={pulling && branch.current}
                   onSelect={() => setSelectedBranch(branch.name)}
                   onCheckout={() => void checkout(branch.name)}
+                  onPull={() => void pull()}
                 />
               ))}
             </div>
@@ -544,8 +637,10 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
                     branch={branch}
                     selected={selectedBranch === branch.name}
                     checkingOut={checkingOut === branch.name}
+                    pulling={false}
                     onSelect={() => setSelectedBranch(branch.name)}
                     onCheckout={() => void checkout(branch.name)}
+                    onPull={() => undefined}
                   />
                 ))}
               </div>

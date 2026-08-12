@@ -4,6 +4,7 @@ import type { GitCommitDetail } from "@orquester/api";
 import { cn } from "../../lib/cn";
 import { useApi } from "../../context/orquester-context";
 import { FileTypeIcon } from "../files";
+import { Avatar } from "./Avatar";
 import { parseUnifiedDiff } from "./diff";
 
 const STATUS_INFO: Record<string, { label: string; className: string }> = {
@@ -47,14 +48,6 @@ const formatAbsolute = (iso: string) => {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 };
-
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("") || "?";
 
 export const CommitDetail: React.FC<{
   projectPath: string;
@@ -130,9 +123,7 @@ export const CommitDetail: React.FC<{
                 <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-400">{detail.body}</p>
               )}
               <div className="flex items-center gap-2.5 pt-1">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-[10px] font-semibold text-neutral-300">
-                  {initials(detail.author)}
-                </span>
+                <Avatar name={detail.author} size={28} />
                 <div className="min-w-0 text-[11px] leading-tight">
                   <p className="truncate text-neutral-300">{detail.author}</p>
                   <p className="truncate text-neutral-600" title={formatAbsolute(detail.date)}>

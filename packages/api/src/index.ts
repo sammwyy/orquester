@@ -133,6 +133,11 @@ export interface GitCheckoutRequest {
   ref: string;
 }
 
+/** A bare project-path request — used by actions with no other parameters, e.g. fetch/pull. */
+export interface GitPathRequest {
+  path: string;
+}
+
 /** A stash is internally a commit, so its diff is fetched the same way as any commit's (via `hash`/`ref`). */
 export interface GitStashSummary {
   index: number;

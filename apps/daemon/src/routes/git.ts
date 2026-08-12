@@ -6,6 +6,7 @@ import type {
   GitFilesRequest,
   GitInitRequest,
   GitLogResponse,
+  GitPathRequest,
   GitStashActionRequest,
   GitStashCreateRequest,
   GitStashListResponse,
@@ -22,10 +23,12 @@ import {
   createStash,
   discardFiles,
   dropStash,
+  fetchAll,
   initializeGit,
   listBranches,
   listStashes,
   popStash,
+  pullCurrentBranch,
   readCommit,
   readGitStatus,
   readLog,
@@ -348,6 +351,39 @@ export function registerGitRoutes(app: FastifyInstance, options: GitRoutesOption
         return status;
       } catch (error) {
         return gitErrorReply(reply, error, "Cannot commit.");
+      }
+    }
+  );
+
+  app.post<{ Body: Partial<GitPathRequest> }>(
+    "/api/git/fetch",
+    async (request, reply): Promise<GitBranchesResponse | void> => {
+      const path = request.body?.path;
+      if (!path) {
+        return reply.code(400).send({ code: "INVALID_REQUEST", message: "path required." });
+      }
+      try {
+        return await fetchAll(projectPathFor(options.workspacesDir, path));
+      } catch (error) {
+        return gitErrorReply(reply, error, "Cannot fetch.");
+      }
+    }
+  );
+
+  app.post<{ Body: Partial<GitPathRequest> }>(
+    "/api/git/pull",
+    async (request, reply): Promise<GitStatusResponse | void> => {
+      const path = request.body?.path;
+      if (!path) {
+        return reply.code(400).send({ code: "INVALID_REQUEST", message: "path required." });
+      }
+      try {
+        const projectPath = projectPathFor(options.workspacesDir, path);
+        const status = await pullCurrentBranch(projectPath);
+        options.broadcaster.publish("projects", "project.git.changed", status);
+        return status;
+      } catch (error) {
+        return gitErrorReply(reply, error, "Cannot pull.");
       }
     }
   );

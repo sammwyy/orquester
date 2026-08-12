@@ -245,6 +245,26 @@ export async function checkoutRef(projectPath: string, ref: string): Promise<Git
   return readGitStatus(projectPath);
 }
 
+/** Updates every remote-tracking branch (and ahead/behind counts) without touching the working tree. */
+export async function fetchAll(projectPath: string): Promise<GitBranchesResponse> {
+  await assertProjectRepository(projectPath);
+  await git(projectPath, ["fetch", "--all", "--prune"]);
+  return listBranches(projectPath);
+}
+
+/**
+ * Fetches and merges the current branch's upstream. `--no-rebase` pins the strategy
+ * explicitly — modern git otherwise refuses divergent histories until the reconcile
+ * mode is configured, which would surface as a confusing error in a GUI with no
+ * terminal to read the hint in. `--no-edit` accepts the default merge message rather
+ * than trying to open an editor, which would just hang here.
+ */
+export async function pullCurrentBranch(projectPath: string): Promise<GitStatusResponse> {
+  await assertProjectRepository(projectPath);
+  await git(projectPath, ["pull", "--no-rebase", "--no-edit"]);
+  return readGitStatus(projectPath);
+}
+
 const STASH_SUBJECT_RE = /^(?:On|WIP on) ([^:]+): (.*)$/;
 
 export async function listStashes(projectPath: string): Promise<GitStashSummary[]> {

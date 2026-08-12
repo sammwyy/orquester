@@ -278,6 +278,14 @@ export class ApiClient {
     return this.send("POST", "/api/git/commit", { body: request });
   }
 
+  fetchGitRemote(projectPath: string): Promise<GitBranchesResponse> {
+    return this.send("POST", "/api/git/fetch", { body: { path: projectPath } });
+  }
+
+  pullGitBranch(projectPath: string): Promise<GitStatusResponse> {
+    return this.send("POST", "/api/git/pull", { body: { path: projectPath } });
+  }
+
   batteryStatus(signal?: AbortSignal): Promise<BatteryStatusResponse> {
     return this.send("GET", "/api/system/battery", { signal });
   }
