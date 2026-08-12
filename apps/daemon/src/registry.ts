@@ -329,9 +329,13 @@ export class RegistryService {
     if (pending) return pending;
     const request = this.readQuota(id)
       .then((quota) => {
-        this.quotas.set(id, quota);
-        this.quotaEvents.emit("changed", { ...quota });
-        return quota;
+        // A transient read failure shouldn't blank out data that loaded fine
+        // before: keep serving the last good quota until a read actually succeeds.
+        const cached = this.quotas.get(id);
+        const next = !quota.supported && cached?.supported ? cached : quota;
+        this.quotas.set(id, next);
+        this.quotaEvents.emit("changed", { ...next });
+        return next;
       })
       .finally(() => this.quotaRequests.delete(id));
     this.quotaRequests.set(id, request);

@@ -535,7 +535,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     await result?.catch(() => undefined);
   },
 
-  setQuota: (quota) => set((state) => ({ quotaById: { ...state.quotaById, [quota.id]: quota } })),
+  setQuota: (quota) => set((state) => {
+    // A transient read failure shouldn't blank out data that loaded fine before.
+    const cached = state.quotaById[quota.id];
+    const next = !quota.supported && cached?.supported ? cached : quota;
+    return { quotaById: { ...state.quotaById, [quota.id]: next } };
+  }),
 
   submitPassword: async (password) => {
     const api = get().api;
@@ -923,8 +928,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     if (event.channel === "registry" && event.type === "registry.quota.changed") {
-      const quota = event.payload as RegistryQuota;
-      set((state) => ({ quotaById: { ...state.quotaById, [quota.id]: quota } }));
+      get().setQuota(event.payload as RegistryQuota);
       return;
     }
     if (event.channel === "registry" && event.type === "registry.changed") {

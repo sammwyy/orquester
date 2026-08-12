@@ -25,13 +25,14 @@ const percent = (window: QuotaWindow): number | undefined => {
   return undefined;
 };
 
-const QuotaRow: React.FC<{ quota: RegistryQuota; now: Date }> = ({ quota, now }) => (
+const QuotaRow: React.FC<{ quota: RegistryQuota; now: Date; refreshing: boolean }> = ({ quota, now, refreshing }) => (
   <div className="rounded-lg bg-neutral-950/45 px-2.5 py-2">
     <div className="mb-1.5 flex items-center gap-2">
       <span className="flex h-5 w-5 shrink-0 items-center justify-center text-neutral-300">
         {getRegistryIcon("agent", quota.id, 15)}
       </span>
       <span className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-200">{quota.provider}</span>
+      {refreshing && <Loader2 size={11} className="animate-spin text-neutral-600" />}
       {!quota.supported && <span className="text-[10px] text-neutral-600">Not supported</span>}
     </div>
     {quota.windows.length > 0 ? quota.windows.map((window) => {
@@ -133,11 +134,9 @@ export const QuotaMenu: React.FC = () => {
         {agents.map((agent) => {
           const quota = cachedQuotas[agent.id] ?? quotas[agent.id];
           if (quota && !quota.supported) return null;
-          return loading.has(agent.id) && !quota
-            ? <LoadingRow key={agent.id} name={agent.name} id={agent.id} />
-            : quota
-              ? <QuotaRow key={agent.id} quota={quota} now={now} />
-              : <LoadingRow key={agent.id} name={agent.name} id={agent.id} />;
+          return quota
+            ? <QuotaRow key={agent.id} quota={quota} now={now} refreshing={loading.has(agent.id)} />
+            : <LoadingRow key={agent.id} name={agent.name} id={agent.id} />;
         })}
         {!loading.size && agents.length > 0 && Object.values(quotas).every((quota) => !quota.supported) && (
           <p className="px-2 py-3 text-center text-[11px] text-neutral-600">No supported quota providers.</p>
