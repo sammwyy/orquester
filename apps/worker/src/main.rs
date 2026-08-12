@@ -2,6 +2,7 @@ mod api_types;
 mod bootstrap;
 mod broadcaster;
 mod config;
+mod git;
 mod host_registry;
 mod local_transport;
 mod paths;
@@ -60,6 +61,12 @@ async fn main() {
     registry.init().await;
     let broadcaster = Arc::new(Broadcaster::new());
     let sessions = Arc::new(SessionManager::new(registry.clone(), broadcaster.clone()));
+    let git_watcher = {
+        let broadcaster = broadcaster.clone();
+        git::watch_git_projects(&resolved.workspaces_dir, move |status| {
+            broadcaster.publish("projects", "project.git.changed", &status);
+        })
+    };
 
     let services = Arc::new(Services {
         daemon_id: daemon_id.clone(),
@@ -69,7 +76,21 @@ async fn main() {
         broadcaster,
         registry,
         sessions,
+        git_watcher,
     });
+
+    // Only run the git status poller while at least one client is listening
+    // for events, and only when the git integration is enabled.
+    {
+        let services_for_watch = services.clone();
+        services.broadcaster.on_client_count_change(move |count| {
+            let services = services_for_watch.clone();
+            tokio::spawn(async move {
+                let enabled = services.config.daemon.read().await.integrations.get("git").copied().unwrap_or(true);
+                services.git_watcher.set_active(count > 0 && enabled);
+            });
+        });
+    }
 
     let local_state = AppState {
         services: services.clone(),
@@ -112,6 +133,7 @@ async fn main() {
 
     tokio::signal::ctrl_c().await.expect("failed to listen for ctrl-c");
     tracing::info!("shutting down");
+    services.git_watcher.stop();
     services.sessions.close_all().await;
     local_handle.abort();
     if let Some(handle) = remote_handle {

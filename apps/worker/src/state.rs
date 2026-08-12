@@ -1,5 +1,6 @@
 use crate::broadcaster::Broadcaster;
 use crate::config::{ClientConfig, DaemonConfig};
+use crate::git::GitProjectWatcher;
 use crate::paths::ResolvedPaths;
 use crate::registry::RegistryService;
 use crate::sessions::SessionManager;
@@ -22,6 +23,7 @@ pub struct Services {
     pub broadcaster: Arc<Broadcaster>,
     pub registry: Arc<RegistryService>,
     pub sessions: Arc<SessionManager>,
+    pub git_watcher: GitProjectWatcher,
 }
 
 impl Services {
