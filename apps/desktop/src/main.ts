@@ -675,11 +675,10 @@ function createWindow(): void {
   });
 
   const devUrl = process.env.ORQUESTER_DESKTOP_DEV_URL;
-  if (devUrl) {
-    void mainWindow.loadURL(devUrl);
-  } else {
-    void mainWindow.loadFile(path.join(desktopRoot, "dist", "index.html"));
-  }
+  const loaded = devUrl
+    ? mainWindow.loadURL(devUrl)
+    : mainWindow.loadFile(path.join(desktopRoot, "dist", "index.html"));
+  loaded.catch((error) => console.error("Failed to load the Orquester window", error));
 }
 
 // Two instances racing to check/spawn the daemon (checkExistingDaemon /
