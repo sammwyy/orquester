@@ -145,9 +145,12 @@ pub async fn put_app_config(State(state): State<AppState>, Json(patch): Json<ser
     Json(current).into_response()
 }
 
-pub async fn get_remotes_config(State(state): State<AppState>) -> Json<Vec<RemoteConnectionConfig>> {
+pub async fn get_remotes_config(State(state): State<AppState>) -> Response {
+    if state.options.mode == WorkerMode::Remote {
+        return err(StatusCode::FORBIDDEN, "FORBIDDEN", "Remote connections can only be read locally over the unix socket.");
+    }
     let file = state.services.config.resolved.read().await.remotes_file.clone();
-    Json(read_remotes_file(&file).await.remotes)
+    Json(read_remotes_file(&file).await.remotes).into_response()
 }
 
 async fn read_remotes_file(file: &str) -> RemotesConfig {
@@ -158,6 +161,9 @@ async fn read_remotes_file(file: &str) -> RemotesConfig {
 }
 
 pub async fn put_remotes_config(State(state): State<AppState>, Json(remotes): Json<Vec<RemoteConnectionConfig>>) -> Response {
+    if state.options.mode == WorkerMode::Remote {
+        return err(StatusCode::FORBIDDEN, "FORBIDDEN", "Remote connections can only be changed locally over the unix socket.");
+    }
     let file = state.services.config.resolved.read().await.remotes_file.clone();
     let parsed = RemotesConfig { version: 1, remotes };
     if let Err(error) = write_json_file(&file, &parsed).await {
