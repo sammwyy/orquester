@@ -8,9 +8,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 
-/// Builds one Fastify-equivalent Axum app. Called once per transport (local
-/// unix/pipe socket, optional remote HTTP) with different auth/CORS options,
-/// Builds the worker's HTTP router.
+/// Builds the worker's HTTP router. Called once per transport (local
+/// unix/pipe socket, optional remote HTTP) with different auth/CORS options
+/// via `state.options`.
 pub fn build_router(state: AppState) -> Router {
     let mut router = Router::new()
         .route("/api/auth/info", get(routes::config_routes::auth_info))
