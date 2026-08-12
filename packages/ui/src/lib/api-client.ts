@@ -8,6 +8,9 @@ import type {
   GitInitRequest,
   FsListResponse,
   FsReadResponse,
+  FsSearchResponse,
+  FsCopyRequest,
+  FsMoveRequest,
   GitStatusResponse,
   IntegrationsResponse,
   HealthResponse,
@@ -169,12 +172,28 @@ export class ApiClient {
     return this.send("GET", "/api/fs/read", { query: { path }, signal });
   }
 
+  searchFiles(path: string, query: string, regex = false, signal?: AbortSignal): Promise<FsSearchResponse> {
+    return this.send("GET", "/api/fs/search", { query: { path, query, regex }, signal });
+  }
+
   createFsEntry(path: string, kind: "file" | "dir"): Promise<{ ok: true }> {
     return this.send("POST", "/api/fs/create", { body: { path, kind } });
   }
 
   saveFile(path: string, content: string): Promise<{ ok: true }> {
     return this.send("PUT", "/api/fs/write", { body: { path, content } });
+  }
+
+  deleteFsEntry(path: string): Promise<{ ok: true }> {
+    return this.send("DELETE", "/api/fs", { body: { path } });
+  }
+
+  moveFsEntry(req: FsMoveRequest): Promise<{ ok: true }> {
+    return this.send("POST", "/api/fs/move", { body: req });
+  }
+
+  copyFsEntry(req: FsCopyRequest): Promise<{ ok: true }> {
+    return this.send("POST", "/api/fs/copy", { body: req });
   }
 
   gitStatus(projectPath: string, signal?: AbortSignal): Promise<GitStatusResponse> {

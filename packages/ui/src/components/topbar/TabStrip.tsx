@@ -32,6 +32,15 @@ export const TabStrip: React.FC = () => {
             role="tab"
             aria-selected={active}
             onClick={() => activateTab(tab.id)}
+            onMouseDown={(event) => {
+              if (event.button === 1) event.preventDefault();
+            }}
+            onAuxClick={(event) => {
+              if (event.button === 1) {
+                event.preventDefault();
+                void closeTab(tab.id);
+              }
+            }}
             className={cn(
               "group flex h-7 cursor-pointer items-center gap-1.5 rounded-lg pl-2 pr-1 text-xs transition-colors",
               active

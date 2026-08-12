@@ -170,6 +170,35 @@ export interface FsWriteRequest {
   content: string;
 }
 
+export interface FsDeleteRequest {
+  path: string;
+}
+
+/** Rename or move an entry; `to` must not already exist. */
+export interface FsMoveRequest {
+  path: string;
+  to: string;
+}
+
+/** Copy an entry (file or directory, recursively); `to` must not already exist. */
+export interface FsCopyRequest {
+  path: string;
+  to: string;
+}
+
+export interface FsSearchMatch {
+  path: string;
+  line: number;
+  column: number;
+  preview: string;
+}
+
+export interface FsSearchResponse {
+  query: string;
+  matches: FsSearchMatch[];
+  truncated: boolean;
+}
+
 /** Public auth metadata for the HTTP transport (no secrets). */
 export interface AuthInfoResponse {
   authRequired: boolean;

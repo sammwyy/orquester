@@ -3,10 +3,14 @@ import type {
   CreateSessionRequest,
   CreateWorkspaceRequest,
   EventMessage,
+  FsCopyRequest,
   FsCreateRequest,
+  FsDeleteRequest,
   FsEntry,
   FsListResponse,
+  FsMoveRequest,
   FsReadResponse,
+  FsSearchResponse,
   FsWriteRequest,
   HealthResponse,
   OpenRequest,
@@ -57,7 +61,7 @@ import {
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { homedir, platform as osPlatform } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { stat } from "node:fs/promises";
@@ -550,6 +554,26 @@ function createServer(
     }
   );
 
+  app.get<{ Querystring: { path?: string; query?: string; regex?: string } }>(
+    "/api/fs/search",
+    async (request, reply): Promise<FsSearchResponse | void> => {
+      const path = request.query.path;
+      const query = request.query.query;
+      const regex = request.query.regex === "true";
+      if (!path || !query) {
+        return reply.code(400).send({ code: "INVALID_REQUEST", message: "path and query required." });
+      }
+      try {
+        return await searchFiles(path, query, regex);
+      } catch (error) {
+        return reply.code(400).send({
+          code: "FS_ERROR",
+          message: error instanceof Error ? error.message : "Cannot search files."
+        });
+      }
+    }
+  );
+
   // Write (save) a file's text content.
   app.put("/api/fs/write", async (request, reply): Promise<{ ok: true } | void> => {
     const body = (request.body ?? {}) as Partial<FsWriteRequest>;
@@ -585,6 +609,75 @@ function createServer(
       return reply.code(400).send({
         code: "FS_ERROR",
         message: error instanceof Error ? error.message : "Cannot create entry."
+      });
+    }
+  });
+
+  // Delete a file or directory (recursive).
+  app.delete("/api/fs", async (request, reply): Promise<{ ok: true } | void> => {
+    const body = (request.body ?? {}) as Partial<FsDeleteRequest>;
+    if (!body.path) {
+      return reply.code(400).send({ code: "INVALID_REQUEST", message: "path required." });
+    }
+    try {
+      await rm(body.path, { recursive: true });
+      return { ok: true };
+    } catch (error) {
+      return reply.code(400).send({
+        code: "FS_ERROR",
+        message: error instanceof Error ? error.message : "Cannot delete entry."
+      });
+    }
+  });
+
+  // Rename or move a file/directory (cut/paste); falls back to copy+delete across devices.
+  app.post("/api/fs/move", async (request, reply): Promise<{ ok: true } | void> => {
+    const body = (request.body ?? {}) as Partial<FsMoveRequest>;
+    if (!body.path || !body.to) {
+      return reply.code(400).send({ code: "INVALID_REQUEST", message: "path and to required." });
+    }
+    if (await pathExists(body.to)) {
+      return reply.code(400).send({ code: "FS_EXISTS", message: "An entry already exists at the destination." });
+    }
+    try {
+      await mkdir(dirname(body.to), { recursive: true });
+      try {
+        await rename(body.path, body.to);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EXDEV") {
+          await cp(body.path, body.to, { recursive: true, errorOnExist: true });
+          await rm(body.path, { recursive: true });
+        } else {
+          throw error;
+        }
+      }
+      return { ok: true };
+    } catch (error) {
+      return reply.code(400).send({
+        code: "FS_ERROR",
+        message: error instanceof Error ? error.message : "Cannot move entry."
+      });
+    }
+  });
+
+  // Copy a file or directory (recursive) — the server-side half of copy/paste,
+  // works across any two paths the daemon can see (any workspace, same daemon).
+  app.post("/api/fs/copy", async (request, reply): Promise<{ ok: true } | void> => {
+    const body = (request.body ?? {}) as Partial<FsCopyRequest>;
+    if (!body.path || !body.to) {
+      return reply.code(400).send({ code: "INVALID_REQUEST", message: "path and to required." });
+    }
+    if (await pathExists(body.to)) {
+      return reply.code(400).send({ code: "FS_EXISTS", message: "An entry already exists at the destination." });
+    }
+    try {
+      await mkdir(dirname(body.to), { recursive: true });
+      await cp(body.path, body.to, { recursive: true, errorOnExist: true });
+      return { ok: true };
+    } catch (error) {
+      return reply.code(400).send({
+        code: "FS_ERROR",
+        message: error instanceof Error ? error.message : "Cannot copy entry."
       });
     }
   });
@@ -842,6 +935,15 @@ async function listProjects(workspacesDir: string, workspace: string): Promise<P
   }));
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** List a directory for the file browser (dirs first, dotfiles included). */
 async function listFiles(path: string): Promise<FsListResponse> {
   const dirents = await readdir(path, { withFileTypes: true });
@@ -870,6 +972,55 @@ async function listFiles(path: string): Promise<FsListResponse> {
 
   const parent = dirname(path);
   return { path, parent: parent === path ? null : parent, entries };
+}
+
+const ignoredSearchDirectories = new Set([".git", "node_modules", ".next", "dist", "build"]);
+
+async function searchFiles(root: string, query: string, regex: boolean): Promise<FsSearchResponse> {
+  const matches: FsSearchResponse["matches"] = [];
+  const maxMatches = 500;
+  const pattern = regex ? new RegExp(query, "g") : null;
+
+  const visit = async (path: string): Promise<void> => {
+    if (matches.length >= maxMatches) return;
+    const entries = await readdir(path, { withFileTypes: true });
+    for (const entry of entries) {
+      if (matches.length >= maxMatches) return;
+      if (entry.isDirectory()) {
+        if (!ignoredSearchDirectories.has(entry.name)) await visit(join(path, entry.name));
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      try {
+        const buffer = await readFile(join(path, entry.name));
+        if (buffer.includes(0)) continue;
+        const lines = buffer.toString("utf8").split(/\r?\n/);
+        lines.forEach((line, index) => {
+          if (matches.length >= maxMatches) return;
+          if (pattern) {
+            pattern.lastIndex = 0;
+            let found = pattern.exec(line);
+            while (found && matches.length < maxMatches) {
+              matches.push({ path: join(path, entry.name), line: index + 1, column: found.index + 1, preview: line.trim() });
+              if (found[0].length === 0) pattern.lastIndex += 1;
+              found = pattern.exec(line);
+            }
+          } else {
+            let offset = line.indexOf(query);
+            while (offset >= 0 && matches.length < maxMatches) {
+              matches.push({ path: join(path, entry.name), line: index + 1, column: offset + 1, preview: line.trim() });
+              offset = line.indexOf(query, offset + Math.max(1, query.length));
+            }
+          }
+        });
+      } catch {
+        /* unreadable or binary files are not searchable */
+      }
+    }
+  };
+
+  await visit(root);
+  return { query, matches, truncated: matches.length >= maxMatches };
 }
 
 async function readAppConfigFile(file: string): Promise<AppConfig> {

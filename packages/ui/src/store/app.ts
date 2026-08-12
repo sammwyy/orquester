@@ -163,6 +163,17 @@ export type ProjectTab =
 /** Which list the sidebar shows: the workspace browser or the active tree. */
 export type SidebarView = "workspaces" | "active";
 
+/**
+ * File-browser copy/cut clipboard. Lives here (not in FileBrowser state) so
+ * copying in one project's Files tool and pasting in another's works — the
+ * daemon has no notion of a clipboard, only a copy/move between two paths.
+ */
+export interface FsClipboardEntry {
+  path: string;
+  kind: "file" | "dir";
+  mode: "copy" | "cut";
+}
+
 function upsertSession(sessions: SessionSummary[], next: SessionSummary): SessionSummary[] {
   const index = sessions.findIndex((s) => s.id === next.id);
   if (index === -1) {
@@ -196,6 +207,8 @@ export interface AppState {
   sidebarView: SidebarView;
   /** Mobile off-canvas sidebar drawer. */
   sidebarDrawerOpen: boolean;
+  /** File-browser copy/cut clipboard; null when empty. */
+  fsClipboard: FsClipboardEntry | null;
 
   // auth (web → password-protected HTTP daemon)
   authPrompt: { connectionId: string } | null;
@@ -250,6 +263,7 @@ export interface AppState {
   toggleSidebar: () => void;
   setSidebarView: (view: SidebarView) => void;
   setSidebarDrawer: (open: boolean) => void;
+  setFsClipboard: (entry: FsClipboardEntry | null) => void;
   updateAppConfig: (patch: Partial<UiAppConfig>) => Promise<void>;
   setQuota: (quota: RegistryQuota) => void;
 
@@ -304,6 +318,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarCollapsed: false,
   sidebarView: "workspaces",
   sidebarDrawerOpen: false,
+  fsClipboard: null,
   authPrompt: null,
   authSalt: null,
   sudoPrompt: null,
@@ -496,6 +511,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSidebarView: (view) => set({ sidebarView: view }),
 
   setSidebarDrawer: (open) => set({ sidebarDrawerOpen: open }),
+  setFsClipboard: (entry) => set({ fsClipboard: entry }),
 
   updateAppConfig: async (patch) => {
     const appConfig = { ...get().appConfig, ...patch };
