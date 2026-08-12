@@ -75,6 +75,23 @@ pub async fn output(State(state): State<AppState>, Path(id): Path<String>) -> Re
             .unwrap();
     };
 
+    // The session can exit between the status check above and subscribing:
+    // its one-shot terminal signal (an empty chunk, see below) is never
+    // replayed to a receiver that subscribes after it was already sent, which
+    // would otherwise hang this stream forever. Checking is_exited() after a
+    // successful subscribe is race-free either way — if it already exited,
+    // fall back to the buffered-only response; otherwise any future exit is
+    // guaranteed to reach this receiver.
+    if state.services.sessions.is_exited(&id).await {
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/octet-stream")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .header("x-accel-buffering", "no")
+            .body(Body::from(buffered))
+            .unwrap();
+    }
+
     // Sessions signal exit by broadcasting an empty chunk (see sessions.rs);
     // `unfold` lets that terminate the stream instead of just filtering it
     // out, while a lagged receiver just skips forward and keeps streaming.
