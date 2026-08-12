@@ -1,3 +1,4 @@
+mod agent_defs;
 mod api_types;
 mod battery;
 mod bootstrap;

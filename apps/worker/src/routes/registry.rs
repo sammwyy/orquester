@@ -1,7 +1,7 @@
-//! `/api/registry*` and `/api/open`. Version/quota/install endpoints exist
-//! for shells/IDEs/browsers (no version flag, no quota concept) but return an
-//! honest `NOT_IMPLEMENTED` for agent-only actions until the agent
-//! integrations (apps/daemon/src/integrations/agents/*.ts) are ported.
+//! `/api/registry*` and `/api/open`. `version` runs the entry's plain
+//! `versionFlag`; quota/install/update stay an honest `NOT_IMPLEMENTED`
+//! until the agent integrations (apps/daemon/src/integrations/agents/*.ts)
+//! are ported — see registry.rs's module doc.
 
 use crate::api_types::{ApiError, OpenRequest};
 use crate::state::{AppState, TransportMode};
@@ -18,8 +18,8 @@ pub async fn list(State(state): State<AppState>) -> Response {
     Json(state.services.registry.list().await).into_response()
 }
 
-pub async fn version(Path(_id): Path<String>) -> Response {
-    err(StatusCode::NOT_IMPLEMENTED, "NOT_IMPLEMENTED", "Version detection is not ported to the Rust worker yet.")
+pub async fn version(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    Json(state.services.registry.version(&id).await).into_response()
 }
 
 pub async fn quota(Path(_id): Path<String>) -> Response {

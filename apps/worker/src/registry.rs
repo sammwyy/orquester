@@ -1,11 +1,13 @@
-//! Hand-ported mirror of apps/daemon/src/registry.ts. Agent-specific
-//! integrations (quota/auth per coding agent) are not ported yet — every
-//! agent's provider logic in apps/daemon/src/integrations/agents/*.ts is a
-//! separate, substantial body of work tracked apart from this base catalog.
-//! What's here covers shells, IDEs, file explorers and browsers: resolve a
-//! binary on PATH, list, and fire-and-forget "open target" launches.
+//! Hand-ported mirror of apps/daemon/src/registry.ts. Each agent's bespoke
+//! quota/auth logic (apps/daemon/src/integrations/agents/*.ts) is not
+//! ported — that's a separate, substantial body of work per provider. What's
+//! here covers the whole catalog (shells, agents, IDEs, file explorers,
+//! browsers): resolve a binary on PATH, list, detect version via the
+//! `versionFlag` (no provider-specific version detection), and fire-and-
+//! forget "open target" launches. Install/update/quota stay behind an
+//! honest NOT_IMPLEMENTED in routes/registry.rs.
 
-use crate::api_types::{OpenResult, RegistryEntry, RegistryInstallState, RegistryKind, RegistryResponse};
+use crate::api_types::{OpenResult, RegistryActionResult, RegistryEntry, RegistryInstallState, RegistryKind, RegistryResponse};
 use crate::host_registry::{HostEntryDef, HOST_BROWSERS, HOST_FILE_EXPLORERS, HOST_IDES};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,6 +21,10 @@ struct RuntimeEntry {
     bin: Vec<String>,
     resolved_bin: Option<PathBuf>,
     enabled: bool,
+    version_flag: Option<String>,
+    install_command: Option<String>,
+    website_url: Option<String>,
+    missing_dependencies: Vec<String>,
 }
 
 fn to_public(entry: &RuntimeEntry) -> RegistryEntry {
@@ -28,11 +34,11 @@ fn to_public(entry: &RuntimeEntry) -> RegistryEntry {
         kind: entry.kind,
         enabled: entry.enabled,
         version: None,
-        can_install: false,
+        can_install: entry.install_command.is_some(),
         can_update: false,
-        install_command: None,
-        website_url: None,
-        missing_dependencies: Vec::new(),
+        install_command: entry.install_command.clone(),
+        website_url: entry.website_url.clone(),
+        missing_dependencies: entry.missing_dependencies.clone(),
         install_state: RegistryInstallState::Idle,
         install_error: None,
     }
@@ -110,6 +116,10 @@ fn materialize(defs: &[HostEntryDef], kind: RegistryKind) -> Vec<RuntimeEntry> {
                 enabled: resolved_bin.is_some(),
                 resolved_bin,
                 bin,
+                version_flag: None,
+                install_command: None,
+                website_url: None,
+                missing_dependencies: Vec::new(),
             }
         })
         .collect()
@@ -131,7 +141,42 @@ fn materialize_shells() -> Vec<RuntimeEntry> {
         .map(|(id, name, bin)| {
             let bin: Vec<String> = bin.iter().map(|b| b.to_string()).collect();
             let resolved_bin = resolve_bin(&bin);
-            RuntimeEntry { id: id.to_string(), name: name.to_string(), kind: RegistryKind::Shell, enabled: resolved_bin.is_some(), resolved_bin, bin }
+            RuntimeEntry {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind: RegistryKind::Shell,
+                enabled: resolved_bin.is_some(),
+                resolved_bin,
+                bin,
+                version_flag: None,
+                install_command: None,
+                website_url: None,
+                missing_dependencies: Vec::new(),
+            }
+        })
+        .collect()
+}
+
+fn materialize_agents() -> Vec<RuntimeEntry> {
+    crate::agent_defs::AGENT_DEFS
+        .iter()
+        .map(|def| {
+            let bin: Vec<String> = def.bin.iter().map(|b| b.to_string()).collect();
+            let resolved_bin = resolve_bin(&bin);
+            let missing_dependencies: Vec<String> =
+                def.bin_deps.iter().filter(|dep| resolve_bin(&[dep.to_string()]).is_none()).map(|d| d.to_string()).collect();
+            RuntimeEntry {
+                id: def.id.to_string(),
+                name: def.name.to_string(),
+                kind: RegistryKind::Agent,
+                enabled: resolved_bin.is_some() && missing_dependencies.is_empty(),
+                resolved_bin,
+                bin,
+                version_flag: (!def.version_flag.is_empty()).then(|| def.version_flag.to_string()),
+                install_command: (!def.install_cmd.is_empty()).then(|| def.install_cmd.to_string()),
+                website_url: (!def.website_url.is_empty()).then(|| def.website_url.to_string()),
+                missing_dependencies,
+            }
         })
         .collect()
 }
@@ -147,6 +192,7 @@ impl RegistryService {
 
     pub async fn init(&self) {
         let mut all = materialize_shells();
+        all.extend(materialize_agents());
         all.extend(materialize(HOST_IDES, RegistryKind::Ide));
         all.extend(materialize(HOST_FILE_EXPLORERS, RegistryKind::FileExplorer));
         all.extend(materialize(HOST_BROWSERS, RegistryKind::Browser));
@@ -163,12 +209,48 @@ impl RegistryService {
         let by_kind = |kind: RegistryKind| entries.values().filter(|e| e.kind == kind).map(to_public).collect();
         RegistryResponse {
             shells: by_kind(RegistryKind::Shell),
-            // Agents aren't ported yet (see module doc); an empty list here is
-            // an honest reflection of that, not a masked failure.
-            agents: Vec::new(),
+            agents: by_kind(RegistryKind::Agent),
             ides: by_kind(RegistryKind::Ide),
             file_explorers: by_kind(RegistryKind::FileExplorer),
             browsers: by_kind(RegistryKind::Browser),
+        }
+    }
+
+    /// Runs the entry's `versionFlag` (e.g. `claude --version`) and returns
+    /// the first non-empty output line. No provider-specific version
+    /// detection (see module doc) — every agent here uses a plain
+    /// `--version` flag, which this covers.
+    pub async fn version(&self, id: &str) -> RegistryActionResult {
+        let entry = {
+            let entries = self.entries.read().await;
+            entries.get(id).cloned()
+        };
+        let Some(entry) = entry else {
+            return RegistryActionResult { ok: false, exit_code: -1, output: "Unknown registry entry.".to_string() };
+        };
+        let (Some(bin), Some(flag)) = (entry.resolved_bin, entry.version_flag) else {
+            return RegistryActionResult { ok: false, exit_code: -1, output: "No bin or version flag for this entry.".to_string() };
+        };
+
+        let mut command = tokio::process::Command::new(&bin);
+        command.arg(&flag);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        match command.output().await {
+            Ok(output) => {
+                let text = String::from_utf8_lossy(if output.status.success() { &output.stdout } else { &output.stderr }).to_string();
+                let line = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
+                if line.is_empty() {
+                    RegistryActionResult { ok: false, exit_code: 1, output: "The provider did not return a version.".to_string() }
+                } else {
+                    RegistryActionResult { ok: true, exit_code: 0, output: line }
+                }
+            }
+            Err(error) => RegistryActionResult { ok: false, exit_code: 1, output: error.to_string() },
         }
     }
 
