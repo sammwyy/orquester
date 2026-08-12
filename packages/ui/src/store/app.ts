@@ -605,13 +605,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   addRemote: async (input) => {
+    const endpoint = input.baseUrl.trim().replace(/\/$/, "");
+    const rawPassword = input.password?.trim();
+    let password: string | undefined;
+    if (rawPassword) {
+      // Same derivation as submitPassword: never store or transmit the
+      // plaintext, only the bcrypt hash derived from the daemon's salt.
+      const probe: UiConnection = { id: "", name: "", kind: "remote", endpoint, status: "disconnected" };
+      const info = await new ApiClient(probe, buildTransporter(probe)).authInfo().catch(() => null);
+      if (info?.salt) {
+        password = deriveAuthHash(rawPassword, info.salt);
+        storeHash(endpoint, password);
+      }
+    }
     const connection: UiConnection = {
       id: crypto.randomUUID(),
       name: input.name.trim() || input.baseUrl,
       kind: "remote",
-      endpoint: input.baseUrl.trim().replace(/\/$/, ""),
+      endpoint,
       status: "disconnected",
-      password: input.password?.trim() || undefined
+      password
     };
     const connections = [...get().connections, connection];
     set({ connections });
