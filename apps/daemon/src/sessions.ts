@@ -59,7 +59,8 @@ export class SessionManager {
       cols,
       rows,
       status: "running",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      pid: pty.pid
     };
 
     const session: Session = { summary, pty, buffer: "", emitter: new EventEmitter() };

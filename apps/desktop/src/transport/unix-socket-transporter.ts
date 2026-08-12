@@ -27,6 +27,7 @@ export interface DesktopBridgeResponse {
 /** The full bridge the preload exposes for talking to the daemon over the socket. */
 export interface DesktopBridge {
   request(request: DesktopBridgeRequest): Promise<DesktopBridgeResponse>;
+  openExternal(url: string): Promise<boolean>;
   streamOpen(streamId: string, path: string): void;
   streamClose(streamId: string): void;
   onStreamData(cb: (payload: { streamId: string; chunk: string }) => void): () => void;

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, shell, Tray, type IpcMainEvent } from "electron";
 import { startDaemon as startOrquesterDaemon, type RunningDaemon } from "@orquester/daemon";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -389,6 +389,11 @@ function openStreamOverSocket(event: IpcMainEvent, { streamId, path: streamPath 
 
 function registerIpc(): void {
   ipcMain.handle("orquester:request", (_event, request: DaemonRequest) => requestOverSocket(request));
+  ipcMain.handle("orquester:open-external", async (_event, url: string) => {
+    if (!/^https?:\/\//i.test(url)) return false;
+    await shell.openExternal(url);
+    return true;
+  });
   ipcMain.on("orquester:stream:open", (event, payload: { streamId: string; path: string }) => openStreamOverSocket(event, payload));
   ipcMain.on("orquester:stream:close", (_event, streamId: string) => {
     const req = streams.get(streamId);

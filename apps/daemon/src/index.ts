@@ -28,6 +28,7 @@ import { getIntegrationAvailability } from "./integrations/catalog";
 import { watchSystemResources } from "./integrations/system-resources";
 import { watchMedia } from "./integrations/media";
 import { createKeepAwakeController } from "./integrations/keep-awake";
+import { watchNetworking } from "./integrations/networking";
 import { registerGitRoutes } from "./routes/git";
 import { registerSystemRoutes } from "./routes/system";
 import { registerIntegrationRoutes } from "./routes/integrations";
@@ -144,6 +145,9 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
     broadcaster.publish("system", "media.changed", status);
   });
   const keepAwake = createKeepAwakeController();
+  const networkingWatcher = watchNetworking(() => sessions.list(), (status) => {
+    broadcaster.publish("system", "networking.changed", status);
+  });
   const applyIntegrations = (integrations: Record<string, boolean>) => {
     const isAvailable = (id: string) => availability.some((item) => item.id === id && item.available);
     gitWatcher.setActive(eventClientCount > 0 && integrations.git !== false && isAvailable("git"));
@@ -151,6 +155,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
     resourcesWatcher.setActive(eventClientCount > 0 && integrations["system-resources"] !== false && isAvailable("system-resources"));
     mediaWatcher.setActive(eventClientCount > 0 && integrations.media !== false && isAvailable("media"));
     keepAwake.setEnabled(integrations["keep-awake"] === true && isAvailable("keep-awake"));
+    networkingWatcher.setActive(eventClientCount > 0 && integrations.networking !== false && isAvailable("networking"));
   };
   // Stream registry changes (install/update status, detected versions) to clients.
   registry.events.on("changed", (entry) => broadcaster.publish("registry", "registry.changed", entry));
@@ -172,7 +177,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
     broadcaster.publish("sessions", "session.closed", payload)
   );
 
-  const services: Services = { registry, sessions, broadcaster, gitWatcher, batteryWatcher, resourcesWatcher, mediaWatcher, keepAwake, applyIntegrations };
+  const services: Services = { registry, sessions, broadcaster, gitWatcher, batteryWatcher, resourcesWatcher, mediaWatcher, keepAwake, networkingWatcher, applyIntegrations };
 
   // The static web build the HTTP transport optionally serves.
   const webDirEnv = options.webDir ?? env.ORQUESTER_WEB_DIR;
@@ -233,6 +238,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
     resourcesWatcher.stop();
     mediaWatcher.stop();
     keepAwake.stop();
+    networkingWatcher.stop();
     sessions.closeAll();
     await stopHttp();
     await unixServer.close().catch(() => undefined);
@@ -257,6 +263,7 @@ interface Services {
   resourcesWatcher: ReturnType<typeof watchSystemResources>;
   mediaWatcher: ReturnType<typeof watchMedia>;
   keepAwake: ReturnType<typeof createKeepAwakeController>;
+  networkingWatcher: ReturnType<typeof watchNetworking>;
   applyIntegrations: (integrations: Record<string, boolean>) => void;
   /** Restart the HTTP transport (set in main once the lifecycle exists). */
   reloadHttp?: () => Promise<void>;
@@ -587,7 +594,7 @@ function createServer(
     broadcaster: services.broadcaster,
     gitWatcher: services.gitWatcher
   });
-  registerSystemRoutes(app, resolved.workspacesDir);
+  registerSystemRoutes(app, resolved.workspacesDir, services.sessions);
   registerIntegrationRoutes(app, {
     config,
     configPath: resolved.configPath,

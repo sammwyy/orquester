@@ -1,10 +1,12 @@
-import type { BatteryStatusResponse, MediaControlRequest, MediaStatusResponse } from "@orquester/api";
+import type { BatteryStatusResponse, KillNetworkProcessRequest, MediaControlRequest, MediaStatusResponse, NetworkStatusResponse } from "@orquester/api";
 import type { FastifyInstance } from "fastify";
 import { readBatteryStatus } from "../integrations/battery";
 import { readSystemResources } from "../integrations/system-resources";
 import { controlMedia, readMediaStatus, readMediaThumbnail } from "../integrations/media";
+import { killNetworkProcess, readNetworkStatus } from "../integrations/networking";
+import type { SessionManager } from "../sessions";
 
-export function registerSystemRoutes(app: FastifyInstance, workspacesDir: string): void {
+export function registerSystemRoutes(app: FastifyInstance, workspacesDir: string, sessions: SessionManager): void {
   app.get("/api/system/battery", async (): Promise<BatteryStatusResponse> => readBatteryStatus());
   app.get("/api/system/resources", async () => readSystemResources(workspacesDir));
   app.get("/api/system/media", async (): Promise<MediaStatusResponse> => readMediaStatus());
@@ -21,6 +23,18 @@ export function registerSystemRoutes(app: FastifyInstance, workspacesDir: string
       return await controlMedia(request.body as MediaControlRequest);
     } catch (error) {
       return reply.code(400).send({ code: "MEDIA_ERROR", message: error instanceof Error ? error.message : "Media control failed." });
+    }
+  });
+  app.get("/api/system/networking", async (): Promise<NetworkStatusResponse> => readNetworkStatus(sessions.list()));
+  app.post<{ Body: Partial<KillNetworkProcessRequest> }>("/api/system/networking/kill", async (request, reply): Promise<{ ok: true } | void> => {
+    if (!request.body?.pid || !Number.isInteger(request.body.pid)) {
+      return reply.code(400).send({ code: "INVALID_REQUEST", message: "pid required." });
+    }
+    try {
+      await killNetworkProcess(request.body.pid, sessions.list());
+      return { ok: true };
+    } catch (error) {
+      return reply.code(403).send({ code: "PROCESS_NOT_ALLOWED", message: error instanceof Error ? error.message : "Cannot kill process." });
     }
   });
 }

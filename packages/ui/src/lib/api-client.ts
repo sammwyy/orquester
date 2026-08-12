@@ -13,6 +13,7 @@ import type {
   HealthResponse,
   MediaControlRequest,
   MediaStatusResponse,
+  NetworkStatusResponse,
   OpenResult,
   ProjectSummary,
   RegistryActionResult,
@@ -212,6 +213,14 @@ export class ApiClient {
 
   controlMedia(request: MediaControlRequest): Promise<MediaStatusResponse> {
     return this.send("POST", "/api/system/media/control", { body: request });
+  }
+
+  networkingStatus(signal?: AbortSignal): Promise<NetworkStatusResponse> {
+    return this.send("GET", "/api/system/networking", { signal });
+  }
+
+  killNetworkingProcess(pid: number): Promise<{ ok: true }> {
+    return this.send("POST", "/api/system/networking/kill", { body: { pid } });
   }
 
   updateIntegrations(integrations: Record<string, boolean>): Promise<IntegrationsResponse> {

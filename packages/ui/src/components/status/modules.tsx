@@ -1,5 +1,5 @@
 import React from "react";
-import { Battery, BatteryCharging, Cpu, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, LockKeyhole, LockKeyholeOpen, MemoryStick, Music2, Pause, Play, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { Battery, BatteryCharging, Cpu, ExternalLink, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, LockKeyhole, LockKeyholeOpen, MemoryStick, Music2, Network, Pause, Play, SkipBack, SkipForward, Volume2, X } from "lucide-react";
 import { registerStatusModule } from "./registry";
 import { useApi } from "../../context/orquester-context";
 import { useAppStore } from "../../store/app";
@@ -123,6 +123,59 @@ const ResourcesLabel: React.FC = () => {
       <span className="flex items-center gap-0.5"><MemoryStick size={11} />{resources.memory.percentage}%</span>
       <span className="flex items-center gap-0.5"><HardDrive size={11} />{resources.disk.percentage}%</span>
     </span>
+  );
+};
+
+const NetworkingLabel: React.FC = () => {
+  const networking = useAppStore((state) => state.networkingStatus);
+  const count = networking?.ports.length ?? 0;
+  return <span className="flex items-center gap-1"><Network size={11} />{count} {count === 1 ? "port" : "ports"}</span>;
+};
+
+const NetworkingContent: React.FC = () => {
+  const networking = useAppStore((state) => state.networkingStatus);
+  const connections = useAppStore((state) => state.connections);
+  const activeConnectionId = useAppStore((state) => state.activeConnectionId);
+  const activateTab = useAppStore((state) => state.activateTab);
+  const killProcess = useAppStore((state) => state.killNetworkingProcess);
+  const [busyPid, setBusyPid] = React.useState<number | null>(null);
+  const openExternal = (target: string) => {
+    const desktop = (window as Window & { orquesterDesktop?: { openExternal?: (url: string) => Promise<boolean> } }).orquesterDesktop;
+    if (desktop?.openExternal) void desktop.openExternal(target);
+    else window.open(target, "_blank", "noopener,noreferrer");
+  };
+  const host = connections.find((connection) => connection.id === activeConnectionId)?.kind === "remote"
+    ? (() => { try { return new URL(connections.find((connection) => connection.id === activeConnectionId)?.endpoint ?? "").hostname; } catch { return "localhost"; } })()
+    : "localhost";
+  if (!networking || networking.ports.length === 0) return <p className="text-xs text-neutral-500">No listening ports from Orquester processes.</p>;
+  return (
+    <div className="w-80 max-w-[calc(100vw-2rem)]">
+      <div className="mb-2 border-b border-neutral-700/50 pb-2">
+        <p className="text-xs font-medium text-neutral-100">Listening ports</p>
+        <p className="mt-0.5 text-[10px] text-neutral-500">Processes owned by this worker</p>
+      </div>
+      <div className="max-h-64 space-y-1 overflow-y-auto">
+        {networking.ports.map((port) => {
+          const url = `http://${host}:${port.port}`;
+          return (
+            <div key={`${port.pid}-${port.port}`} className="flex items-center gap-2 rounded-md px-1.5 py-2 hover:bg-white/5">
+              <Network size={13} className="shrink-0 text-neutral-500" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[11px] text-neutral-200">{port.process}</p>
+                <p className="text-[10px] text-neutral-500">{port.address}:{port.port} · PID {port.pid}</p>
+              </div>
+              {port.sessionId && <button type="button" title="Focus session" className="text-neutral-500 hover:text-neutral-200" onClick={() => activateTab(port.sessionId!)}><Network size={13} /></button>}
+              <button type="button" title="Open in browser" className="text-neutral-500 hover:text-neutral-200" onClick={() => openExternal(url)}><ExternalLink size={13} /></button>
+              <button type="button" title="Stop process" disabled={busyPid === port.pid} className="text-neutral-500 hover:text-red-300 disabled:opacity-40" onClick={() => {
+                if (!window.confirm(`Stop ${port.process} (PID ${port.pid})?`)) return;
+                setBusyPid(port.pid);
+                void killProcess(port.pid).finally(() => setBusyPid(null));
+              }}><X size={13} /></button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 };
 
@@ -312,6 +365,14 @@ registerStatusModule({
   side: "right",
   integration: "system-resources",
   content: ResourcesContent
+});
+
+registerStatusModule({
+  id: "system.networking",
+  label: <NetworkingLabel />,
+  side: "left",
+  integration: "networking",
+  content: NetworkingContent
 });
 
 registerStatusModule({

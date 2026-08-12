@@ -8,7 +8,8 @@
     "battery": true,
     "system-resources": true,
     "media": true,
-    "keep-awake": true
+    "keep-awake": true,
+    "networking": true
   },
   "workspacesDir": "$appdir/workspaces",
   "logsDir": "$appdir/daemon/logs",

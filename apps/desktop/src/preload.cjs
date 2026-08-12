@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("orquesterDesktop", {
   },
   // Byte transport for the renderer's UnixSocketTransporter.
   request: (request) => ipcRenderer.invoke("orquester:request", request),
+  openExternal: (url) => ipcRenderer.invoke("orquester:open-external", url),
   // Chunked streaming (session output, event bus). The renderer supplies the id.
   streamOpen: (streamId, path) => ipcRenderer.send("orquester:stream:open", { streamId, path }),
   streamClose: (streamId) => ipcRenderer.send("orquester:stream:close", streamId),

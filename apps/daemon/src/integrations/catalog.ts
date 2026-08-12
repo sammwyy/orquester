@@ -45,6 +45,13 @@ export async function getIntegrationAvailability(): Promise<IntegrationStatus[]>
       enabled: true,
       available: keepAwakeAvailable,
       ...(keepAwakeAvailable ? {} : { unavailableReason: "This worker cannot control its idle or sleep state." })
+    },
+    {
+      id: "networking",
+      name: "Networking",
+      description: "Ports exposed by Orquester child processes and their sessions.",
+      enabled: true,
+      available: true
     }
   ];
 }

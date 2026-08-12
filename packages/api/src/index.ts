@@ -304,6 +304,24 @@ export interface SessionSummary {
   status: SessionStatus;
   exitCode?: number;
   createdAt: string;
+  pid?: number;
+}
+
+export interface NetworkPort {
+  protocol: "tcp";
+  address: string;
+  port: number;
+  pid: number;
+  process: string;
+  sessionId?: string;
+}
+
+export interface NetworkStatusResponse {
+  ports: NetworkPort[];
+}
+
+export interface KillNetworkProcessRequest {
+  pid: number;
 }
 
 export interface CreateSessionRequest {
