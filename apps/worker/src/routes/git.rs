@@ -11,41 +11,19 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
-use std::path::PathBuf;
 
 fn err(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
     (status, Json(ApiError::new(code, message))).into_response()
 }
 
-/// Lexical equivalent of Node's `path.resolve` — normalizes `.`/`..` and
-/// makes the path absolute without touching the filesystem. Deliberately not
-/// `fs::canonicalize`: that resolves symlinks and, on Windows, prefixes the
-/// result with `\\?\`, which would leak into every path this returns to the
-/// client and no longer match what other routes (workspaces, sessions) hand
-/// back for the same directory.
-fn lexical_resolve(path: &str) -> PathBuf {
-    let candidate = PathBuf::from(path);
-    let absolute = if candidate.is_absolute() {
-        candidate
-    } else {
-        std::env::current_dir().unwrap_or_default().join(candidate)
-    };
-    let mut normalized = PathBuf::new();
-    for component in absolute.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                normalized.pop();
-            }
-            std::path::Component::CurDir => {}
-            other => normalized.push(other.as_os_str()),
-        }
-    }
-    normalized
-}
-
+/// Deliberately not `fs::canonicalize`: that resolves symlinks and, on
+/// Windows, prefixes the result with `\\?\`, which would leak into every
+/// path this returns to the client and no longer match what other routes
+/// (workspaces, sessions) hand back for the same directory.
 fn project_path_for(workspaces_dir: &str, path: &str) -> Result<String, Response> {
-    let root = lexical_resolve(workspaces_dir);
-    let project = lexical_resolve(path);
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let root = crate::paths::lexical_resolve(&cwd, workspaces_dir);
+    let project = crate::paths::lexical_resolve(&cwd, path);
     if project != root && !project.starts_with(&root) {
         return Err(err(StatusCode::FORBIDDEN, "FORBIDDEN", "Project is outside the workspaces directory."));
     }

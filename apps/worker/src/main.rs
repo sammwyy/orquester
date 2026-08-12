@@ -37,7 +37,11 @@ async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let cwd = std::env::current_dir().expect("cannot read cwd");
     let env: HashMap<String, String> = std::env::vars().collect();
-    let appdir = env.get("ORQUESTER_APPDIR").cloned().or_else(|| paths::parse_appdir(&args, &cwd));
+    // CLI flag wins over the env var (Electron passes the flag with an
+    // already-absolute path but the child still inherits the parent's raw
+    // ORQUESTER_APPDIR); either way the chosen value is resolved against cwd.
+    let appdir_raw = paths::parse_appdir_arg(&args).or_else(|| env.get("ORQUESTER_APPDIR").cloned());
+    let appdir = paths::resolve_appdir(appdir_raw.as_deref(), &cwd);
     let home_dir = dirs_home().expect("cannot resolve home directory");
     let platform = if cfg!(windows) { "win32" } else if cfg!(target_os = "macos") { "darwin" } else { "linux" };
 
