@@ -178,6 +178,13 @@ impl SessionManager {
             .collect()
     }
 
+    /// Non-blocking snapshot for sync callers (e.g. the networking watcher's
+    /// `get_sessions` hook). Returns `None` only under rare lock contention.
+    pub fn try_list(&self) -> Option<Vec<SessionSummary>> {
+        let sessions = self.sessions.try_read().ok()?;
+        Some(sessions.values().map(|s| s.summary.lock().unwrap().clone()).collect())
+    }
+
     pub async fn get(&self, id: &str) -> Option<SessionSummary> {
         let sessions = self.sessions.read().await;
         sessions.get(id).map(|s| s.summary.lock().unwrap().clone())

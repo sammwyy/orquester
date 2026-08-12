@@ -42,6 +42,10 @@ impl Broadcaster {
         self.count_listeners.lock().unwrap().push(Box::new(listener));
     }
 
+    pub fn client_count(&self) -> usize {
+        self.client_count.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     pub fn publish<T: Serialize>(&self, channel: &str, kind: &str, payload: &T) {
         let event = crate::api_types::EventMessage {
             id: uuid::Uuid::new_v4().to_string(),

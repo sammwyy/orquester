@@ -1,20 +1,27 @@
 mod api_types;
+mod battery;
 mod bootstrap;
 mod broadcaster;
+mod catalog;
 mod config;
 mod git;
 mod host_registry;
+mod keep_awake;
 mod local_transport;
+mod media;
+mod networking;
 mod paths;
 mod registry;
 mod routes;
 mod server;
 mod sessions;
 mod state;
+mod system_resources;
 
 use broadcaster::Broadcaster;
 use registry::RegistryService;
 use sessions::SessionManager;
+use system_resources::SystemResourcesService;
 use state::{AppState, RouterOptions, Services, SharedConfig, TransportMode};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -67,6 +74,35 @@ async fn main() {
             broadcaster.publish("projects", "project.git.changed", &status);
         })
     };
+    let battery_watcher = {
+        let broadcaster = broadcaster.clone();
+        battery::watch_battery(move |status| broadcaster.publish("system", "battery.changed", &status))
+    };
+    let media_watcher = {
+        let broadcaster = broadcaster.clone();
+        media::watch_media(move |status| broadcaster.publish("system", "media.changed", &status))
+    };
+    let resources_service = Arc::new(SystemResourcesService::new());
+    let resources_watcher = {
+        let broadcaster = broadcaster.clone();
+        system_resources::watch_system_resources(&resolved.workspaces_dir, resources_service.clone(), move |resources| {
+            broadcaster.publish("system", "resources.changed", &resources);
+        })
+    };
+    let networking_watcher = {
+        let broadcaster = broadcaster.clone();
+        let sessions_for_watch = sessions.clone();
+        networking::watch_networking(
+            move || {
+                // Session listing is async; the watcher's get_sessions callback is
+                // sync, so a snapshot is taken via try_read — an empty list on rare
+                // lock contention just skips one poll tick, which is harmless.
+                sessions_for_watch.try_list().unwrap_or_default()
+            },
+            move |status| broadcaster.publish("system", "networking.changed", &status),
+        )
+    };
+    let keep_awake = keep_awake::create_keep_awake_controller();
 
     let services = Arc::new(Services {
         daemon_id: daemon_id.clone(),
@@ -77,18 +113,21 @@ async fn main() {
         registry,
         sessions,
         git_watcher,
+        battery_watcher,
+        media_watcher,
+        resources_watcher,
+        resources_service,
+        networking_watcher,
+        keep_awake,
     });
 
-    // Only run the git status poller while at least one client is listening
-    // for events, and only when the git integration is enabled.
+    // Only run the pollers while at least one client is listening for events,
+    // and only for integrations enabled in daemon.json and available on this host.
     {
         let services_for_watch = services.clone();
-        services.broadcaster.on_client_count_change(move |count| {
+        services.broadcaster.on_client_count_change(move |_count| {
             let services = services_for_watch.clone();
-            tokio::spawn(async move {
-                let enabled = services.config.daemon.read().await.integrations.get("git").copied().unwrap_or(true);
-                services.git_watcher.set_active(count > 0 && enabled);
-            });
+            tokio::spawn(async move { services.apply_integrations().await });
         });
     }
 
@@ -134,6 +173,11 @@ async fn main() {
     tokio::signal::ctrl_c().await.expect("failed to listen for ctrl-c");
     tracing::info!("shutting down");
     services.git_watcher.stop();
+    services.battery_watcher.stop();
+    services.media_watcher.stop();
+    services.resources_watcher.stop();
+    services.networking_watcher.stop();
+    services.keep_awake.stop();
     services.sessions.close_all().await;
     local_handle.abort();
     if let Some(handle) = remote_handle {
