@@ -1,12 +1,16 @@
 //! File browser + editor endpoints. Mirrors the `/api/fs*` handlers in
-//! No confinement to workspacesDir, matching the
-//! original (the local socket / auth boundary is what gates access).
+//! Every path is confined to the resolved workspacesDir, the same way
+//! integrations/git/routes.rs confines project paths — the local socket /
+//! auth boundary alone doesn't stop a remote client with a valid bearer
+//! token from touching arbitrary host files, so path confinement is the
+//! real gate.
 
 use crate::api_types::{
     ApiError, FsCopyRequest, FsCreateRequest, FsDeleteRequest, FsEntry, FsEntryKind, FsListResponse,
     FsMoveRequest, FsReadResponse, FsSearchMatch, FsSearchResponse, FsWriteRequest,
 };
-use axum::extract::Query;
+use crate::state::AppState;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -22,14 +26,36 @@ fn fs_err(error: std::io::Error, fallback: &str) -> Response {
     err(StatusCode::BAD_REQUEST, "FS_ERROR", format!("{fallback} ({error})"))
 }
 
+/// Confines a client-supplied path to the resolved workspaces directory,
+/// mirroring integrations/git/routes.rs's `project_path_for`. Deliberately
+/// not `fs::canonicalize` (see `paths::lexical_resolve`'s doc).
+fn workspace_path_for(workspaces_dir: &str, path: &str) -> Result<String, Response> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let root = crate::paths::lexical_resolve(&cwd, workspaces_dir);
+    let target = crate::paths::lexical_resolve(&cwd, path);
+    if target != root && !target.starts_with(&root) {
+        return Err(err(StatusCode::FORBIDDEN, "FORBIDDEN", "Path is outside the workspaces directory."));
+    }
+    Ok(target.to_string_lossy().to_string())
+}
+
+async fn workspaces_dir(state: &AppState) -> String {
+    state.services.config.resolved.read().await.workspaces_dir.clone()
+}
+
 #[derive(Deserialize)]
 pub struct PathQuery {
     pub path: Option<String>,
 }
 
-pub async fn list(Query(query): Query<PathQuery>) -> Response {
+pub async fn list(State(state): State<AppState>, Query(query): Query<PathQuery>) -> Response {
     let Some(path) = query.path else {
         return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.");
+    };
+    let workspaces_dir = workspaces_dir(&state).await;
+    let path = match workspace_path_for(&workspaces_dir, &path) {
+        Ok(p) => p,
+        Err(response) => return response,
     };
     match list_files(&path).await {
         Ok(response) => Json(response).into_response(),
@@ -70,9 +96,14 @@ async fn list_files(path: &str) -> std::io::Result<FsListResponse> {
     Ok(FsListResponse { path: path.to_string(), parent, entries })
 }
 
-pub async fn read(Query(query): Query<PathQuery>) -> Response {
+pub async fn read(State(state): State<AppState>, Query(query): Query<PathQuery>) -> Response {
     let Some(path) = query.path else {
         return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.");
+    };
+    let workspaces_dir = workspaces_dir(&state).await;
+    let path = match workspace_path_for(&workspaces_dir, &path) {
+        Ok(p) => p,
+        Err(response) => return response,
     };
     match tokio::fs::read(&path).await {
         Ok(buffer) => {
@@ -101,9 +132,14 @@ pub struct SearchQuery {
 const IGNORED_SEARCH_DIRS: &[&str] = &[".git", "node_modules", ".next", "dist", "build"];
 const MAX_MATCHES: usize = 500;
 
-pub async fn search(Query(q): Query<SearchQuery>) -> Response {
+pub async fn search(State(state): State<AppState>, Query(q): Query<SearchQuery>) -> Response {
     let (Some(root), Some(query)) = (q.path, q.query) else {
         return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and query required.");
+    };
+    let workspaces_dir = workspaces_dir(&state).await;
+    let root = match workspace_path_for(&workspaces_dir, &root) {
+        Ok(p) => p,
+        Err(response) => return response,
     };
     let regex = q.regex.as_deref() == Some("true");
     match search_files(&root, &query, regex).await {
@@ -193,9 +229,14 @@ async fn search_files(root: &str, query: &str, regex: bool) -> std::io::Result<F
     Ok(FsSearchResponse { query: query.to_string(), matches, truncated })
 }
 
-pub async fn write(Json(body): Json<FsWriteRequest>) -> Response {
+pub async fn write(State(state): State<AppState>, Json(body): Json<FsWriteRequest>) -> Response {
     let (Some(path), Some(content)) = (body.path, body.content) else {
         return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and content required.");
+    };
+    let workspaces_dir = workspaces_dir(&state).await;
+    let path = match workspace_path_for(&workspaces_dir, &path) {
+        Ok(p) => p,
+        Err(response) => return response,
     };
     match tokio::fs::write(&path, content).await {
         Ok(()) => Json(serde_json::json!({ "ok": true })).into_response(),
@@ -203,9 +244,14 @@ pub async fn write(Json(body): Json<FsWriteRequest>) -> Response {
     }
 }
 
-pub async fn create(Json(body): Json<FsCreateRequest>) -> Response {
+pub async fn create(State(state): State<AppState>, Json(body): Json<FsCreateRequest>) -> Response {
     let (Some(path), Some(kind)) = (body.path, body.kind) else {
         return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and kind required.");
+    };
+    let workspaces_dir = workspaces_dir(&state).await;
+    let path = match workspace_path_for(&workspaces_dir, &path) {
+        Ok(p) => p,
+        Err(response) => return response,
     };
     let result = match kind {
         FsEntryKind::Dir => tokio::fs::create_dir_all(&path).await,
@@ -223,9 +269,14 @@ pub async fn create(Json(body): Json<FsCreateRequest>) -> Response {
     }
 }
 
-pub async fn delete(Json(body): Json<FsDeleteRequest>) -> Response {
+pub async fn delete(State(state): State<AppState>, Json(body): Json<FsDeleteRequest>) -> Response {
     let Some(path) = body.path else {
         return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.");
+    };
+    let workspaces_dir = workspaces_dir(&state).await;
+    let path = match workspace_path_for(&workspaces_dir, &path) {
+        Ok(p) => p,
+        Err(response) => return response,
     };
     let metadata = tokio::fs::metadata(&path).await;
     let result = match metadata {
@@ -261,9 +312,18 @@ async fn copy_recursive(from: &Path, to: &Path) -> std::io::Result<()> {
     }
 }
 
-pub async fn mv(Json(body): Json<FsMoveRequest>) -> Response {
+pub async fn mv(State(state): State<AppState>, Json(body): Json<FsMoveRequest>) -> Response {
     let (Some(path), Some(to)) = (body.path, body.to) else {
         return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and to required.");
+    };
+    let workspaces_dir = workspaces_dir(&state).await;
+    let path = match workspace_path_for(&workspaces_dir, &path) {
+        Ok(p) => p,
+        Err(response) => return response,
+    };
+    let to = match workspace_path_for(&workspaces_dir, &to) {
+        Ok(p) => p,
+        Err(response) => return response,
     };
     if path_exists(&to).await {
         return err(StatusCode::BAD_REQUEST, "FS_EXISTS", "An entry already exists at the destination.");
@@ -293,9 +353,18 @@ pub async fn mv(Json(body): Json<FsMoveRequest>) -> Response {
     }
 }
 
-pub async fn copy(Json(body): Json<FsCopyRequest>) -> Response {
+pub async fn copy(State(state): State<AppState>, Json(body): Json<FsCopyRequest>) -> Response {
     let (Some(path), Some(to)) = (body.path, body.to) else {
         return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and to required.");
+    };
+    let workspaces_dir = workspaces_dir(&state).await;
+    let path = match workspace_path_for(&workspaces_dir, &path) {
+        Ok(p) => p,
+        Err(response) => return response,
+    };
+    let to = match workspace_path_for(&workspaces_dir, &to) {
+        Ok(p) => p,
+        Err(response) => return response,
     };
     if path_exists(&to).await {
         return err(StatusCode::BAD_REQUEST, "FS_EXISTS", "An entry already exists at the destination.");
