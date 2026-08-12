@@ -108,7 +108,7 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` opens the desktop app with an embedded daemon, using the repo's
+`pnpm dev` opens the desktop app with a local worker process, using the repo's
 `.stage` sandbox so it never touches your real config. When you're ready to use
 it for real:
 
@@ -125,14 +125,14 @@ pnpm build
 Installers land in `apps/desktop/release` — AppImage on Linux, NSIS on Windows,
 DMG on macOS.
 
-### Running the daemon on its own
+### Running the worker on its own
 
 Useful on a headless machine you want to reach from a laptop or phone:
 
 ```sh
 ORQUESTER_HTTP_ENABLED=true \
 ORQUESTER_HTTP_PASSWORD='a-good-password' \
-pnpm --filter @orquester/daemon start
+cargo run --manifest-path apps/worker/Cargo.toml
 ```
 
 Then point a browser at `http://<host>:47831`.
@@ -212,8 +212,8 @@ It shows up in the menus on the next daemon start.
 
 | Piece | What it is |
 | --- | --- |
-| `apps/daemon` | Fastify server owning PTYs, the filesystem and the tool catalog |
-| `apps/desktop` | Electron shell that hosts the daemon in-process, plus tray |
+| `apps/worker` | Rust server owning PTYs, the filesystem and the tool catalog |
+| `apps/desktop` | Electron shell that starts and connects to a local worker, plus tray |
 | `apps/web` | Vite SPA for remote access |
 | `packages/ui` | The React app both clients render (Tailwind, zustand, xterm.js) |
 | `packages/api` | Shared wire types |

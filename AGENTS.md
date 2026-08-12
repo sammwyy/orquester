@@ -16,7 +16,7 @@ second device, it belongs to the daemon.
 
 ## Domains
 
-**apps/daemon** — the server. Owns PTY sessions, the tool registry, filesystem
+**apps/worker** — the server. Owns PTY sessions, the tool registry, filesystem
 access, configuration and the event bus. Routes stay thin; each domain gets its
 own service module.
 
@@ -93,7 +93,7 @@ Commits: `type(scope): summary`, lowercase.
 ## Running it
 
 `pnpm dev` for the desktop app against the sandbox, `pnpm dev:bare` against the
-real config dir, `pnpm dev:daemon` and `pnpm dev:web` for the pieces alone.
+real config dir, `pnpm dev:worker` and `pnpm dev:web` for the pieces alone.
 
 `pnpm check` typechecks everything and is the only automated gate — there are no
 tests and no linter, so verify real behavior by running the app, and be explicit
