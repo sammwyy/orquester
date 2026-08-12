@@ -46,7 +46,9 @@ export class SessionManager {
       cwd,
       cols,
       rows,
-      env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" }
+      env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" },
+      // Avoids node-pty's "AttachConsole failed" crash on kill (Windows).
+      ...(process.platform === "win32" ? { useConptyDll: true } : {})
     });
 
     const summary: SessionSummary = {

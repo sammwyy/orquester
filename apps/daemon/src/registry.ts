@@ -214,7 +214,11 @@ export class RegistryService {
 
     const arg = entry.kind === "browser" ? pathToFileURL(path).href : path;
     try {
-      const child = spawn(entry.resolvedBin, [arg], { detached: true, stdio: "ignore" });
+      const child = spawn(entry.resolvedBin, [arg], {
+        detached: true,
+        stdio: "ignore",
+        shell: process.platform === "win32"
+      });
       child.unref();
       return { ok: true };
     } catch (error) {
@@ -533,7 +537,14 @@ function run(command: string): Promise<RegistryActionResult> {
 
 function runExecutable(file: string, args: readonly string[]): Promise<RegistryActionResult> {
   return new Promise((resolve) => {
-    const child = spawn(file, [...args], { stdio: ["ignore", "pipe", "pipe"] });
+    let child: ReturnType<typeof spawn>;
+    try {
+      // shell:true avoids EINVAL when file is a Windows .cmd/.bat shim.
+      child = spawn(file, [...args], { stdio: ["ignore", "pipe", "pipe"], shell: process.platform === "win32" });
+    } catch (error) {
+      resolve({ ok: false, exitCode: 1, output: error instanceof Error ? error.message : "spawn failed" });
+      return;
+    }
     let settled = false;
     let stdout = "";
     let stderr = "";
@@ -624,7 +635,9 @@ function runInteractive(file: string, args: readonly string[], stopWhen?: RegExp
       cols: 120,
       rows: 40,
       cwd: process.cwd(),
-      env: process.env as Record<string, string>
+      env: process.env as Record<string, string>,
+      // Avoids node-pty's "AttachConsole failed" crash on kill (Windows).
+      ...(process.platform === "win32" ? { useConptyDll: true } : {})
     });
     let output = "";
     let settled = false;
@@ -649,9 +662,16 @@ function runInteractive(file: string, args: readonly string[], stopWhen?: RegExp
 
 function runAppServerCall(file: string, method: string, params?: unknown): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const child = spawn(file, ["app-server", "--listen", "stdio://"], {
-      stdio: ["pipe", "pipe", "ignore"]
-    });
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(file, ["app-server", "--listen", "stdio://"], {
+        stdio: ["pipe", "pipe", "ignore"],
+        shell: process.platform === "win32"
+      });
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error("spawn failed"));
+      return;
+    }
     let buffer = "";
     let settled = false;
     const finish = (callback: () => void) => {
