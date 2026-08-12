@@ -8,8 +8,17 @@ use sysinfo::{Disks, System};
 
 fn usage(total_bytes: u64, free_bytes: u64) -> ResourceUsage {
     let used_bytes = total_bytes.saturating_sub(free_bytes);
-    let percentage = if total_bytes > 0 { (used_bytes as f64 / total_bytes as f64 * 100.0).round() } else { 0.0 };
-    ResourceUsage { used_bytes, total_bytes, free_bytes, percentage }
+    let percentage = if total_bytes > 0 {
+        (used_bytes as f64 / total_bytes as f64 * 100.0).round()
+    } else {
+        0.0
+    };
+    ResourceUsage {
+        used_bytes,
+        total_bytes,
+        free_bytes,
+        percentage,
+    }
 }
 
 /// Owns a long-lived `System` handle: sysinfo computes CPU percentage as a
@@ -24,7 +33,9 @@ impl SystemResourcesService {
     pub fn new() -> Self {
         let mut system = System::new_all();
         system.refresh_cpu_usage();
-        Self { system: Mutex::new(system) }
+        Self {
+            system: Mutex::new(system),
+        }
     }
 
     pub fn read(&self, workspaces_dir: &str) -> SystemResourcesResponse {
@@ -32,7 +43,10 @@ impl SystemResourcesService {
             let mut system = self.system.lock().unwrap();
             system.refresh_cpu_usage();
             system.refresh_memory();
-            CpuUsage { percentage: system.global_cpu_usage() as f64, cores: system.cpus().len() }
+            CpuUsage {
+                percentage: (system.global_cpu_usage() as f64).round(),
+                cores: system.cpus().len(),
+            }
         };
 
         let memory = {
@@ -48,7 +62,11 @@ impl SystemResourcesService {
 fn read_disk(workspaces_dir: &str) -> DiskUsage {
     let disks = Disks::new_with_refreshed_list();
     let workspaces_path = std::path::Path::new(workspaces_dir);
-    let best = disks.list().iter().filter(|disk| workspaces_path.starts_with(disk.mount_point())).max_by_key(|disk| disk.mount_point().as_os_str().len());
+    let best = disks
+        .list()
+        .iter()
+        .filter(|disk| workspaces_path.starts_with(disk.mount_point()))
+        .max_by_key(|disk| disk.mount_point().as_os_str().len());
 
     match best {
         Some(disk) => {
@@ -64,7 +82,14 @@ fn read_disk(workspaces_dir: &str) -> DiskUsage {
                 path: workspaces_dir.to_string(),
             }
         }
-        None => DiskUsage { used_bytes: 0, total_bytes: 0, free_bytes: 0, percentage: 0.0, mount: "unknown".to_string(), path: workspaces_dir.to_string() },
+        None => DiskUsage {
+            used_bytes: 0,
+            total_bytes: 0,
+            free_bytes: 0,
+            percentage: 0.0,
+            mount: "unknown".to_string(),
+            path: workspaces_dir.to_string(),
+        },
     }
 }
 
@@ -94,7 +119,9 @@ pub fn watch_system_resources(
 
 impl SystemResourcesWatcher {
     pub fn set_active(&self, active: bool) {
-        let was_active = self.active.swap(active, std::sync::atomic::Ordering::SeqCst);
+        let was_active = self
+            .active
+            .swap(active, std::sync::atomic::Ordering::SeqCst);
         if was_active == active {
             return;
         }

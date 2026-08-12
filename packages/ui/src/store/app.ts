@@ -50,6 +50,17 @@ function applyRegistryEntry(registry: RegistryResponse, entry: RegistryEntry): R
   return { ...registry, [key]: next };
 }
 
+function applyOptimisticMediaControl(status: MediaStatusResponse | null, request: MediaControlRequest): MediaStatusResponse | null {
+  if (!status?.available) return status;
+  if (request.action === "playPause" && status.state !== "stopped") {
+    return { ...status, state: status.state === "playing" ? "paused" : "playing" };
+  }
+  if (request.action === "volume" && typeof request.volume === "number") {
+    return { ...status, volume: Math.min(1, Math.max(0, request.volume)), volumeAvailable: true };
+  }
+  return status;
+}
+
 /** Module-level handle so we can drop the events subscription on reconnect. */
 let eventsUnsubscribe: (() => void) | null = null;
 /** Generation guard so a stale events stream's onEnd doesn't trigger reconnect. */
@@ -791,10 +802,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   controlMedia: async (request) => {
     const api = get().api;
     if (!api) return;
+    const optimistic = applyOptimisticMediaControl(get().mediaStatus, request);
+    if (optimistic !== get().mediaStatus) set({ mediaStatus: optimistic });
     try {
-      set({ mediaStatus: await api.controlMedia(request) });
+      const confirmed = await api.controlMedia(request);
+      if (request.action !== "playPause" || confirmed.state === optimistic?.state) {
+        set({ mediaStatus: confirmed });
+      }
+      void (async () => {
+        await delay(350);
+        if (get().api === api) await get().loadMediaStatus();
+      })();
     } catch {
-      // The next media event will reconcile the control state.
+      void get().loadMediaStatus();
     }
   },
 
