@@ -27,7 +27,7 @@ interface DaemonResponse {
  * do). Where true, the window surface is transparent and the renderer paints
  * the rounded corners.
  */
-const CSS_ROUNDED_CORNERS = process.platform === "linux";
+const CSS_ROUNDED_CORNERS = process.platform === "linux" || (process.platform === "win32" && windowsBuild() < 22000);
 
 /** Whether the live window surface can show what sits behind it. */
 let windowTransparency = false;
@@ -122,7 +122,7 @@ const roundedWindow = () => readAppConfig().roundedWindow !== false;
  * the glass sidebar is pure transparency, which is worse than an opaque panel,
  * so the UI keeps the setting disabled.
  */
-type BlurStrategy = "vibrancy" | "acrylic" | "kwin";
+type BlurStrategy = "vibrancy" | "acrylic" | "win10-acrylic" | "kwin";
 
 let detectedStrategy: BlurStrategy | null | undefined;
 
@@ -138,8 +138,10 @@ function detectBlurStrategy(): BlurStrategy | null {
     return "vibrancy";
   }
   if (process.platform === "win32") {
-    // Acrylic behind a window landed in Windows 11 22H2 (build 22621).
-    return windowsBuild() >= 22621 ? "acrylic" : null;
+    const build = windowsBuild();
+    if (build >= 22621) return "acrylic";
+    if (build >= 16299) return "win10-acrylic";
+    return null;
   }
   if (process.platform === "linux") {
     return kwinBlurAvailable() ? "kwin" : null;
@@ -181,11 +183,44 @@ function applyBackdrop(win: BrowserWindow, enabled: boolean): void {
     case "acrylic":
       win.setBackgroundMaterial(enabled ? "acrylic" : "none");
       break;
+    case "win10-acrylic":
+      applyWindows10Acrylic(win, enabled);
+      break;
     case "kwin":
       applyKwinBlur(win, enabled);
       break;
     default:
       break;
+  }
+}
+
+/** Windows 10 acrylic through an undocumented, best-effort Win32 API. */
+function applyWindows10Acrylic(win: BrowserWindow, enabled: boolean): void {
+  const handle = win.getNativeWindowHandle();
+  const hwnd = handle.length === 8 ? handle.readBigUInt64LE().toString() : handle.readUInt32LE().toString();
+  if (!/^\d+$/.test(hwnd)) return;
+  const script = `
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class OrquesterAcrylic {
+  [StructLayout(LayoutKind.Sequential)] public struct AccentPolicy { public int State; public int Flags; public uint Color; public int Animation; }
+  [StructLayout(LayoutKind.Sequential)] public struct Data { public int Attribute; public IntPtr Data; public int Size; }
+  [DllImport("user32.dll")] public static extern bool SetWindowCompositionAttribute(IntPtr hwnd, ref Data data);
+  public static void Apply(IntPtr hwnd, bool enabled) {
+    var policy = new AccentPolicy { State = enabled ? 4 : 0, Flags = 2, Color = 0xCC181818, Animation = 0 };
+    var ptr = Marshal.AllocHGlobal(Marshal.SizeOf(policy));
+    try { Marshal.StructureToPtr(policy, ptr, false); var data = new Data { Attribute = 19, Data = ptr, Size = Marshal.SizeOf(policy) }; SetWindowCompositionAttribute(hwnd, ref data); }
+    finally { Marshal.FreeHGlobal(ptr); }
+  }
+}
+'@
+[OrquesterAcrylic]::Apply([IntPtr]${hwnd}, [bool]::Parse("${enabled}"))
+`;
+  try {
+    spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { stdio: "ignore", windowsHide: true }).on("error", () => undefined);
+  } catch {
+    /* Composition support is unavailable. */
   }
 }
 
@@ -566,7 +601,7 @@ function createWindow(): void {
   // The surface can't be made transparent after creation; the native backdrop
   // (vibrancy/acrylic) can, and is re-applied from the renderer. Windows draws
   // acrylic behind the window itself, over a zero-alpha background.
-  const transparent = CSS_ROUNDED_CORNERS || (translucent && process.platform === "darwin");
+  const transparent = CSS_ROUNDED_CORNERS || translucent;
   const winGlass = glass && blurStrategy() === "acrylic";
   windowTransparency = transparent || winGlass;
 

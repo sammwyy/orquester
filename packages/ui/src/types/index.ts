@@ -19,10 +19,10 @@ export type ConnectionStatus = "connected" | "connecting" | "disconnected" | "er
 
 /**
  * How the host system can blur what sits behind the window: macOS vibrancy,
- * Windows 11 acrylic, or KWin's X11 blur. Systems offering none can't render
+ * Windows acrylic (native on Windows 11, experimental on Windows 10), or KWin's X11 blur. Systems offering none can't render
  * the glass chrome at all.
  */
-export type BlurStrategy = "vibrancy" | "acrylic" | "kwin";
+export type BlurStrategy = "vibrancy" | "acrylic" | "win10-acrylic" | "kwin";
 
 /** What the host window can actually do, as reported by the desktop shell. */
 export interface WindowCapabilities {

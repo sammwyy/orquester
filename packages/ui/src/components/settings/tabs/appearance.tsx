@@ -10,6 +10,7 @@ import { Field, Group, SectionHeading, StackedField } from "./shared";
 const BLUR_HINT: Record<BlurStrategy, string> = {
   vibrancy: "Blurred by macOS vibrancy.",
   acrylic: "Blurred by Windows acrylic.",
+  "win10-acrylic": "Experimental Windows 10 acrylic. It uses an undocumented Windows API and may fail after an OS update.",
   kwin: "Blurred by KWin."
 };
 
@@ -184,7 +185,7 @@ export const AppearanceSettings: React.FC = () => {
             hint={
               canBlur
                 ? (capabilities.blur && BLUR_HINT[capabilities.blur]) ?? ""
-                : "No window blur here — needs macOS, Windows 11 or KDE/KWin."
+                : "No window blur here — needs macOS, Windows 10 version 1709+, Windows 11 or KDE/KWin."
             }
           >
             <Switch
