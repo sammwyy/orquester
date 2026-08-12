@@ -11,6 +11,8 @@ import type {
   GitStatusResponse,
   IntegrationsResponse,
   HealthResponse,
+  MediaControlRequest,
+  MediaStatusResponse,
   OpenResult,
   ProjectSummary,
   RegistryActionResult,
@@ -192,6 +194,24 @@ export class ApiClient {
 
   systemResources(signal?: AbortSignal): Promise<SystemResourcesResponse> {
     return this.send("GET", "/api/system/resources", { signal });
+  }
+
+  mediaStatus(signal?: AbortSignal): Promise<MediaStatusResponse> {
+    return this.send("GET", "/api/system/media", { signal });
+  }
+
+  async mediaThumbnail(signal?: AbortSignal): Promise<string | null> {
+    if (!this.transporter.requestBinary) return null;
+    const response = await this.transporter.requestBinary({ method: "GET", path: "/api/system/media/thumbnail", signal });
+    if (!response.ok) return null;
+    const type = response.headers?.["content-type"] ?? "image/jpeg";
+    const bytes = new Uint8Array(response.data.byteLength);
+    bytes.set(response.data);
+    return URL.createObjectURL(new Blob([bytes.buffer], { type }));
+  }
+
+  controlMedia(request: MediaControlRequest): Promise<MediaStatusResponse> {
+    return this.send("POST", "/api/system/media/control", { body: request });
   }
 
   updateIntegrations(integrations: Record<string, boolean>): Promise<IntegrationsResponse> {

@@ -1,9 +1,10 @@
 import type { IntegrationStatus } from "@orquester/api";
 import { readBatteryStatus } from "./battery";
 import { isGitAvailable } from "./git";
+import { isMediaAvailable } from "./media";
 
 export async function getIntegrationAvailability(): Promise<IntegrationStatus[]> {
-  const [gitAvailable, battery] = await Promise.all([isGitAvailable(), readBatteryStatus()]);
+  const [gitAvailable, battery, mediaAvailable] = await Promise.all([isGitAvailable(), readBatteryStatus(), isMediaAvailable()]);
   return [
     {
       id: "git",
@@ -27,6 +28,14 @@ export async function getIntegrationAvailability(): Promise<IntegrationStatus[]>
       description: "CPU, memory and the disk containing this worker’s workspaces.",
       enabled: true,
       available: true
+    },
+    {
+      id: "media",
+      name: "Media",
+      description: "Control the media session playing on this worker.",
+      enabled: true,
+      available: mediaAvailable,
+      ...(mediaAvailable ? {} : { unavailableReason: "No supported media session is available on this worker." })
     }
   ];
 }

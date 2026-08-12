@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import type { IntegrationStatus } from "@orquester/api";
-import { BatteryCharging, GitBranch, PlugZap } from "lucide-react";
+import { BatteryCharging, GitBranch, Music2, PlugZap } from "lucide-react";
 import { useApi } from "../../../context/orquester-context";
 import { useAppStore } from "../../../store/app";
 import { Switch } from "../../ui";
@@ -8,7 +8,8 @@ import { cn } from "../../../lib/cn";
 
 const icons: Record<string, React.ReactNode> = {
   git: <GitBranch size={20} />,
-  battery: <BatteryCharging size={20} />
+  battery: <BatteryCharging size={20} />,
+  media: <Music2 size={20} />
 };
 
 export const IntegrationsSettings: React.FC = () => {

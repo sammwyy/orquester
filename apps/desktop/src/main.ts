@@ -12,6 +12,7 @@ interface DaemonRequest {
   path?: string;
   headers?: http.OutgoingHttpHeaders;
   body?: string | Buffer;
+  binary?: boolean;
 }
 
 interface DaemonResponse {
@@ -19,6 +20,7 @@ interface DaemonResponse {
   ok: boolean;
   headers: http.IncomingHttpHeaders;
   body: string;
+  encoding?: "base64";
 }
 
 /**
@@ -319,7 +321,7 @@ async function stopIntegratedDaemon(): Promise<void> {
 }
 
 /** HTTP request to the daemon over its unix socket (the renderer's transport). */
-function requestOverSocket({ method, path: requestPath, headers, body }: DaemonRequest): Promise<DaemonResponse> {
+function requestOverSocket({ method, path: requestPath, headers, body, binary }: DaemonRequest): Promise<DaemonResponse> {
   return new Promise((resolve, reject) => {
     if (!daemonSocketPath) {
       reject(new Error("Orquester daemon is not running."));
@@ -333,7 +335,13 @@ function requestOverSocket({ method, path: requestPath, headers, body }: DaemonR
         res.on("data", (chunk: Buffer) => chunks.push(chunk));
         res.on("end", () => {
           const status = res.statusCode ?? 0;
-          resolve({ status, ok: status >= 200 && status < 300, headers: res.headers, body: Buffer.concat(chunks).toString("utf8") });
+          resolve({
+            status,
+            ok: status >= 200 && status < 300,
+            headers: res.headers,
+            body: Buffer.concat(chunks).toString(binary ? "base64" : "utf8"),
+            ...(binary ? { encoding: "base64" as const } : {})
+          });
         });
       }
     );

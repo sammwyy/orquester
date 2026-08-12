@@ -19,6 +19,7 @@ export interface HttpClientResponse {
   ok: boolean;
   headers: Record<string, string>;
   text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 export interface HttpClient {
@@ -53,7 +54,8 @@ export class FetchHttpClient implements HttpClient {
       status: response.status,
       ok: response.ok,
       headers,
-      text: () => response.text()
+      text: () => response.text(),
+      arrayBuffer: () => response.arrayBuffer()
     };
   }
 }

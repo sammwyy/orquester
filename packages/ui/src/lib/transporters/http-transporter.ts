@@ -67,6 +67,14 @@ export class HttpTransporter implements Transporter {
     };
   }
 
+  async requestBinary(req: TransportRequest): Promise<TransportResponse<Uint8Array>> {
+    const url = `${this.baseUrl}${req.path}${buildQueryString(req.query)}`;
+    const headers: Record<string, string> = { ...req.headers };
+    if (this.password) headers.Authorization = `Bearer ${this.password}`;
+    const response = await this.client.send({ url, method: req.method, headers, signal: req.signal });
+    return { status: response.status, ok: response.ok, data: new Uint8Array(await response.arrayBuffer()), headers: response.headers };
+  }
+
   openStream(path: string, handlers: StreamHandlers): StreamHandle {
     const controller = new AbortController();
     const headers: Record<string, string> = {};

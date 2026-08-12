@@ -49,6 +49,7 @@ export interface Transporter {
   readonly kind: string;
   /** Perform a single request/response round trip. */
   request<T = unknown>(req: TransportRequest): Promise<TransportResponse<T>>;
+  requestBinary?(req: TransportRequest): Promise<TransportResponse<Uint8Array>>;
   /**
    * Open a long-lived chunked GET stream (session output, event bus). Runtime
    * specific: web uses streaming fetch, desktop bridges over IPC.

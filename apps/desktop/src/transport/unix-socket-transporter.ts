@@ -13,6 +13,7 @@ export interface DesktopBridgeRequest {
   path: string;
   headers?: Record<string, string>;
   body?: string;
+  binary?: boolean;
 }
 
 export interface DesktopBridgeResponse {
@@ -20,6 +21,7 @@ export interface DesktopBridgeResponse {
   ok: boolean;
   headers: Record<string, string>;
   body: string;
+  encoding?: "base64";
 }
 
 /** The full bridge the preload exposes for talking to the daemon over the socket. */
@@ -66,6 +68,20 @@ export class UnixSocketTransporter implements Transporter {
       data,
       headers: response.headers
     };
+  }
+
+  async requestBinary(req: TransportRequest): Promise<TransportResponse<Uint8Array>> {
+    const response = await this.bridge.request({
+      method: req.method,
+      path: `${req.path}${buildQueryString(req.query)}`,
+      headers: req.headers,
+      binary: true
+    });
+    const raw = response.encoding === "base64" ? atob(response.body) : response.body;
+    const data = response.encoding === "base64"
+      ? Uint8Array.from(raw, (character) => character.charCodeAt(0))
+      : new TextEncoder().encode(raw);
+    return { status: response.status, ok: response.ok, data, headers: response.headers };
   }
 
   openStream(path: string, handlers: StreamHandlers): StreamHandle {

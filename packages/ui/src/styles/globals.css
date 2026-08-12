@@ -334,6 +334,14 @@ body {
       transform: translateY(100%);
     }
   }
+  @keyframes status-marquee {
+    0%, 20% {
+      transform: translateX(0);
+    }
+    80%, 100% {
+      transform: translateX(-45%);
+    }
+  }
 
   /* The reverse trip — played while a modal/sheet lingers after `open` goes
      false (see the `CLOSE_MS` timers in modal.tsx / sheet.tsx). Quicker than
@@ -366,6 +374,9 @@ body {
   }
   .animate-sheet-in {
     animation: sheet-in 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .animate-status-marquee {
+    animation: status-marquee 8s ease-in-out infinite alternate;
   }
   .animate-overlay-out {
     animation: overlay-out 150ms ease-in forwards;

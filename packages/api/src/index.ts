@@ -110,6 +110,25 @@ export interface SystemResourcesResponse {
   disk: ResourceUsage & { mount: string; path: string };
 }
 
+export type MediaPlaybackState = "playing" | "paused" | "stopped";
+
+export interface MediaStatusResponse {
+  available: boolean;
+  player?: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  state: MediaPlaybackState;
+  volume: number;
+  volumeAvailable: boolean;
+  thumbnailKey?: string;
+}
+
+export interface MediaControlRequest {
+  action: "previous" | "playPause" | "next" | "volume";
+  volume?: number;
+}
+
 export interface CreateWorkspaceRequest {
   name: string;
 }

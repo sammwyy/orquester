@@ -26,6 +26,7 @@ import { watchGitProjects } from "./integrations/git";
 import { watchBattery } from "./integrations/battery";
 import { getIntegrationAvailability } from "./integrations/catalog";
 import { watchSystemResources } from "./integrations/system-resources";
+import { watchMedia } from "./integrations/media";
 import { registerGitRoutes } from "./routes/git";
 import { registerSystemRoutes } from "./routes/system";
 import { registerIntegrationRoutes } from "./routes/integrations";
@@ -138,11 +139,15 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
   const resourcesWatcher = watchSystemResources(resolved.workspacesDir, (resources) => {
     broadcaster.publish("system", "resources.changed", resources);
   });
+  const mediaWatcher = watchMedia((status) => {
+    broadcaster.publish("system", "media.changed", status);
+  });
   const applyIntegrations = (integrations: Record<string, boolean>) => {
     const isAvailable = (id: string) => availability.some((item) => item.id === id && item.available);
     gitWatcher.setActive(eventClientCount > 0 && integrations.git !== false && isAvailable("git"));
     batteryWatcher.setActive(eventClientCount > 0 && integrations.battery !== false && isAvailable("battery"));
     resourcesWatcher.setActive(eventClientCount > 0 && integrations["system-resources"] !== false && isAvailable("system-resources"));
+    mediaWatcher.setActive(eventClientCount > 0 && integrations.media !== false && isAvailable("media"));
   };
   // Stream registry changes (install/update status, detected versions) to clients.
   registry.events.on("changed", (entry) => broadcaster.publish("registry", "registry.changed", entry));
@@ -164,7 +169,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
     broadcaster.publish("sessions", "session.closed", payload)
   );
 
-  const services: Services = { registry, sessions, broadcaster, gitWatcher, batteryWatcher, resourcesWatcher, applyIntegrations };
+  const services: Services = { registry, sessions, broadcaster, gitWatcher, batteryWatcher, resourcesWatcher, mediaWatcher, applyIntegrations };
 
   // The static web build the HTTP transport optionally serves.
   const webDirEnv = options.webDir ?? env.ORQUESTER_WEB_DIR;
@@ -223,6 +228,7 @@ export async function startDaemon(options: StartDaemonOptions = {}): Promise<Run
     gitWatcher.stop();
     batteryWatcher.stop();
     resourcesWatcher.stop();
+    mediaWatcher.stop();
     sessions.closeAll();
     await stopHttp();
     await unixServer.close().catch(() => undefined);
@@ -245,6 +251,7 @@ interface Services {
   gitWatcher: ReturnType<typeof watchGitProjects>;
   batteryWatcher: ReturnType<typeof watchBattery>;
   resourcesWatcher: ReturnType<typeof watchSystemResources>;
+  mediaWatcher: ReturnType<typeof watchMedia>;
   applyIntegrations: (integrations: Record<string, boolean>) => void;
   /** Restart the HTTP transport (set in main once the lifecycle exists). */
   reloadHttp?: () => Promise<void>;

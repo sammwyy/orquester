@@ -1,6 +1,7 @@
 import React from "react";
-import { Battery, BatteryCharging, Cpu, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, MemoryStick } from "lucide-react";
+import { Battery, BatteryCharging, Cpu, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, MemoryStick, Music2, Pause, Play, SkipBack, SkipForward, Volume2 } from "lucide-react";
 import { registerStatusModule } from "./registry";
+import { useApi } from "../../context/orquester-context";
 import { useAppStore } from "../../store/app";
 
 const GitLabel: React.FC = () => {
@@ -156,6 +157,104 @@ const ResourcesContent: React.FC = () => {
   );
 };
 
+const MediaLabel: React.FC = () => {
+  const media = useAppStore((state) => state.mediaStatus);
+  if (!media?.available) return <span>Media</span>;
+  const title = media.title || "No media";
+  const text = media.artist ? `${media.artist} — ${title}` : title;
+  const stateIcon = media.state === "playing" ? <Play size={10} /> : <Pause size={10} />;
+  return (
+    <span className="flex min-w-0 max-w-36 items-center gap-1 text-neutral-300" title={text}>
+      {media.state === "stopped" ? <Music2 size={11} className="shrink-0 text-neutral-500" /> : stateIcon}
+      <span className="min-w-0 overflow-hidden whitespace-nowrap">
+        <span className={text.length > 24 ? "inline-block animate-status-marquee" : "inline-block truncate"}>{text}</span>
+      </span>
+    </span>
+  );
+};
+
+const MediaContent: React.FC = () => {
+  const api = useApi();
+  const media = useAppStore((state) => state.mediaStatus);
+  const controlMedia = useAppStore((state) => state.controlMedia);
+  const [thumbnail, setThumbnail] = React.useState<string | null>(null);
+  const [volume, setVolume] = React.useState(media?.volume ?? 0);
+  const volumeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => {
+    setVolume(media?.volume ?? 0);
+  }, [media?.volume]);
+  React.useEffect(() => () => {
+    if (volumeTimer.current) clearTimeout(volumeTimer.current);
+  }, []);
+  React.useEffect(() => {
+    let active = true;
+    setThumbnail(null);
+    if (media?.available && media.title) {
+      void api.mediaThumbnail().then((url) => {
+        if (active) setThumbnail(url);
+        else if (url) URL.revokeObjectURL(url);
+      });
+    }
+    return () => {
+      active = false;
+      setThumbnail((url) => {
+        if (url) URL.revokeObjectURL(url);
+        return null;
+      });
+    };
+  }, [api, media?.thumbnailKey, media?.title, media?.artist, media?.album]);
+  if (!media?.available) return <p className="text-xs text-neutral-500">Media controls unavailable.</p>;
+  const title = media.title || "Nothing playing";
+  return (
+    <div className="w-64 max-w-[calc(100vw-2rem)]">
+      <div className="mb-3 flex items-start gap-2 border-b border-neutral-700/50 pb-2.5">
+        {thumbnail ? (
+          <img src={thumbnail} alt="" className="mt-0.5 h-10 w-10 shrink-0 rounded-md object-cover" />
+        ) : (
+          <span className="mt-0.5 text-neutral-400"><Music2 size={15} /></span>
+        )}
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-neutral-100">{title}</p>
+          <p className="mt-0.5 truncate text-[10px] text-neutral-500">{media.artist || media.player || "No active player"}</p>
+        </div>
+      </div>
+      <div className="flex items-center justify-center gap-3">
+        <button type="button" aria-label="Previous" className="text-neutral-400 hover:text-neutral-100" onClick={() => void controlMedia({ action: "previous" })}>
+          <SkipBack size={15} />
+        </button>
+        <button type="button" aria-label={media.state === "playing" ? "Pause" : "Play"} className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-200 text-neutral-900 hover:bg-white" onClick={() => void controlMedia({ action: "playPause" })}>
+          {media.state === "playing" ? <Pause size={13} /> : <Play size={13} />}
+        </button>
+        <button type="button" aria-label="Next" className="text-neutral-400 hover:text-neutral-100" onClick={() => void controlMedia({ action: "next" })}>
+          <SkipForward size={15} />
+        </button>
+      </div>
+      <div className="mt-3 flex items-center gap-2 border-t border-neutral-700/50 pt-2.5">
+        <Volume2 size={13} className="shrink-0 text-neutral-500" />
+        <input
+          aria-label="Volume"
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={volume}
+          disabled={!media.volumeAvailable}
+          className="h-1 min-w-0 flex-1 accent-neutral-300"
+          onChange={(event) => {
+            const nextVolume = Number(event.target.value);
+            setVolume(nextVolume);
+            if (volumeTimer.current) clearTimeout(volumeTimer.current);
+            volumeTimer.current = setTimeout(() => {
+              void controlMedia({ action: "volume", volume: nextVolume });
+            }, 120);
+          }}
+        />
+        <span className="w-7 text-right text-[10px] tabular-nums text-neutral-500">{media.volumeAvailable ? `${Math.round(volume * 100)}%` : "—"}</span>
+      </div>
+    </div>
+  );
+};
+
 registerStatusModule({
   id: "project.git",
   label: <GitLabel />,
@@ -179,4 +278,12 @@ registerStatusModule({
   side: "right",
   integration: "system-resources",
   content: ResourcesContent
+});
+
+registerStatusModule({
+  id: "system.media",
+  label: <MediaLabel />,
+  side: "right",
+  integration: "media",
+  content: MediaContent
 });
