@@ -1,5 +1,5 @@
 //! Fan-out for daemon events to every connected `/events` client. Mirrors
-//! apps/daemon/src/broadcaster.ts.
+//! Fan-out for connected `/events` clients.
 
 use serde::Serialize;
 use tokio::sync::broadcast;

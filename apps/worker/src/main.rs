@@ -145,7 +145,7 @@ async fn main() {
     let local_router = server::build_router(local_state);
 
     // The remote transport optionally serves the bundled apps/web SPA build,
-    // same as apps/daemon/src/index.ts's `serveWeb`.
+    // Serve the web client when it is available.
     let web_dir = env.get("ORQUESTER_WEB_DIR").map(|dir| cwd.join(dir)).filter(|dir| dir.join("index.html").exists());
     let serve_web = web_dir.map(|dir| dir.to_string_lossy().to_string());
 

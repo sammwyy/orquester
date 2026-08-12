@@ -1,5 +1,5 @@
 //! File browser + editor endpoints. Mirrors the `/api/fs*` handlers in
-//! apps/daemon/src/index.ts — no confinement to workspacesDir, same as the
+//! No confinement to workspacesDir, matching the
 //! original (the local socket / auth boundary is what gates access).
 
 use crate::api_types::{

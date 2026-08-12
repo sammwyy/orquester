@@ -1,5 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/registry.ts. Each agent's bespoke
-//! quota/auth logic (apps/daemon/src/integrations/agents/*.ts) is not
+//! Host tool registry. Each agent's bespoke quota/auth logic is not
 //! ported — that's a separate, substantial body of work per provider. What's
 //! here covers the whole catalog (shells, agents, IDEs, file explorers,
 //! browsers): resolve a binary on PATH, list, detect version via the
@@ -54,7 +53,7 @@ fn to_public(entry: &RuntimeEntry) -> RegistryEntry {
 }
 
 /// Expand `$LOCALAPPDATA` / `$PROGRAMFILES` / `$HOME` tokens the same way
-/// apps/daemon/src/registry.ts's `expand()` does.
+/// Expands a registry command template.
 fn expand_tokens(tokens: &[&str]) -> Vec<String> {
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_default();
     let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
@@ -203,7 +202,7 @@ fn materialize_agents() -> Vec<RuntimeEntry> {
 }
 
 /// Wrap a command in a native UAC elevation prompt, mirroring
-/// `elevateCommand`'s Windows branch in apps/daemon/src/registry.ts. Unlike
+/// Windows elevation command. Unlike
 /// that function's posix branch (sudo with a piped password prompt), the
 /// dialog here is entirely native and out-of-band from our child process.
 fn elevate_command_windows(command: &str) -> String {
@@ -212,7 +211,7 @@ fn elevate_command_windows(command: &str) -> String {
 }
 
 /// Run a shell command line to completion, capturing combined output
-/// (capped), mirroring `run()` in apps/daemon/src/registry.ts.
+/// (capped).
 async fn run_shell_capture(command_line: &str, timeout: std::time::Duration) -> RegistryActionResult {
     let mut command = tokio::process::Command::new("cmd");
     command.arg("/c").arg(command_line);
@@ -240,7 +239,7 @@ pub struct RegistryService {
 }
 
 /// Update one entry and broadcast the change, same shape as `self.patch()` in
-/// apps/daemon/src/registry.ts. A free function (not a method) so it can run
+/// A free function (not a method) so it can run
 /// from both `&self` call sites and background tasks that only hold clones
 /// of `entries`/`broadcaster`, not the whole service.
 async fn patch_entry(
@@ -366,7 +365,7 @@ impl RegistryService {
     }
 
     /// Start an install (background); status flows via registry.changed
-    /// events. Returns immediately, same as apps/daemon/src/registry.ts.
+    /// events. Returns immediately.
     pub async fn install(&self, id: &str, elevated: bool) -> bool {
         self.run_managed(id, true, elevated).await
     }

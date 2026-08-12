@@ -2,7 +2,7 @@
 //! `versionFlag`; install/update run the entry's installCmd/updateCmd
 //! (elevated installs use native Windows UAC). Quota stays an honest
 //! `NOT_IMPLEMENTED` until the agent integrations
-//! (apps/daemon/src/integrations/agents/*.ts) are ported — see
+//! are ported — see
 //! registry.rs's module doc.
 
 use crate::api_types::{ApiError, OpenRequest};

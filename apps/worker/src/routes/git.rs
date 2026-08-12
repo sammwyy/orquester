@@ -1,4 +1,4 @@
-//! `/api/git/*`. Mirrors apps/daemon/src/routes/git.ts, including confining
+//! `/api/git/*`, including confining
 //! every project path to the resolved workspacesDir before touching it.
 
 use crate::api_types::{

@@ -11,7 +11,7 @@ use axum::{Json, Router};
 
 /// Builds one Fastify-equivalent Axum app. Called once per transport (local
 /// unix/pipe socket, optional remote HTTP) with different auth/CORS options,
-/// same shape as `createServer` in apps/daemon/src/index.ts.
+/// Builds the worker's HTTP router.
 pub fn build_router(state: AppState) -> Router {
     let mut router = Router::new()
         .route("/api/auth/info", get(routes::config_routes::auth_info))

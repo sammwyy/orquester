@@ -1,4 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/sessions.ts, using portable-pty
+//! PTY session management using portable-pty.
 //! instead of node-pty. Sessions outlive client connections: output is
 //! buffered so a (re)connecting client gets the current screen, and lifecycle
 //! changes go straight onto the broadcaster for cross-client sync.

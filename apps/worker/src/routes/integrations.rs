@@ -1,4 +1,4 @@
-//! `/api/integrations`. Mirrors apps/daemon/src/routes/integrations.ts.
+//! `/api/integrations`.
 
 use crate::api_types::{ApiError, IntegrationsResponse, UpdateIntegrationsRequest};
 use crate::state::{AppState, TransportMode};

@@ -1,5 +1,5 @@
 //! Resolves on-disk locations for a single worker run (mirrors the
-//! `ResolvedPaths` object built in apps/daemon/src/index.ts).
+//! Resolved worker paths.
 
 use crate::config::{self, ConfigVars};
 use std::collections::HashMap;
@@ -73,7 +73,7 @@ pub fn lexical_resolve(base: &std::path::Path, path: &str) -> std::path::PathBuf
 }
 
 /// Resolve a (possibly relative) appdir to an absolute path, or None.
-/// Mirrors `resolveAppdir` in apps/daemon/src/index.ts — every appdir
+/// Every appdir
 /// source (CLI flag or env var) goes through this same cwd-relative
 /// resolution, not just one of them.
 pub fn resolve_appdir(raw: Option<&str>, cwd: &std::path::Path) -> Option<String> {

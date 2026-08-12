@@ -1,4 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/host-registry.ts — static IDE, file
+//! Static IDE, file
 //! explorer and browser candidates by platform, before PATH/env resolution.
 
 pub struct HostEntryDef {

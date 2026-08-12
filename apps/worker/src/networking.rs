@@ -1,4 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/integrations/networking/service.ts
+//! Networking integration.
 //! — Windows uses the native IP Helper table + a toolhelp process snapshot
 //! instead of shelling out to `Get-NetTCPConnection`/`Get-CimInstance
 //! Win32_Process` through PowerShell. `killNetworkProcess` still shells out

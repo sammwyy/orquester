@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "cross-env ORQUESTER_APPDIR=./.stage pnpm --filter @orquester/desktop dev",
     "dev:bare": "pnpm --filter @orquester/desktop dev",
-    "dev:daemon": "cross-env ORQUESTER_APPDIR=./.stage tsx watch apps/daemon/src/cli.ts",
-    "dev:daemon:bare": "tsx watch apps/daemon/src/cli.ts",
+    "dev:worker": "cross-env ORQUESTER_APPDIR=./.stage cargo run --manifest-path apps/worker/Cargo.toml",
+    "dev:worker:bare": "cargo run --manifest-path apps/worker/Cargo.toml",
     "dev:web": "cross-env VITE_ORQUESTER_API_URL=http://127.0.0.1:47831 pnpm --filter @orquester/web dev",
     "dev:desktop": "pnpm --filter @orquester/desktop dev",
     "build": "pnpm -r build",

@@ -1,4 +1,4 @@
-//! `/api/system/*`. Mirrors apps/daemon/src/routes/system.ts.
+//! `/api/system/*`.
 
 use crate::api_types::{ApiError, KillNetworkProcessRequest, MediaControlRequest};
 use crate::state::AppState;

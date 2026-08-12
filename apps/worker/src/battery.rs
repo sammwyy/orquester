@@ -1,4 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/integrations/battery/service.ts —
+//! Battery integration.
 //! Windows uses the native `GetSystemPowerStatus` call instead of shelling
 //! out to `Get-CimInstance Win32_Battery`.
 

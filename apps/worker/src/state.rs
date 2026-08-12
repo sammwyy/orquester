@@ -18,7 +18,7 @@ pub struct SharedConfig {
 }
 
 /// Everything shared between the local and remote transports, mirroring the
-/// `Services` bag built once in apps/daemon/src/index.ts and threaded into
+/// `Services` bag built once and threaded into
 /// both Fastify instances.
 pub struct Services {
     pub daemon_id: String,
@@ -47,7 +47,7 @@ impl Services {
         self.broadcaster.set_client_delta(delta);
     }
 
-    /// Mirrors `applyIntegrations` in apps/daemon/src/index.ts: toggles every
+    /// Applies integration availability and configuration: toggles every
     /// watcher active/inactive based on whether any `/events` client is
     /// connected, whether the integration is enabled in daemon.json, and
     /// whether it's actually available on this host.

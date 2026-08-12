@@ -1,4 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/integrations/agents/*.ts's
+//! Agent quota support.
 //! getQuota/getAuthStatus logic (every agent's getVersion is just
 //! `ctx.call(["--version"])` + first-line, already covered generically by
 //! RegistryService::version — no per-agent override needed there).
@@ -348,7 +348,7 @@ fn codex_window_label(minutes: i64, index: usize) -> String {
 /// `codex app-server --listen stdio://`, send `initialize`, wait briefly,
 /// then send `initialized` followed by the real request, and return the
 /// response matching id 2. Mirrors `runAppServerCall` in
-/// apps/daemon/src/registry.ts line for line.
+/// Returns a registered agent's quota state.
 async fn run_app_server_call(bin: &Path, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -568,7 +568,7 @@ fn normalize_grok_reset(value: &str) -> Option<String> {
 /// Drives an interactive PTY session (portable-pty, same crate sessions.rs
 /// uses) until `stop_when` matches the accumulated output, then sends
 /// Ctrl+C and gives it 250ms to wind down. 20s overall timeout. Mirrors
-/// `runInteractive` in apps/daemon/src/registry.ts.
+/// Starts an interactive agent command.
 async fn call_interactive(bin: &Path, args: &[&str], stop_when: &regex::Regex) -> Result<String, String> {
     let pty_system = portable_pty::native_pty_system();
     let pair = pty_system

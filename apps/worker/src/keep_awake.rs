@@ -1,4 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/integrations/keep-awake/service.ts
+//! Keep-awake integration.
 //! — Windows uses the native `SetThreadExecutionState` call instead of
 //! spawning a background PowerShell process that calls it through
 //! `Add-Type`/P-Invoke in a loop.

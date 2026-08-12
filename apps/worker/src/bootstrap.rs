@@ -1,5 +1,5 @@
 //! Daemon config load/save, password hashing and directory prep — the
-//! startup-time logic that lived at the top of apps/daemon/src/index.ts.
+//! Startup configuration logic.
 
 use crate::config::DaemonConfig;
 use crate::paths::ResolvedPaths;

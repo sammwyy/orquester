@@ -1,4 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/integrations/catalog.ts.
+//! Integration catalog.
 
 use crate::api_types::IntegrationStatus;
 

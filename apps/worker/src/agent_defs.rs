@@ -1,5 +1,5 @@
 //! Static agent catalog — the `id`/`bin`/`versionFlag`/`installCmd` half of
-//! apps/daemon/src/integrations/agents/*.ts. Each agent's bespoke quota/auth
+//! Each agent's bespoke quota/auth
 //! logic (getQuota/getAuthStatus, scraping CLI or local-API output) is NOT
 //! ported: it's a large, provider-specific body of work on its own. Agents
 //! resolve, launch as PTY sessions, and report their version here; quota and

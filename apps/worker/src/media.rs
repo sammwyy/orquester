@@ -1,4 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/integrations/media/service.ts —
+//! Windows media integration.
 //! Windows only for now (native windows-rs GSMTC bindings, replacing the
 //! PowerShell + WinRT-via-reflection script the TS worker shelled out to).
 //! macOS/Linux (osascript / playerctl) are not ported; `is_media_available`

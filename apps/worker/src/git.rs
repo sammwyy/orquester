@@ -1,4 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/integrations/git/service.ts. Shells
+//! Git integration. Shells
 //! out to the real `git` binary exactly like the TS worker did (no libgit2),
 //! so behavior — including error messages surfaced to the client — matches.
 

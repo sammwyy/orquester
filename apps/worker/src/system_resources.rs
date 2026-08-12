@@ -1,4 +1,4 @@
-//! Hand-ported mirror of apps/daemon/src/integrations/system-resources/service.ts
+//! System resource integration.
 //! — uses the `sysinfo` crate for CPU/memory/disk instead of shelling out to
 //! `Get-CimInstance` (Windows) or `df` (posix).
 

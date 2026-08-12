@@ -1,5 +1,5 @@
 //! `/events` — newline-delimited JSON daemon event bus (lifecycle broadcasts +
-//! heartbeat). Mirrors the `/events` handler in apps/daemon/src/index.ts.
+//! heartbeat).
 
 use crate::api_types::EventMessage;
 use crate::state::AppState;
