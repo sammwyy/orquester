@@ -12,17 +12,26 @@ pub async fn serve(pipe_name: &str, router: Router) -> std::io::Result<()> {
     use hyper_util::service::TowerToHyperService;
     use tokio::net::windows::named_pipe::ServerOptions;
 
-    let mut first_instance = true;
+    let mut server = ServerOptions::new().first_pipe_instance(true).create(pipe_name)?;
+
     loop {
-        let mut options = ServerOptions::new();
-        options.first_pipe_instance(first_instance);
-        first_instance = false;
-        let server = options.create(pipe_name)?;
-        server.connect().await?;
+        if let Err(error) = server.connect().await {
+            // A single failed connect must not take down the daemon's only
+            // always-on transport — log it and keep serving on a fresh
+            // instance instead of propagating.
+            tracing::warn!(%error, "named pipe connect failed, recreating the pipe instance");
+            server = ServerOptions::new().create(pipe_name)?;
+            continue;
+        }
+
+        // Create the next instance before handing this connected one off to
+        // a task, so a pipe instance is always available for the next
+        // connector (tokio's documented safe pattern for named_pipe servers).
+        let connected = std::mem::replace(&mut server, ServerOptions::new().create(pipe_name)?);
 
         let router = router.clone();
         tokio::spawn(async move {
-            let io = TokioIo::new(server);
+            let io = TokioIo::new(connected);
             let service = TowerToHyperService::new(router);
             if let Err(error) = hyper::server::conn::http1::Builder::new().serve_connection(io, service).await {
                 tracing::debug!(%error, "named pipe connection ended");
