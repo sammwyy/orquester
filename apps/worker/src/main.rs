@@ -69,9 +69,9 @@ async fn main() {
     let socket_path = daemon_paths.socket_path.clone();
     let client_config = config::create_default_client_config(&socket_path);
 
-    let registry = Arc::new(RegistryService::new());
-    registry.init().await;
     let broadcaster = Arc::new(Broadcaster::new());
+    let registry = Arc::new(RegistryService::new(broadcaster.clone()));
+    registry.init().await;
     let sessions = Arc::new(SessionManager::new(registry.clone(), broadcaster.clone()));
     let git_watcher = {
         let broadcaster = broadcaster.clone();

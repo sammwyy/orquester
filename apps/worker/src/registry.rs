@@ -8,9 +8,11 @@
 //! honest NOT_IMPLEMENTED in routes/registry.rs.
 
 use crate::api_types::{OpenResult, RegistryActionResult, RegistryEntry, RegistryInstallState, RegistryKind, RegistryResponse};
+use crate::broadcaster::Broadcaster;
 use crate::host_registry::{HostEntryDef, HOST_BROWSERS, HOST_FILE_EXPLORERS, HOST_IDES};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[derive(Clone)]
@@ -21,10 +23,14 @@ struct RuntimeEntry {
     bin: Vec<String>,
     resolved_bin: Option<PathBuf>,
     enabled: bool,
+    version: Option<String>,
     version_flag: Option<String>,
     install_command: Option<String>,
+    update_command: Option<String>,
     website_url: Option<String>,
     missing_dependencies: Vec<String>,
+    install_state: RegistryInstallState,
+    install_error: Option<String>,
 }
 
 fn to_public(entry: &RuntimeEntry) -> RegistryEntry {
@@ -33,14 +39,14 @@ fn to_public(entry: &RuntimeEntry) -> RegistryEntry {
         name: entry.name.clone(),
         kind: entry.kind,
         enabled: entry.enabled,
-        version: None,
+        version: entry.version.clone(),
         can_install: entry.install_command.is_some(),
-        can_update: false,
+        can_update: entry.update_command.is_some(),
         install_command: entry.install_command.clone(),
         website_url: entry.website_url.clone(),
         missing_dependencies: entry.missing_dependencies.clone(),
-        install_state: RegistryInstallState::Idle,
-        install_error: None,
+        install_state: entry.install_state,
+        install_error: entry.install_error.clone(),
     }
 }
 
@@ -116,10 +122,14 @@ fn materialize(defs: &[HostEntryDef], kind: RegistryKind) -> Vec<RuntimeEntry> {
                 enabled: resolved_bin.is_some(),
                 resolved_bin,
                 bin,
+                version: None,
                 version_flag: None,
                 install_command: None,
+                update_command: None,
                 website_url: None,
                 missing_dependencies: Vec::new(),
+                install_state: RegistryInstallState::Idle,
+                install_error: None,
             }
         })
         .collect()
@@ -148,10 +158,14 @@ fn materialize_shells() -> Vec<RuntimeEntry> {
                 enabled: resolved_bin.is_some(),
                 resolved_bin,
                 bin,
+                version: None,
                 version_flag: None,
                 install_command: None,
+                update_command: None,
                 website_url: None,
                 missing_dependencies: Vec::new(),
+                install_state: RegistryInstallState::Idle,
+                install_error: None,
             }
         })
         .collect()
@@ -172,22 +186,78 @@ fn materialize_agents() -> Vec<RuntimeEntry> {
                 enabled: resolved_bin.is_some() && missing_dependencies.is_empty(),
                 resolved_bin,
                 bin,
+                version: None,
                 version_flag: (!def.version_flag.is_empty()).then(|| def.version_flag.to_string()),
                 install_command: (!def.install_cmd.is_empty()).then(|| def.install_cmd.to_string()),
+                update_command: (!def.update_cmd.is_empty()).then(|| def.update_cmd.to_string()),
                 website_url: (!def.website_url.is_empty()).then(|| def.website_url.to_string()),
                 missing_dependencies,
+                install_state: RegistryInstallState::Idle,
+                install_error: None,
             }
         })
         .collect()
 }
 
+/// Wrap a command in a native UAC elevation prompt, mirroring
+/// `elevateCommand`'s Windows branch in apps/daemon/src/registry.ts. Unlike
+/// that function's posix branch (sudo with a piped password prompt), the
+/// dialog here is entirely native and out-of-band from our child process.
+fn elevate_command_windows(command: &str) -> String {
+    let escaped = command.replace('\'', "''");
+    format!("powershell -NoProfile -Command \"Start-Process cmd.exe -ArgumentList '/c','{escaped}' -Verb RunAs -Wait\"")
+}
+
+/// Run a shell command line to completion, capturing combined output
+/// (capped), mirroring `run()` in apps/daemon/src/registry.ts.
+async fn run_shell_capture(command_line: &str, timeout: std::time::Duration) -> RegistryActionResult {
+    let mut command = tokio::process::Command::new("cmd");
+    command.arg("/c").arg(command_line);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    match tokio::time::timeout(timeout, command.output()).await {
+        Ok(Ok(output)) => {
+            let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
+            combined.push_str(&String::from_utf8_lossy(&output.stderr));
+            let capped: String = combined.chars().take(64_000).collect();
+            RegistryActionResult { ok: output.status.success(), exit_code: output.status.code().unwrap_or(1), output: capped }
+        }
+        Ok(Err(error)) => RegistryActionResult { ok: false, exit_code: 1, output: error.to_string() },
+        Err(_) => RegistryActionResult { ok: false, exit_code: 124, output: "Command timed out.".to_string() },
+    }
+}
+
 pub struct RegistryService {
-    entries: RwLock<HashMap<String, RuntimeEntry>>,
+    entries: Arc<RwLock<HashMap<String, RuntimeEntry>>>,
+    broadcaster: Arc<Broadcaster>,
+}
+
+/// Update one entry and broadcast the change, same shape as `self.patch()` in
+/// apps/daemon/src/registry.ts. A free function (not a method) so it can run
+/// from both `&self` call sites and background tasks that only hold clones
+/// of `entries`/`broadcaster`, not the whole service.
+async fn patch_entry(
+    entries: &RwLock<HashMap<String, RuntimeEntry>>,
+    broadcaster: &Broadcaster,
+    id: &str,
+    f: impl FnOnce(&mut RuntimeEntry),
+) {
+    let public = {
+        let mut entries = entries.write().await;
+        let Some(entry) = entries.get_mut(id) else { return };
+        f(entry);
+        to_public(entry)
+    };
+    broadcaster.publish("registry", "registry.changed", &public);
 }
 
 impl RegistryService {
-    pub fn new() -> Self {
-        Self { entries: RwLock::new(HashMap::new()) }
+    pub fn new(broadcaster: Arc<Broadcaster>) -> Self {
+        Self { entries: Arc::new(RwLock::new(HashMap::new())), broadcaster }
     }
 
     pub async fn init(&self) {
@@ -247,11 +317,92 @@ impl RegistryService {
                 if line.is_empty() {
                     RegistryActionResult { ok: false, exit_code: 1, output: "The provider did not return a version.".to_string() }
                 } else {
+                    patch_entry(&self.entries, &self.broadcaster, id, |e| e.version = Some(line.clone())).await;
                     RegistryActionResult { ok: true, exit_code: 0, output: line }
                 }
             }
             Err(error) => RegistryActionResult { ok: false, exit_code: 1, output: error.to_string() },
         }
+    }
+
+    /// Start an install (background); status flows via registry.changed
+    /// events. Returns immediately, same as apps/daemon/src/registry.ts.
+    pub async fn install(&self, id: &str, elevated: bool) -> bool {
+        self.run_managed(id, true, elevated).await
+    }
+
+    /// Start an update (background); never elevated, same as the TS worker.
+    pub async fn update(&self, id: &str) -> bool {
+        self.run_managed(id, false, false).await
+    }
+
+    async fn run_managed(&self, id: &str, install: bool, elevated: bool) -> bool {
+        let (command, already_running) = {
+            let entries = self.entries.read().await;
+            let Some(entry) = entries.get(id) else { return false };
+            let command = if install { entry.install_command.clone() } else { entry.update_command.clone() };
+            (command, entry.install_state == RegistryInstallState::Installing)
+        };
+        let Some(base_command) = command else { return false };
+        if already_running {
+            return false;
+        }
+        // Windows-only elevation: wraps the command in a native UAC prompt
+        // via Start-Process -Verb RunAs. No password piping needed (unlike
+        // the TS worker's posix sudo path) since the OS handles the prompt
+        // itself, out-of-band from our child process's stdio.
+        let command = if elevated { elevate_command_windows(&base_command) } else { base_command };
+
+        patch_entry(&self.entries, &self.broadcaster, id, |e| {
+            e.install_state = RegistryInstallState::Installing;
+            e.install_error = None;
+        })
+        .await;
+
+        let entries = self.entries.clone();
+        let broadcaster = self.broadcaster.clone();
+        let id = id.to_string();
+        tokio::spawn(async move {
+            let result = run_shell_capture(&command, std::time::Duration::from_secs(600)).await;
+            if result.ok {
+                let bin_candidates = { entries.read().await.get(&id).map(|e| e.bin.clone()) };
+                let resolved = bin_candidates.and_then(|bin| resolve_bin(&bin));
+                let missing_still: Vec<String> = {
+                    let deps = entries.read().await.get(&id).map(|e| e.missing_dependencies.clone()).unwrap_or_default();
+                    deps.into_iter().filter(|d| resolve_bin(&[d.clone()]).is_none()).collect()
+                };
+                patch_entry(&entries, &broadcaster, &id, |e| {
+                    e.enabled = resolved.is_some() && missing_still.is_empty();
+                    e.resolved_bin = resolved;
+                    e.install_state = RegistryInstallState::Idle;
+                    e.install_error = None;
+                    e.version = None;
+                })
+                .await;
+            } else {
+                let tail: String = {
+                    let chars: Vec<char> = result.output.chars().collect();
+                    let start = chars.len().saturating_sub(4000);
+                    chars[start..].iter().collect()
+                };
+                patch_entry(&entries, &broadcaster, &id, |e| {
+                    e.install_state = RegistryInstallState::Error;
+                    e.install_error = Some(tail);
+                })
+                .await;
+            }
+        });
+        true
+    }
+
+    /// Windows has no password-piped elevation path (native UAC handles the
+    /// prompt), so there is never a pending request to answer or cancel.
+    pub async fn provide_install_password(&self, _id: &str, _password: &str) -> bool {
+        false
+    }
+
+    pub async fn cancel_install_password(&self, _id: &str) -> bool {
+        false
     }
 
     /// The resolved binary + enabled flag for a shell/agent entry, used by

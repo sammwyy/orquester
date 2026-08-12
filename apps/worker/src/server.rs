@@ -69,6 +69,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/registry/:id/version", get(routes::registry::version))
         .route("/api/registry/:id/quota", get(routes::registry::quota))
         .route("/api/registry/:id/install", post(routes::registry::install))
+        .route(
+            "/api/registry/:id/install/password",
+            post(routes::registry::install_password).delete(routes::registry::cancel_install_password),
+        )
         .route("/api/registry/:id/update", post(routes::registry::update))
         .route("/api/open", post(routes::registry::open))
         .route("/api/sessions", get(routes::sessions::list).post(routes::sessions::create))

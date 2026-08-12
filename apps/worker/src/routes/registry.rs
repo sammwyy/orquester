@@ -1,7 +1,9 @@
 //! `/api/registry*` and `/api/open`. `version` runs the entry's plain
-//! `versionFlag`; quota/install/update stay an honest `NOT_IMPLEMENTED`
-//! until the agent integrations (apps/daemon/src/integrations/agents/*.ts)
-//! are ported — see registry.rs's module doc.
+//! `versionFlag`; install/update run the entry's installCmd/updateCmd
+//! (elevated installs use native Windows UAC). Quota stays an honest
+//! `NOT_IMPLEMENTED` until the agent integrations
+//! (apps/daemon/src/integrations/agents/*.ts) are ported — see
+//! registry.rs's module doc.
 
 use crate::api_types::{ApiError, OpenRequest};
 use crate::state::{AppState, TransportMode};
@@ -9,6 +11,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use serde::Deserialize;
 
 fn err(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
     (status, Json(ApiError::new(code, message))).into_response()
@@ -26,15 +29,41 @@ pub async fn quota(Path(_id): Path<String>) -> Response {
     err(StatusCode::NOT_IMPLEMENTED, "NOT_IMPLEMENTED", "Agent quota reporting is not ported to the Rust worker yet.")
 }
 
-pub async fn install(State(state): State<AppState>, Path(_id): Path<String>) -> Response {
+#[derive(Deserialize, Default)]
+#[serde(default)]
+pub struct InstallBody {
+    pub elevated: Option<bool>,
+}
+
+pub async fn install(State(state): State<AppState>, Path(id): Path<String>, Json(body): Json<InstallBody>) -> Response {
     if state.options.mode != TransportMode::Local {
         return err(StatusCode::FORBIDDEN, "LOCAL_ONLY", "Installation is only available on a local daemon.");
     }
-    err(StatusCode::NOT_IMPLEMENTED, "NOT_IMPLEMENTED", "Managed install is not ported to the Rust worker yet.")
+    let started = state.services.registry.install(&id, body.elevated.unwrap_or(false)).await;
+    Json(serde_json::json!({ "started": started })).into_response()
 }
 
-pub async fn update(Path(_id): Path<String>) -> Response {
-    err(StatusCode::NOT_IMPLEMENTED, "NOT_IMPLEMENTED", "Managed update is not ported to the Rust worker yet.")
+pub async fn update(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    let started = state.services.registry.update(&id).await;
+    Json(serde_json::json!({ "started": started })).into_response()
+}
+
+#[derive(Deserialize, Default)]
+pub struct InstallPasswordBody {
+    pub password: Option<String>,
+}
+
+pub async fn install_password(State(state): State<AppState>, Path(id): Path<String>, Json(body): Json<InstallPasswordBody>) -> Response {
+    let Some(password) = body.password.filter(|p| !p.is_empty()) else {
+        return err(StatusCode::BAD_REQUEST, "PASSWORD_REQUIRED", "A password is required.");
+    };
+    let accepted = state.services.registry.provide_install_password(&id, &password).await;
+    Json(serde_json::json!({ "accepted": accepted })).into_response()
+}
+
+pub async fn cancel_install_password(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    let cancelled = state.services.registry.cancel_install_password(&id).await;
+    Json(serde_json::json!({ "cancelled": cancelled })).into_response()
 }
 
 pub async fn open(State(state): State<AppState>, Json(body): Json<OpenRequest>) -> Response {
