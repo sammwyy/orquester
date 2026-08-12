@@ -1,6 +1,8 @@
 use crate::broadcaster::Broadcaster;
 use crate::config::{ClientConfig, DaemonConfig};
 use crate::paths::ResolvedPaths;
+use crate::registry::RegistryService;
+use crate::sessions::SessionManager;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -18,6 +20,8 @@ pub struct Services {
     pub config: SharedConfig,
     pub client_config: ClientConfig,
     pub broadcaster: Arc<Broadcaster>,
+    pub registry: Arc<RegistryService>,
+    pub sessions: Arc<SessionManager>,
 }
 
 impl Services {

@@ -32,7 +32,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/workspaces", get(routes::workspaces::list_workspaces).post(routes::workspaces::create_workspace))
         .route(
-            "/api/workspaces/{workspace}/projects",
+            "/api/workspaces/:workspace/projects",
             get(routes::workspaces::list_projects).post(routes::workspaces::create_project),
         )
         .route("/api/fs", get(routes::fs::list).delete(routes::fs::delete))
@@ -42,6 +42,17 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/fs/create", post(routes::fs::create))
         .route("/api/fs/move", post(routes::fs::mv))
         .route("/api/fs/copy", post(routes::fs::copy))
+        .route("/api/registry", get(routes::registry::list))
+        .route("/api/registry/:id/version", get(routes::registry::version))
+        .route("/api/registry/:id/quota", get(routes::registry::quota))
+        .route("/api/registry/:id/install", post(routes::registry::install))
+        .route("/api/registry/:id/update", post(routes::registry::update))
+        .route("/api/open", post(routes::registry::open))
+        .route("/api/sessions", get(routes::sessions::list).post(routes::sessions::create))
+        .route("/api/sessions/:id", delete(routes::sessions::close))
+        .route("/api/sessions/:id/input", post(routes::sessions::input))
+        .route("/api/sessions/:id/resize", post(routes::sessions::resize))
+        .route("/api/sessions/:id/output", get(routes::sessions::output))
         .route("/events", get(routes::events::events));
 
     if state.options.mode == TransportMode::Local {

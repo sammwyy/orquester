@@ -2,13 +2,18 @@ mod api_types;
 mod bootstrap;
 mod broadcaster;
 mod config;
+mod host_registry;
 mod local_transport;
 mod paths;
+mod registry;
 mod routes;
 mod server;
+mod sessions;
 mod state;
 
 use broadcaster::Broadcaster;
+use registry::RegistryService;
+use sessions::SessionManager;
 use state::{AppState, RouterOptions, Services, SharedConfig, TransportMode};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -51,12 +56,19 @@ async fn main() {
     let socket_path = daemon_paths.socket_path.clone();
     let client_config = config::create_default_client_config(&socket_path);
 
+    let registry = Arc::new(RegistryService::new());
+    registry.init().await;
+    let broadcaster = Arc::new(Broadcaster::new());
+    let sessions = Arc::new(SessionManager::new(registry.clone(), broadcaster.clone()));
+
     let services = Arc::new(Services {
         daemon_id: daemon_id.clone(),
         package_version: PACKAGE_VERSION,
         config: SharedConfig { daemon: RwLock::new(daemon_config.clone()), resolved: RwLock::new(resolved) },
         client_config,
-        broadcaster: Arc::new(Broadcaster::new()),
+        broadcaster,
+        registry,
+        sessions,
     });
 
     let local_state = AppState {
@@ -100,6 +112,7 @@ async fn main() {
 
     tokio::signal::ctrl_c().await.expect("failed to listen for ctrl-c");
     tracing::info!("shutting down");
+    services.sessions.close_all().await;
     local_handle.abort();
     if let Some(handle) = remote_handle {
         handle.abort();
