@@ -7,7 +7,10 @@
 //! forget "open target" launches. Install/update/quota stay behind an
 //! honest NOT_IMPLEMENTED in routes/registry.rs.
 
-use crate::api_types::{OpenResult, RegistryActionResult, RegistryEntry, RegistryInstallState, RegistryKind, RegistryResponse};
+use crate::api_types::{
+    OpenResult, RegistryActionResult, RegistryAuthInfo, RegistryAuthStatus, RegistryEntry, RegistryInstallState, RegistryKind,
+    RegistryQuota, RegistryResponse,
+};
 use crate::broadcaster::Broadcaster;
 use crate::host_registry::{HostEntryDef, HOST_BROWSERS, HOST_FILE_EXPLORERS, HOST_IDES};
 use std::collections::HashMap;
@@ -323,6 +326,43 @@ impl RegistryService {
             }
             Err(error) => RegistryActionResult { ok: false, exit_code: 1, output: error.to_string() },
         }
+    }
+
+    /// Ask the (partially ported, see agent_quota.rs) agent integration for
+    /// account/provider quota without exposing credentials. Caches nothing —
+    /// the TS worker's cache lives in the route layer via a 30s poll while
+    /// clients are connected, which this worker doesn't run yet either.
+    pub async fn quota(&self, id: &str) -> RegistryQuota {
+        let entry = {
+            let entries = self.entries.read().await;
+            entries.get(id).cloned()
+        };
+        let Some(entry) = entry else {
+            return crate::agent_quota::unsupported_quota(id, id, Some("Unknown registry entry."));
+        };
+        if entry.kind != RegistryKind::Agent {
+            return crate::agent_quota::unsupported_quota(id, &entry.name, Some("Quota only applies to agents."));
+        }
+        let Some(bin) = entry.resolved_bin.filter(|_| entry.enabled) else {
+            return RegistryQuota {
+                id: id.to_string(),
+                provider: entry.name,
+                auth: RegistryAuthInfo {
+                    status: RegistryAuthStatus::Unknown,
+                    account: None,
+                    message: Some("The agent is not installed or cannot be resolved.".to_string()),
+                },
+                supported: false,
+                fetched_at: chrono::Utc::now().to_rfc3339(),
+                windows: Vec::new(),
+                message: Some("The agent is not installed or cannot be resolved.".to_string()),
+            };
+        };
+        let mut quota = crate::agent_quota::get_quota(id, &bin, &entry.name).await;
+        if let Some(auth) = crate::agent_quota::get_auth_status(id, &bin).await {
+            quota.auth = auth;
+        }
+        quota
     }
 
     /// Start an install (background); status flows via registry.changed

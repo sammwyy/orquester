@@ -25,8 +25,8 @@ pub async fn version(State(state): State<AppState>, Path(id): Path<String>) -> R
     Json(state.services.registry.version(&id).await).into_response()
 }
 
-pub async fn quota(Path(_id): Path<String>) -> Response {
-    err(StatusCode::NOT_IMPLEMENTED, "NOT_IMPLEMENTED", "Agent quota reporting is not ported to the Rust worker yet.")
+pub async fn quota(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    Json(state.services.registry.quota(&id).await).into_response()
 }
 
 #[derive(Deserialize, Default)]
