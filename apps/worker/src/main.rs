@@ -146,6 +146,9 @@ async fn main() {
     let http_enabled = daemon_config.transports.http.enabled;
     let http_host = daemon_config.transports.http.host.clone();
     let http_port = daemon_config.transports.http.port;
+    // The remote transport optionally serves the bundled apps/web SPA build,
+    // same as apps/daemon/src/index.ts's `serveWeb`.
+    let web_dir = env.get("ORQUESTER_WEB_DIR").map(|dir| cwd.join(dir)).filter(|dir| dir.join("index.html").exists());
 
     tracing::info!(daemon_id, socket_path, "orquester worker starting");
 
@@ -158,7 +161,11 @@ async fn main() {
     let remote_handle = if http_enabled {
         let remote_state = AppState {
             services: services.clone(),
-            options: Arc::new(RouterOptions { auth_required: true, mode: TransportMode::Remote, serve_web: None }),
+            options: Arc::new(RouterOptions {
+                auth_required: true,
+                mode: TransportMode::Remote,
+                serve_web: web_dir.map(|dir| dir.to_string_lossy().to_string()),
+            }),
         };
         let remote_router = server::build_router(remote_state);
         Some(tokio::spawn(async move {
