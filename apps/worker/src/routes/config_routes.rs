@@ -9,10 +9,6 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 
-fn err(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
-    (status, Json(ApiError::new(code, message))).into_response()
-}
-
 pub async fn auth_info(State(state): State<AppState>) -> Json<AuthInfoResponse> {
     let daemon = state.services.config.daemon.read().await;
     let is_remote = state.options.mode == WorkerMode::Remote;
@@ -54,7 +50,7 @@ pub async fn get_client_config(State(state): State<AppState>) -> Json<crate::con
 
 pub async fn put_daemon_config(State(state): State<AppState>, Json(patch): Json<serde_json::Value>) -> Response {
     if state.options.mode == WorkerMode::Remote {
-        return err(StatusCode::FORBIDDEN, "FORBIDDEN", "Daemon config can only be changed locally over the unix socket.");
+        return ApiError::response(StatusCode::FORBIDDEN, "FORBIDDEN", "Daemon config can only be changed locally over the unix socket.");
     }
 
     let mut daemon = state.services.config.daemon.write().await;
@@ -95,12 +91,12 @@ pub async fn put_daemon_config(State(state): State<AppState>, Json(patch): Json<
     merged.version = 1;
 
     if merged.transports.http.enabled && merged.transports.http.password_hash.is_none() {
-        return err(StatusCode::BAD_REQUEST, "PASSWORD_REQUIRED", "Enabling external HTTP access requires a password (min 8 chars).");
+        return ApiError::response(StatusCode::BAD_REQUEST, "PASSWORD_REQUIRED", "Enabling external HTTP access requires a password (min 8 chars).");
     }
 
     let config_path = state.services.config.resolved.read().await.config_path.clone();
     if let Err(error) = bootstrap::persist_config(&config_path, &merged).await {
-        return err(StatusCode::BAD_REQUEST, "INVALID_CONFIG", error.to_string());
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_CONFIG", error.to_string());
     }
     *daemon = merged.clone();
     drop(daemon);
@@ -140,14 +136,14 @@ pub async fn put_app_config(State(state): State<AppState>, Json(patch): Json<ser
         current.extra.insert(key, value);
     }
     if let Err(error) = write_json_file(&file, &current).await {
-        return err(StatusCode::BAD_REQUEST, "INVALID_CONFIG", error.to_string());
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_CONFIG", error.to_string());
     }
     Json(current).into_response()
 }
 
 pub async fn get_remotes_config(State(state): State<AppState>) -> Response {
     if state.options.mode == WorkerMode::Remote {
-        return err(StatusCode::FORBIDDEN, "FORBIDDEN", "Remote connections can only be read locally over the unix socket.");
+        return ApiError::response(StatusCode::FORBIDDEN, "FORBIDDEN", "Remote connections can only be read locally over the unix socket.");
     }
     let file = state.services.config.resolved.read().await.remotes_file.clone();
     Json(read_remotes_file(&file).await.remotes).into_response()
@@ -162,12 +158,12 @@ async fn read_remotes_file(file: &str) -> RemotesConfig {
 
 pub async fn put_remotes_config(State(state): State<AppState>, Json(remotes): Json<Vec<RemoteConnectionConfig>>) -> Response {
     if state.options.mode == WorkerMode::Remote {
-        return err(StatusCode::FORBIDDEN, "FORBIDDEN", "Remote connections can only be changed locally over the unix socket.");
+        return ApiError::response(StatusCode::FORBIDDEN, "FORBIDDEN", "Remote connections can only be changed locally over the unix socket.");
     }
     let file = state.services.config.resolved.read().await.remotes_file.clone();
     let parsed = RemotesConfig { version: 1, remotes };
     if let Err(error) = write_json_file(&file, &parsed).await {
-        return err(StatusCode::BAD_REQUEST, "INVALID_CONFIG", error.to_string());
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_CONFIG", error.to_string());
     }
     Json(parsed.remotes).into_response()
 }

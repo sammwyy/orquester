@@ -696,4 +696,11 @@ impl ApiError {
     pub fn new(code: &str, message: impl Into<String>) -> Self {
         Self { code: code.to_string(), message: message.into() }
     }
+
+    /// The JSON error Response every route handler returns on failure —
+    /// shared so route modules don't each redefine the same wrapper.
+    pub fn response(status: axum::http::StatusCode, code: &str, message: impl Into<String>) -> axum::response::Response {
+        use axum::response::IntoResponse;
+        (status, axum::Json(Self::new(code, message))).into_response()
+    }
 }

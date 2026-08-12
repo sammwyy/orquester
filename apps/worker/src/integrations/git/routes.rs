@@ -13,10 +13,6 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Deserialize;
 
-fn err(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
-    (status, Json(ApiError::new(code, message))).into_response()
-}
-
 /// Deliberately not `fs::canonicalize`: that resolves symlinks and, on
 /// Windows, prefixes the result with `\\?\`, which would leak into every
 /// path this returns to the client and no longer match what other routes
@@ -26,13 +22,13 @@ fn project_path_for(workspaces_dir: &str, path: &str) -> Result<String, Response
     let root = crate::paths::lexical_resolve(&cwd, workspaces_dir);
     let project = crate::paths::lexical_resolve(&cwd, path);
     if project != root && !project.starts_with(&root) {
-        return Err(err(StatusCode::FORBIDDEN, "FORBIDDEN", "Project is outside the workspaces directory."));
+        return Err(ApiError::response(StatusCode::FORBIDDEN, "FORBIDDEN", "Project is outside the workspaces directory."));
     }
     Ok(project.to_string_lossy().to_string())
 }
 
 fn git_err(error: std::io::Error, fallback: &str) -> Response {
-    err(StatusCode::BAD_REQUEST, "GIT_ERROR", format!("{fallback} ({error})"))
+    ApiError::response(StatusCode::BAD_REQUEST, "GIT_ERROR", format!("{fallback} ({error})"))
 }
 
 async fn workspaces_dir(state: &AppState) -> String {
@@ -45,7 +41,7 @@ pub struct PathQuery {
 }
 
 pub async fn status(State(state): State<AppState>, Query(q): Query<PathQuery>) -> Response {
-    let Some(path) = q.path else { return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
+    let Some(path) = q.path else { return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
         Ok(p) => p,
@@ -58,7 +54,7 @@ pub async fn status(State(state): State<AppState>, Query(q): Query<PathQuery>) -
 }
 
 pub async fn init(State(state): State<AppState>, Json(body): Json<GitInitRequest>) -> Response {
-    let Some(path) = body.path else { return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
+    let Some(path) = body.path else { return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
         Ok(p) => p,
@@ -75,7 +71,7 @@ pub async fn init(State(state): State<AppState>, Json(body): Json<GitInitRequest
 }
 
 pub async fn branches(State(state): State<AppState>, Query(q): Query<PathQuery>) -> Response {
-    let Some(path) = q.path else { return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
+    let Some(path) = q.path else { return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
         Ok(p) => p,
@@ -96,7 +92,7 @@ pub struct LogQuery {
 }
 
 pub async fn log(State(state): State<AppState>, Query(q): Query<LogQuery>) -> Response {
-    let Some(path) = q.path else { return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
+    let Some(path) = q.path else { return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
     let limit = q.limit.and_then(|v| v.parse::<i64>().ok()).unwrap_or(100).clamp(1, 500) as usize;
     let skip = q.skip.and_then(|v| v.parse::<i64>().ok()).unwrap_or(0).max(0) as usize;
     let workspaces_dir = workspaces_dir(&state).await;
@@ -118,7 +114,7 @@ pub struct CommitQuery {
 
 pub async fn commit_detail(State(state): State<AppState>, Query(q): Query<CommitQuery>) -> Response {
     let (Some(path), Some(hash)) = (q.path, q.hash) else {
-        return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and hash required.");
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and hash required.");
     };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
@@ -133,7 +129,7 @@ pub async fn commit_detail(State(state): State<AppState>, Query(q): Query<Commit
 
 pub async fn checkout(State(state): State<AppState>, Json(body): Json<GitCheckoutRequest>) -> Response {
     let (Some(path), Some(r#ref)) = (body.path, body.r#ref) else {
-        return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and ref required.");
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and ref required.");
     };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
@@ -150,7 +146,7 @@ pub async fn checkout(State(state): State<AppState>, Json(body): Json<GitCheckou
 }
 
 pub async fn stash_list(State(state): State<AppState>, Query(q): Query<PathQuery>) -> Response {
-    let Some(path) = q.path else { return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
+    let Some(path) = q.path else { return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
         Ok(p) => p,
@@ -163,7 +159,7 @@ pub async fn stash_list(State(state): State<AppState>, Query(q): Query<PathQuery
 }
 
 pub async fn stash_create(State(state): State<AppState>, Json(body): Json<GitStashCreateRequest>) -> Response {
-    let Some(path) = body.path else { return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
+    let Some(path) = body.path else { return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
         Ok(p) => p,
@@ -183,7 +179,7 @@ pub async fn stash_create(State(state): State<AppState>, Json(body): Json<GitSta
 
 async fn stash_action(state: &AppState, body: GitStashActionRequest, run: impl AsyncFnOnce(&str, &str) -> std::io::Result<()>) -> Response {
     let (Some(path), Some(r#ref)) = (body.path, body.r#ref) else {
-        return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and ref required.");
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and ref required.");
     };
     let workspaces_dir = workspaces_dir(state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
@@ -212,7 +208,7 @@ pub async fn stash_pop(State(state): State<AppState>, Json(body): Json<GitStashA
 
 pub async fn stash_drop(State(state): State<AppState>, Json(body): Json<GitStashActionRequest>) -> Response {
     let (Some(path), Some(r#ref)) = (body.path, body.r#ref) else {
-        return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and ref required.");
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and ref required.");
     };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
@@ -234,7 +230,7 @@ pub struct DiffQuery {
 
 pub async fn diff(State(state): State<AppState>, Query(q): Query<DiffQuery>) -> Response {
     let (Some(path), Some(file)) = (q.path, q.file) else {
-        return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and file required.");
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and file required.");
     };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
@@ -250,7 +246,7 @@ pub async fn diff(State(state): State<AppState>, Query(q): Query<DiffQuery>) -> 
 
 async fn files_action(state: &AppState, body: GitFilesRequest, run: impl AsyncFnOnce(&str, &[String]) -> std::io::Result<()>, fallback: &str) -> Response {
     let Some(path) = body.path.filter(|_| !body.files.is_empty()) else {
-        return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and files required.");
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and files required.");
     };
     let workspaces_dir = workspaces_dir(state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
@@ -284,7 +280,7 @@ pub async fn discard(State(state): State<AppState>, Json(body): Json<GitFilesReq
 pub async fn commit(State(state): State<AppState>, Json(body): Json<GitCommitRequest>) -> Response {
     let message = body.message.as_deref().map(str::trim).filter(|m| !m.is_empty());
     let (Some(path), Some(message)) = (body.path, message) else {
-        return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and a non-empty message are required.");
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and a non-empty message are required.");
     };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
@@ -301,7 +297,7 @@ pub async fn commit(State(state): State<AppState>, Json(body): Json<GitCommitReq
 }
 
 pub async fn fetch(State(state): State<AppState>, Json(body): Json<GitPathRequest>) -> Response {
-    let Some(path) = body.path else { return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
+    let Some(path) = body.path else { return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
         Ok(p) => p,
@@ -314,7 +310,7 @@ pub async fn fetch(State(state): State<AppState>, Json(body): Json<GitPathReques
 }
 
 pub async fn pull(State(state): State<AppState>, Json(body): Json<GitPathRequest>) -> Response {
-    let Some(path) = body.path else { return err(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
+    let Some(path) = body.path else { return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path required.") };
     let workspaces_dir = workspaces_dir(&state).await;
     let project = match project_path_for(&workspaces_dir, &path) {
         Ok(p) => p,

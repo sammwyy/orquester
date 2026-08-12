@@ -7,10 +7,6 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 
-fn err(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
-    (status, Json(ApiError::new(code, message))).into_response()
-}
-
 async fn build_response(state: &AppState) -> IntegrationsResponse {
     let daemon = state.services.config.daemon.read().await;
     let available = crate::integrations::integration_availability().await;
@@ -30,7 +26,7 @@ pub async fn list(State(state): State<AppState>) -> Response {
 
 pub async fn update(State(state): State<AppState>, Json(body): Json<UpdateIntegrationsRequest>) -> Response {
     if state.options.mode != TransportMode::Local {
-        return err(StatusCode::FORBIDDEN, "FORBIDDEN", "Integrations can only be changed locally.");
+        return ApiError::response(StatusCode::FORBIDDEN, "FORBIDDEN", "Integrations can only be changed locally.");
     }
     let available = crate::integrations::integration_availability().await;
     let known: std::collections::HashSet<String> = available.iter().map(|entry| entry.id.clone()).collect();

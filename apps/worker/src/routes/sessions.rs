@@ -11,10 +11,6 @@ use bytes::Bytes;
 use futures::stream::{self, StreamExt};
 use serde::Deserialize;
 
-fn err(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
-    (status, Json(ApiError::new(code, message))).into_response()
-}
-
 #[derive(Deserialize)]
 pub struct ListQuery {
     pub project_path: Option<String>,
@@ -27,7 +23,7 @@ pub async fn list(State(state): State<AppState>, Query(query): Query<ListQuery>)
 pub async fn create(State(state): State<AppState>, Json(body): Json<CreateSessionRequest>) -> Response {
     match state.services.sessions.create(body).await {
         Ok(summary) => Json(summary).into_response(),
-        Err(error) => err(StatusCode::BAD_REQUEST, "SESSION_UNAVAILABLE", error.0),
+        Err(error) => ApiError::response(StatusCode::BAD_REQUEST, "SESSION_UNAVAILABLE", error.0),
     }
 }
 
