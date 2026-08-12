@@ -1,5 +1,5 @@
 import React from "react";
-import { hashIndex, initials } from "./avatar";
+import { hashIndex, initials } from "./avatar-helpers";
 import { laneColor } from "./graph";
 
 /** Colored-initials avatar; the color is hashed from the name so it stays consistent — and matches the same palette the graph lanes use, tying rows and lines together. */
