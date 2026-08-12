@@ -44,6 +44,9 @@ pub async fn install(State(state): State<AppState>, Path(id): Path<String>, Json
 }
 
 pub async fn update(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    if state.options.mode != TransportMode::Local {
+        return err(StatusCode::FORBIDDEN, "LOCAL_ONLY", "Updating is only available on a local daemon.");
+    }
     let started = state.services.registry.update(&id).await;
     Json(serde_json::json!({ "started": started })).into_response()
 }
