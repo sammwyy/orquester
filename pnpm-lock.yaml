@@ -60,9 +60,6 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@orquester/daemon':
-        specifier: workspace:*
-        version: link:../daemon
       '@orquester/ui':
         specifier: workspace:*
         version: link:../../packages/ui

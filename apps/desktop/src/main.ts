@@ -1,6 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, shell, Tray, type IpcMainEvent } from "electron";
-import { startDaemon as startOrquesterDaemon, type RunningDaemon } from "@orquester/daemon";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import http from "node:http";
@@ -32,7 +31,7 @@ const CSS_ROUNDED_CORNERS = process.platform === "linux";
 
 /** Whether the live window surface can show what sits behind it. */
 let windowTransparency = false;
-let daemon: RunningDaemon | undefined;
+let workerProcess: ChildProcess | undefined;
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let daemonSocketPath: string | undefined;
@@ -288,9 +287,33 @@ function ensureAppFiles(): void {
   fs.appendFileSync(dailyLogFile(logsDir), `${new Date().toISOString()} app: started\n`);
 }
 
+/** Debug build unless ORQUESTER_WORKER_PROFILE=release (e.g. for packaged builds). */
+function workerBinaryPath(): string {
+  const profile = process.env.ORQUESTER_WORKER_PROFILE === "release" ? "release" : "debug";
+  const exe = process.platform === "win32" ? "orquester-worker.exe" : "orquester-worker";
+  return path.join(repoRoot, "apps", "worker", "target", profile, exe);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Poll until the worker answers on its socket, or give up after ~20s. */
+async function waitForWorkerReady(socketPath: string): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (await checkExistingDaemon(socketPath)) {
+      return;
+    }
+    await sleep(200);
+  }
+  throw new Error("Orquester worker did not become ready in time.");
+}
+
 async function startIntegratedDaemon(): Promise<void> {
   const socketPath = socketPathFor();
   const webDir = path.join(repoRoot, "apps", "web", "dist");
+  const appdir = process.env.ORQUESTER_APPDIR ? baseDir() : undefined;
   const env = {
     ...process.env,
     ORQUESTER_UNIX_SOCKET: socketPath,
@@ -298,26 +321,34 @@ async function startIntegratedDaemon(): Promise<void> {
     ...(process.env.ORQUESTER_HTTP_ENABLED ? {} : { ORQUESTER_HTTP_ENABLED: "false" })
   };
 
-  daemon = await startOrquesterDaemon({
-    cwd: repoRoot,
-    env,
-    appdir: process.env.ORQUESTER_APPDIR ? baseDir() : undefined,
-    webDir
+  const binary = workerBinaryPath();
+  if (!fs.existsSync(binary)) {
+    throw new Error(`Orquester worker binary not found at ${binary}. Run "cargo build" in apps/worker first.`);
+  }
+
+  const args = appdir ? ["--appdir", appdir] : [];
+  const child = spawn(binary, args, { cwd: repoRoot, env, stdio: "inherit", windowsHide: true });
+  workerProcess = child;
+  child.on("exit", (code) => {
+    if (workerProcess === child) {
+      workerProcess = undefined;
+      console.error(`Orquester worker exited unexpectedly (code ${code}).`);
+    }
   });
 
-  process.env.ORQUESTER_UNIX_SOCKET = daemon.socketPath;
-  daemonSocketPath = daemon.socketPath;
+  await waitForWorkerReady(socketPath);
+
+  process.env.ORQUESTER_UNIX_SOCKET = socketPath;
+  daemonSocketPath = socketPath;
 }
 
 async function stopIntegratedDaemon(): Promise<void> {
-  if (!daemon) {
+  if (!workerProcess) {
     return;
   }
-  const current = daemon;
-  daemon = undefined;
-  await current.stop().catch((error) => {
-    console.error("Failed to stop Orquester daemon", error);
-  });
+  const current = workerProcess;
+  workerProcess = undefined;
+  current.kill();
 }
 
 /** HTTP request to the daemon over its unix socket (the renderer's transport). */
@@ -662,7 +693,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", (event) => {
   quitting = true;
-  if (daemon) {
+  if (workerProcess) {
     event.preventDefault();
     void stopIntegratedDaemon().finally(() => app.quit());
   }
