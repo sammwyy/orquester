@@ -211,10 +211,18 @@ public static class OrquesterAcrylic {
   }
 }
 '@
-[OrquesterAcrylic]::Apply([IntPtr]${hwnd}, [bool]::Parse("${enabled}"))
+[OrquesterAcrylic]::Apply([IntPtr]${hwnd}, $env:ORQUESTER_ACRYLIC_ENABLED -eq "1")
 `;
   try {
-    spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { stdio: "ignore", windowsHide: true }).on("error", () => undefined);
+    // enabled reaches here from an untyped IPC message (see the
+    // orquester:window:backdrop handler) — an environment variable, not
+    // string interpolation, keeps a crafted non-boolean payload from ever
+    // becoming part of the script text itself.
+    spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      stdio: "ignore",
+      windowsHide: true,
+      env: { ...process.env, ORQUESTER_ACRYLIC_ENABLED: enabled ? "1" : "0" }
+    }).on("error", () => undefined);
   } catch {
     /* Composition support is unavailable. */
   }
@@ -468,9 +476,9 @@ function registerIpc(): void {
     blur: blurStrategy(),
     transparency: windowTransparency
   }));
-  ipcMain.on("orquester:window:backdrop", (_event, enabled: boolean) => {
+  ipcMain.on("orquester:window:backdrop", (_event, enabled: unknown) => {
     if (mainWindow) {
-      applyBackdrop(mainWindow, enabled);
+      applyBackdrop(mainWindow, enabled === true);
     }
   });
   ipcMain.on("orquester:window", (_event, action: string) => {
