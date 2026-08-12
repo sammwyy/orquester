@@ -140,7 +140,6 @@ function detectBlurStrategy(): BlurStrategy | null {
   if (process.platform === "win32") {
     const build = windowsBuild();
     if (build >= 22621) return "acrylic";
-    if (build >= 16299) return "win10-acrylic";
     return null;
   }
   if (process.platform === "linux") {
@@ -182,9 +181,6 @@ function applyBackdrop(win: BrowserWindow, enabled: boolean): void {
       break;
     case "acrylic":
       win.setBackgroundMaterial(enabled ? "acrylic" : "none");
-      break;
-    case "win10-acrylic":
-      applyWindows10Acrylic(win, enabled);
       break;
     case "kwin":
       applyKwinBlur(win, enabled);
@@ -601,9 +597,6 @@ function createWindow(): void {
   // The surface can't be made transparent after creation; the native backdrop
   // (vibrancy/acrylic) can, and is re-applied from the renderer. Windows draws
   // acrylic behind the window itself, over a zero-alpha background.
-  // Windows 10 can render a completely invisible transparent Chromium surface
-  // when acrylic is active. Keep its surface opaque; the composition hack is
-  // applied behind the renderer instead.
   const transparent = CSS_ROUNDED_CORNERS || (translucent && process.platform === "darwin");
   const winGlass = glass && blurStrategy() === "acrylic";
   windowTransparency = transparent || winGlass;
