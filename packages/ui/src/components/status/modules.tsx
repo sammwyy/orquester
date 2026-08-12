@@ -1,5 +1,5 @@
 import React from "react";
-import { Battery, BatteryCharging, Cpu, ExternalLink, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, LockKeyhole, LockKeyholeOpen, MemoryStick, Music2, Network, Pause, Play, SkipBack, SkipForward, Volume2, X } from "lucide-react";
+import { Battery, BatteryCharging, Cpu, ExternalLink, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, LockKeyhole, LockKeyholeOpen, MemoryStick, Music2, Network, Pause, Play, Plug, SkipBack, SkipForward, Volume2, X } from "lucide-react";
 import { registerStatusModule } from "./registry";
 import { useApi } from "../../context/orquester-context";
 import { useAppStore } from "../../store/app";
@@ -57,7 +57,14 @@ const GitContent: React.FC = () => {
 const BatteryLabel: React.FC = () => {
   const status = useAppStore((state) => state.batteryStatus);
   if (!status) return <span>Battery…</span>;
-  if (!status.hasBattery) return <span className="text-current/60">No battery</span>;
+  if (!status.hasBattery) {
+    return (
+      <span className="flex items-center gap-1 text-current/60">
+        <Plug size={13} />
+        <span>AC Power</span>
+      </span>
+    );
+  }
 
   const percentage = status.percentage ?? 0;
   const tone = percentage <= 15 ? "text-red-400" : percentage <= 30 ? "text-orange-300" : "text-current";
@@ -73,15 +80,19 @@ const BatteryContent: React.FC = () => {
   const battery = useAppStore((state) => state.batteryStatus);
   const keepAwake = useAppStore((state) => state.integrations.find((integration) => integration.id === "keep-awake"));
   const updateIntegration = useAppStore((state) => state.updateIntegration);
-  if (!battery?.hasBattery) return <p className="text-xs text-neutral-500">Battery information unavailable.</p>;
+  if (!battery) return <p className="text-xs text-neutral-500">Battery information unavailable.</p>;
   return (
     <div className="w-64 max-w-[calc(100vw-2rem)]">
       <div className="flex items-center justify-between border-b border-neutral-700/50 pb-2.5">
         <div>
-          <p className="text-xs font-medium text-neutral-100">Battery</p>
-          <p className="mt-0.5 text-[10px] text-neutral-500">{battery.pluggedIn ? "Connected to power" : "Running on battery"}</p>
+          <p className="text-xs font-medium text-neutral-100">{battery.hasBattery ? "Battery" : "AC Power"}</p>
+          <p className="mt-0.5 text-[10px] text-neutral-500">
+            {battery.hasBattery ? (battery.pluggedIn ? "Connected to power" : "Running on battery") : "No battery installed"}
+          </p>
         </div>
-        <span className="text-sm tabular-nums text-neutral-300">{battery.percentage ?? 0}%</span>
+        {battery.hasBattery
+          ? <span className="text-sm tabular-nums text-neutral-300">{battery.percentage ?? 0}%</span>
+          : <Plug size={16} className="text-neutral-400" />}
       </div>
       {keepAwake && (
         <button
