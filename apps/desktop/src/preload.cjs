@@ -2,7 +2,6 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("orquesterDesktop", {
   runtime: "desktop",
-  dataDir: process.env.ORQUESTER_DATA_DIR,
   socketPath: process.env.ORQUESTER_UNIX_SOCKET,
   defaultConnection: {
     id: "local",

@@ -25,7 +25,6 @@ declare global {
   interface Window {
     orquesterDesktop: DesktopBridge & {
       runtime: "desktop";
-      dataDir?: string;
       socketPath?: string;
       defaultConnection: UiConnection;
       windowControls: WindowControls;
