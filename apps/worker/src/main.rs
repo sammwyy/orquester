@@ -125,6 +125,7 @@ async fn main() {
         resources_service,
         networking_watcher,
         keep_awake,
+        http_reload: tokio::sync::Notify::new(),
     });
 
     // Only run the pollers while at least one client is listening for events,
@@ -143,12 +144,10 @@ async fn main() {
     };
     let local_router = server::build_router(local_state);
 
-    let http_enabled = daemon_config.transports.http.enabled;
-    let http_host = daemon_config.transports.http.host.clone();
-    let http_port = daemon_config.transports.http.port;
     // The remote transport optionally serves the bundled apps/web SPA build,
     // same as apps/daemon/src/index.ts's `serveWeb`.
     let web_dir = env.get("ORQUESTER_WEB_DIR").map(|dir| cwd.join(dir)).filter(|dir| dir.join("index.html").exists());
+    let serve_web = web_dir.map(|dir| dir.to_string_lossy().to_string());
 
     tracing::info!(daemon_id, socket_path, "orquester worker starting");
 
@@ -158,30 +157,7 @@ async fn main() {
         }
     });
 
-    let remote_handle = if http_enabled {
-        let remote_state = AppState {
-            services: services.clone(),
-            options: Arc::new(RouterOptions {
-                auth_required: true,
-                mode: TransportMode::Remote,
-                serve_web: web_dir.map(|dir| dir.to_string_lossy().to_string()),
-            }),
-        };
-        let remote_router = server::build_router(remote_state);
-        Some(tokio::spawn(async move {
-            match tokio::net::TcpListener::bind((http_host.as_str(), http_port)).await {
-                Ok(listener) => {
-                    tracing::info!(host = %http_host, port = http_port, "http transport listening");
-                    if let Err(error) = axum::serve(listener, remote_router).await {
-                        tracing::error!(%error, "http transport stopped");
-                    }
-                }
-                Err(error) => tracing::error!(%error, "failed to bind http transport"),
-            }
-        }))
-    } else {
-        None
-    };
+    let remote_handle = tokio::spawn(run_remote_transport_supervisor(services.clone(), serve_web));
 
     tokio::signal::ctrl_c().await.expect("failed to listen for ctrl-c");
     tracing::info!("shutting down");
@@ -193,8 +169,48 @@ async fn main() {
     services.keep_awake.stop();
     services.sessions.close_all().await;
     local_handle.abort();
-    if let Some(handle) = remote_handle {
-        handle.abort();
+    remote_handle.abort();
+}
+
+/// Owns the remote HTTP transport's whole lifecycle: (re)binds whenever
+/// daemon.json's `transports.http` changes (host/port/enabled/password),
+/// signaled via `services.http_reload`. Mirrors index.ts's `reloadHttp` —
+/// the unix/pipe transport, sessions and every watcher are untouched by a
+/// reload here.
+async fn run_remote_transport_supervisor(services: Arc<state::Services>, serve_web: Option<String>) {
+    let mut current: Option<tokio::sync::oneshot::Sender<()>> = None;
+    loop {
+        if let Some(shutdown) = current.take() {
+            let _ = shutdown.send(());
+        }
+
+        let http = services.config.daemon.read().await.transports.http.clone();
+        if http.enabled {
+            let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+            current = Some(shutdown_tx);
+
+            let remote_state = AppState {
+                services: services.clone(),
+                options: Arc::new(RouterOptions { auth_required: true, mode: TransportMode::Remote, serve_web: serve_web.clone() }),
+            };
+            let router = server::build_router(remote_state);
+            match tokio::net::TcpListener::bind((http.host.as_str(), http.port)).await {
+                Ok(listener) => {
+                    tracing::info!(host = %http.host, port = http.port, "http transport listening");
+                    tokio::spawn(async move {
+                        let shutdown = async {
+                            let _ = shutdown_rx.await;
+                        };
+                        if let Err(error) = axum::serve(listener, router).with_graceful_shutdown(shutdown).await {
+                            tracing::error!(%error, "http transport stopped");
+                        }
+                    });
+                }
+                Err(error) => tracing::error!(%error, "failed to bind http transport"),
+            }
+        }
+
+        services.http_reload.notified().await;
     }
 }
 

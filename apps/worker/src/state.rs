@@ -35,6 +35,11 @@ pub struct Services {
     pub resources_service: Arc<SystemResourcesService>,
     pub networking_watcher: NetworkingWatcher,
     pub keep_awake: KeepAwakeController,
+    /// Signaled after daemon.json's `transports.http` changes so the remote
+    /// transport supervisor in main.rs can restart just that listener —
+    /// mirrors index.ts's `reloadHttp`. Sessions, the local transport and
+    /// every watcher above are untouched by this.
+    pub http_reload: tokio::sync::Notify,
 }
 
 impl Services {

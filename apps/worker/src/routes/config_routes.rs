@@ -112,10 +112,12 @@ pub async fn put_daemon_config(State(state): State<AppState>, Json(patch): Json<
         let _ = tokio::fs::create_dir_all(&resolved.workspaces_dir).await;
     }
 
-    // Hot-restarting the HTTP transport in place (so a password/host/port
-    // change applies without dropping PTYs) is not wired up yet — this patches
-    // config/state correctly, but the caller must restart the worker for a
-    // transport-level change to take effect. Tracked as a known gap.
+    state.services.apply_integrations().await;
+    // Hot-restarts just the HTTP transport (host/port/enabled/password) —
+    // sessions, the local transport and every watcher are untouched. See
+    // run_remote_transport_supervisor in main.rs.
+    state.services.http_reload.notify_one();
+
     Json(bootstrap::sanitize_daemon_config(&merged)).into_response()
 }
 
