@@ -1,0 +1,178 @@
+//! `/health`, `/api/info`, `/api/auth/info`, `/api/config/*`, `/api/daemon/shutdown`.
+
+use crate::api_types::{ApiError, AuthInfoResponse, HealthResponse, ServerCapabilities, ServerInfoResponse, Transport, TransportMode};
+use crate::bootstrap;
+use crate::config::{AppConfig, DaemonConfig, RemoteConnectionConfig, RemotesConfig};
+use crate::state::{AppState, TransportMode as WorkerMode};
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
+
+fn err(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
+    (status, Json(ApiError::new(code, message))).into_response()
+}
+
+pub async fn auth_info(State(state): State<AppState>) -> Json<AuthInfoResponse> {
+    let daemon = state.services.config.daemon.read().await;
+    let is_remote = state.options.mode == WorkerMode::Remote;
+    let hash = daemon.transports.http.password_hash.clone();
+    Json(AuthInfoResponse {
+        auth_required: is_remote && hash.is_some(),
+        salt: hash.map(|h| h.chars().take(29).collect()),
+    })
+}
+
+pub async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
+    let daemon = state.services.config.daemon.read().await;
+    let mut transports = vec![Transport::Unix];
+    if daemon.transports.http.enabled {
+        transports.push(Transport::Http);
+    }
+    let mode = if state.options.mode == WorkerMode::Remote { TransportMode::Remote } else { TransportMode::Local };
+    Json(HealthResponse { ok: true, daemon_id: state.services.daemon_id.clone(), version: state.services.package_version.to_string(), mode, transports })
+}
+
+pub async fn info(State(state): State<AppState>) -> Json<ServerInfoResponse> {
+    let resolved = state.services.config.resolved.read().await;
+    Json(ServerInfoResponse {
+        name: "Orquester daemon".to_string(),
+        data_dir: resolved.daemon_dir.clone(),
+        workspaces_dir: resolved.workspaces_dir.clone(),
+        capabilities: ServerCapabilities { terminals: true, sessions: true, agents: true, docker: false },
+    })
+}
+
+pub async fn get_daemon_config(State(state): State<AppState>) -> Json<DaemonConfig> {
+    let daemon = state.services.config.daemon.read().await;
+    Json(bootstrap::sanitize_daemon_config(&daemon))
+}
+
+pub async fn get_client_config(State(state): State<AppState>) -> Json<crate::config::ClientConfig> {
+    Json(state.services.client_config.clone())
+}
+
+pub async fn put_daemon_config(State(state): State<AppState>, Json(patch): Json<serde_json::Value>) -> Response {
+    if state.options.mode == WorkerMode::Remote {
+        return err(StatusCode::FORBIDDEN, "FORBIDDEN", "Daemon config can only be changed locally over the unix socket.");
+    }
+
+    let mut daemon = state.services.config.daemon.write().await;
+    let mut merged = daemon.clone();
+
+    if let Some(quota_workers) = patch.get("quotaWorkers").cloned() {
+        if let Ok(value) = serde_json::from_value(quota_workers) {
+            merged.quota_workers = value;
+        }
+    }
+    if let Some(integrations) = patch.get("integrations").cloned() {
+        if let Ok(value) = serde_json::from_value(integrations) {
+            merged.integrations = value;
+        }
+    }
+    if let Some(workspaces_dir) = patch.get("workspacesDir").and_then(|v| v.as_str()) {
+        merged.workspaces_dir = workspaces_dir.to_string();
+    }
+    if let Some(logs_dir) = patch.get("logsDir").and_then(|v| v.as_str()) {
+        merged.logs_dir = logs_dir.to_string();
+    }
+    if let Some(http_patch) = patch.get("transports").and_then(|t| t.get("http")) {
+        if let Some(enabled) = http_patch.get("enabled").and_then(|v| v.as_bool()) {
+            merged.transports.http.enabled = enabled;
+        }
+        if let Some(host) = http_patch.get("host").and_then(|v| v.as_str()) {
+            merged.transports.http.host = host.to_string();
+        }
+        if let Some(port) = http_patch.get("port").and_then(|v| v.as_u64()) {
+            merged.transports.http.port = port as u16;
+        }
+        if let Some(password) = http_patch.get("password").and_then(|v| v.as_str()) {
+            if password != "********" {
+                merged.transports.http.password_hash = Some(bootstrap::hash_password(password));
+            }
+        }
+    }
+    merged.version = 1;
+
+    if merged.transports.http.enabled && merged.transports.http.password_hash.is_none() {
+        return err(StatusCode::BAD_REQUEST, "PASSWORD_REQUIRED", "Enabling external HTTP access requires a password (min 8 chars).");
+    }
+
+    let config_path = state.services.config.resolved.read().await.config_path.clone();
+    if let Err(error) = bootstrap::persist_config(&config_path, &merged).await {
+        return err(StatusCode::BAD_REQUEST, "INVALID_CONFIG", error.to_string());
+    }
+    *daemon = merged.clone();
+    drop(daemon);
+
+    {
+        let mut resolved = state.services.config.resolved.write().await;
+        resolved.workspaces_dir = crate::config::expand_vars(&merged.workspaces_dir, &resolved.vars);
+        resolved.logs_dir = crate::config::expand_vars(&merged.logs_dir, &resolved.vars);
+        let _ = tokio::fs::create_dir_all(&resolved.workspaces_dir).await;
+    }
+
+    // Hot-restarting the HTTP transport in place (so a password/host/port
+    // change applies without dropping PTYs) is not wired up yet — this patches
+    // config/state correctly, but the caller must restart the worker for a
+    // transport-level change to take effect. Tracked as a known gap.
+    Json(bootstrap::sanitize_daemon_config(&merged)).into_response()
+}
+
+pub async fn get_app_config(State(state): State<AppState>) -> Json<AppConfig> {
+    let file = state.services.config.resolved.read().await.app_config_file.clone();
+    Json(read_app_config_file(&file).await)
+}
+
+async fn read_app_config_file(file: &str) -> AppConfig {
+    match tokio::fs::read_to_string(file).await {
+        Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
+        Err(_) => AppConfig::default(),
+    }
+}
+
+pub async fn put_app_config(State(state): State<AppState>, Json(patch): Json<serde_json::Map<String, serde_json::Value>>) -> Response {
+    let file = state.services.config.resolved.read().await.app_config_file.clone();
+    let mut current = read_app_config_file(&file).await;
+    for (key, value) in patch {
+        current.extra.insert(key, value);
+    }
+    if let Err(error) = write_json_file(&file, &current).await {
+        return err(StatusCode::BAD_REQUEST, "INVALID_CONFIG", error.to_string());
+    }
+    Json(current).into_response()
+}
+
+pub async fn get_remotes_config(State(state): State<AppState>) -> Json<Vec<RemoteConnectionConfig>> {
+    let file = state.services.config.resolved.read().await.remotes_file.clone();
+    Json(read_remotes_file(&file).await.remotes)
+}
+
+async fn read_remotes_file(file: &str) -> RemotesConfig {
+    match tokio::fs::read_to_string(file).await {
+        Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
+        Err(_) => RemotesConfig::default(),
+    }
+}
+
+pub async fn put_remotes_config(State(state): State<AppState>, Json(remotes): Json<Vec<RemoteConnectionConfig>>) -> Response {
+    let file = state.services.config.resolved.read().await.remotes_file.clone();
+    let parsed = RemotesConfig { version: 1, remotes };
+    if let Err(error) = write_json_file(&file, &parsed).await {
+        return err(StatusCode::BAD_REQUEST, "INVALID_CONFIG", error.to_string());
+    }
+    Json(parsed.remotes).into_response()
+}
+
+async fn write_json_file(file: &str, value: &impl serde::Serialize) -> std::io::Result<()> {
+    if let Some(parent) = std::path::Path::new(file).parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let json = serde_json::to_string_pretty(value).expect("value always serializes");
+    tokio::fs::write(file, format!("{json}\n")).await
+}
+
+pub async fn shutdown(State(state): State<AppState>) -> Response {
+    state.services.broadcaster.publish("daemon", "daemon.shutdown", &serde_json::json!({}));
+    StatusCode::NO_CONTENT.into_response()
+}

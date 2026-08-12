@@ -23,6 +23,10 @@ sysinfo = "0.31"
 notify = "6"
 bytes = "1"
 futures = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+regex = "1"
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
