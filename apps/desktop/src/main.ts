@@ -27,7 +27,7 @@ interface DaemonResponse {
  * do). Where true, the window surface is transparent and the renderer paints
  * the rounded corners.
  */
-const CSS_ROUNDED_CORNERS = process.platform === "linux" || (process.platform === "win32" && windowsBuild() < 22000);
+const CSS_ROUNDED_CORNERS = process.platform === "linux";
 
 /** Whether the live window surface can show what sits behind it. */
 let windowTransparency = false;
@@ -601,7 +601,10 @@ function createWindow(): void {
   // The surface can't be made transparent after creation; the native backdrop
   // (vibrancy/acrylic) can, and is re-applied from the renderer. Windows draws
   // acrylic behind the window itself, over a zero-alpha background.
-  const transparent = CSS_ROUNDED_CORNERS || translucent;
+  // Windows 10 can render a completely invisible transparent Chromium surface
+  // when acrylic is active. Keep its surface opaque; the composition hack is
+  // applied behind the renderer instead.
+  const transparent = CSS_ROUNDED_CORNERS || (translucent && process.platform === "darwin");
   const winGlass = glass && blurStrategy() === "acrylic";
   windowTransparency = transparent || winGlass;
 

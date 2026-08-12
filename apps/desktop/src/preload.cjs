@@ -34,9 +34,9 @@ contextBridge.exposeInMainWorld("orquesterDesktop", {
     close: () => ipcRenderer.send("orquester:window", "close"),
     setBackdrop: (enabled) => ipcRenderer.send("orquester:window:backdrop", enabled),
     capabilities: () => ipcRenderer.invoke("orquester:window:capabilities"),
-    // Linux and Windows 10 need transparent CSS corners; newer Windows rounds
-    // frameless windows itself.
-    cssRoundedCorners: process.platform === "linux" || (process.platform === "win32" && Number(require("node:os").release().split(".")[2]) < 22000),
+    // Linux gets no native rounding: the window is transparent and the UI
+    // draws the corners itself (squared off while maximized/fullscreen).
+    cssRoundedCorners: process.platform === "linux",
     onStateChange: (cb) => {
       const listener = (_event, state) => cb(state);
       ipcRenderer.on("orquester:window:state", listener);
