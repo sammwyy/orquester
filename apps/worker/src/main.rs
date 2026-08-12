@@ -1,29 +1,20 @@
-mod agent_defs;
-mod agent_quota;
+mod agents;
 mod api_types;
-mod battery;
 mod bootstrap;
 mod broadcaster;
-mod catalog;
 mod config;
-mod git;
-mod host_registry;
-mod keep_awake;
-mod local_transport;
-mod media;
-mod networking;
+mod integrations;
+mod middlewares;
 mod paths;
 mod registry;
 mod routes;
-mod server;
 mod sessions;
 mod state;
-mod system_resources;
+mod transports;
 
 use broadcaster::Broadcaster;
 use registry::RegistryService;
 use sessions::SessionManager;
-use system_resources::SystemResourcesService;
 use state::{AppState, RouterOptions, Services, SharedConfig, TransportMode};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -76,29 +67,29 @@ async fn main() {
     let sessions = Arc::new(SessionManager::new(registry.clone(), broadcaster.clone()));
     let git_watcher = {
         let broadcaster = broadcaster.clone();
-        git::watch_git_projects(&resolved.workspaces_dir, move |status| {
+        integrations::git::watch_git_projects(&resolved.workspaces_dir, move |status| {
             broadcaster.publish("projects", "project.git.changed", &status);
         })
     };
     let battery_watcher = {
         let broadcaster = broadcaster.clone();
-        battery::watch_battery(move |status| broadcaster.publish("system", "battery.changed", &status))
+        integrations::battery::watch_battery(move |status| broadcaster.publish("system", "battery.changed", &status))
     };
     let media_watcher = {
         let broadcaster = broadcaster.clone();
-        media::watch_media(move |status| broadcaster.publish("system", "media.changed", &status))
+        integrations::media::watch_media(move |status| broadcaster.publish("system", "media.changed", &status))
     };
-    let resources_service = Arc::new(SystemResourcesService::new());
+    let resources_service = Arc::new(integrations::system_resources::SystemResourcesService::new());
     let resources_watcher = {
         let broadcaster = broadcaster.clone();
-        system_resources::watch_system_resources(&resolved.workspaces_dir, resources_service.clone(), move |resources| {
+        integrations::system_resources::watch_system_resources(&resolved.workspaces_dir, resources_service.clone(), move |resources| {
             broadcaster.publish("system", "resources.changed", &resources);
         })
     };
     let networking_watcher = {
         let broadcaster = broadcaster.clone();
         let sessions_for_watch = sessions.clone();
-        networking::watch_networking(
+        integrations::networking::watch_networking(
             move || {
                 // Session listing is async; the watcher's get_sessions callback is
                 // sync, so a snapshot is taken via try_read — an empty list on rare
@@ -108,7 +99,7 @@ async fn main() {
             move |status| broadcaster.publish("system", "networking.changed", &status),
         )
     };
-    let keep_awake = keep_awake::create_keep_awake_controller();
+    let keep_awake = integrations::keep_awake::create_keep_awake_controller();
 
     let services = Arc::new(Services {
         daemon_id: daemon_id.clone(),
@@ -142,7 +133,7 @@ async fn main() {
         services: services.clone(),
         options: Arc::new(RouterOptions { auth_required: false, mode: TransportMode::Local, serve_web: None }),
     };
-    let local_router = server::build_router(local_state);
+    let local_router = transports::router::build_router(local_state);
 
     // The remote transport optionally serves the bundled apps/web SPA build,
     // Serve the web client when it is available.
@@ -152,12 +143,12 @@ async fn main() {
     tracing::info!(daemon_id, socket_path, "orquester worker starting");
 
     let local_handle = tokio::spawn(async move {
-        if let Err(error) = local_transport::serve(&socket_path, local_router).await {
+        if let Err(error) = transports::local::serve(&socket_path, local_router).await {
             tracing::error!(%error, "local transport stopped");
         }
     });
 
-    let remote_handle = tokio::spawn(run_remote_transport_supervisor(services.clone(), serve_web));
+    let remote_handle = tokio::spawn(transports::http::run_supervisor(services.clone(), serve_web));
 
     tokio::signal::ctrl_c().await.expect("failed to listen for ctrl-c");
     tracing::info!("shutting down");
@@ -170,48 +161,6 @@ async fn main() {
     services.sessions.close_all().await;
     local_handle.abort();
     remote_handle.abort();
-}
-
-/// Owns the remote HTTP transport's whole lifecycle: (re)binds whenever
-/// daemon.json's `transports.http` changes (host/port/enabled/password),
-/// signaled via `services.http_reload`. Mirrors index.ts's `reloadHttp` —
-/// the unix/pipe transport, sessions and every watcher are untouched by a
-/// reload here.
-async fn run_remote_transport_supervisor(services: Arc<state::Services>, serve_web: Option<String>) {
-    let mut current: Option<tokio::sync::oneshot::Sender<()>> = None;
-    loop {
-        if let Some(shutdown) = current.take() {
-            let _ = shutdown.send(());
-        }
-
-        let http = services.config.daemon.read().await.transports.http.clone();
-        if http.enabled {
-            let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-            current = Some(shutdown_tx);
-
-            let remote_state = AppState {
-                services: services.clone(),
-                options: Arc::new(RouterOptions { auth_required: true, mode: TransportMode::Remote, serve_web: serve_web.clone() }),
-            };
-            let router = server::build_router(remote_state);
-            match tokio::net::TcpListener::bind((http.host.as_str(), http.port)).await {
-                Ok(listener) => {
-                    tracing::info!(host = %http.host, port = http.port, "http transport listening");
-                    tokio::spawn(async move {
-                        let shutdown = async {
-                            let _ = shutdown_rx.await;
-                        };
-                        if let Err(error) = axum::serve(listener, router).with_graceful_shutdown(shutdown).await {
-                            tracing::error!(%error, "http transport stopped");
-                        }
-                    });
-                }
-                Err(error) => tracing::error!(%error, "failed to bind http transport"),
-            }
-        }
-
-        services.http_reload.notified().await;
-    }
 }
 
 fn dirs_home() -> Option<String> {

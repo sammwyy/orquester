@@ -1,6 +1,7 @@
 //! `/api/git/*`, including confining
 //! every project path to the resolved workspacesDir before touching it.
 
+use super::service;
 use crate::api_types::{
     ApiError, GitCheckoutRequest, GitCommitRequest, GitFilesRequest, GitInitRequest, GitPathRequest,
     GitStashActionRequest, GitStashCreateRequest, GitStashListResponse, GitWorkingDiffResponse,
@@ -50,7 +51,7 @@ pub async fn status(State(state): State<AppState>, Query(q): Query<PathQuery>) -
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::read_git_status(&project).await {
+    match service::read_git_status(&project).await {
         Ok(status) => Json(status).into_response(),
         Err(error) => git_err(error, "Cannot read git status."),
     }
@@ -63,7 +64,7 @@ pub async fn init(State(state): State<AppState>, Json(body): Json<GitInitRequest
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::initialize_git(&project).await {
+    match service::initialize_git(&project).await {
         Ok(status) => {
             state.services.git_watcher.watch(&project);
             state.services.broadcaster.publish("projects", "project.git.changed", &status);
@@ -80,7 +81,7 @@ pub async fn branches(State(state): State<AppState>, Query(q): Query<PathQuery>)
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::list_branches(&project).await {
+    match service::list_branches(&project).await {
         Ok(result) => Json(result).into_response(),
         Err(error) => git_err(error, "Cannot read branches."),
     }
@@ -103,7 +104,7 @@ pub async fn log(State(state): State<AppState>, Query(q): Query<LogQuery>) -> Re
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::read_log(&project, q.branch.as_deref(), limit, skip).await {
+    match service::read_log(&project, q.branch.as_deref(), limit, skip).await {
         Ok(result) => Json(result).into_response(),
         Err(error) => git_err(error, "Cannot read commit log."),
     }
@@ -124,7 +125,7 @@ pub async fn commit_detail(State(state): State<AppState>, Query(q): Query<Commit
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::read_commit(&project, &hash).await {
+    match service::read_commit(&project, &hash).await {
         Ok(result) => Json(result).into_response(),
         Err(error) => git_err(error, "Cannot read commit."),
     }
@@ -139,7 +140,7 @@ pub async fn checkout(State(state): State<AppState>, Json(body): Json<GitCheckou
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::checkout_ref(&project, &r#ref).await {
+    match service::checkout_ref(&project, &r#ref).await {
         Ok(status) => {
             state.services.broadcaster.publish("projects", "project.git.changed", &status);
             Json(status).into_response()
@@ -155,7 +156,7 @@ pub async fn stash_list(State(state): State<AppState>, Query(q): Query<PathQuery
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::list_stashes(&project).await {
+    match service::list_stashes(&project).await {
         Ok(stashes) => Json(GitStashListResponse { stashes }).into_response(),
         Err(error) => git_err(error, "Cannot read stashes."),
     }
@@ -168,10 +169,10 @@ pub async fn stash_create(State(state): State<AppState>, Json(body): Json<GitSta
         Ok(p) => p,
         Err(response) => return response,
     };
-    if let Err(error) = crate::git::create_stash(&project, body.message.as_deref(), body.include_untracked.unwrap_or(false)).await {
+    if let Err(error) = service::create_stash(&project, body.message.as_deref(), body.include_untracked.unwrap_or(false)).await {
         return git_err(error, "Nothing to stash.");
     }
-    match crate::git::read_git_status(&project).await {
+    match service::read_git_status(&project).await {
         Ok(status) => {
             state.services.broadcaster.publish("projects", "project.git.changed", &status);
             Json(status).into_response()
@@ -192,7 +193,7 @@ async fn stash_action(state: &AppState, body: GitStashActionRequest, run: impl A
     if let Err(error) = run(&project, &r#ref).await {
         return git_err(error, "Cannot apply stash.");
     }
-    match crate::git::read_git_status(&project).await {
+    match service::read_git_status(&project).await {
         Ok(status) => {
             state.services.broadcaster.publish("projects", "project.git.changed", &status);
             Json(status).into_response()
@@ -202,11 +203,11 @@ async fn stash_action(state: &AppState, body: GitStashActionRequest, run: impl A
 }
 
 pub async fn stash_apply(State(state): State<AppState>, Json(body): Json<GitStashActionRequest>) -> Response {
-    stash_action(&state, body, async |p, r| crate::git::apply_stash(p, r).await).await
+    stash_action(&state, body, async |p, r| service::apply_stash(p, r).await).await
 }
 
 pub async fn stash_pop(State(state): State<AppState>, Json(body): Json<GitStashActionRequest>) -> Response {
-    stash_action(&state, body, async |p, r| crate::git::pop_stash(p, r).await).await
+    stash_action(&state, body, async |p, r| service::pop_stash(p, r).await).await
 }
 
 pub async fn stash_drop(State(state): State<AppState>, Json(body): Json<GitStashActionRequest>) -> Response {
@@ -218,7 +219,7 @@ pub async fn stash_drop(State(state): State<AppState>, Json(body): Json<GitStash
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::drop_stash(&project, &r#ref).await {
+    match service::drop_stash(&project, &r#ref).await {
         Ok(()) => Json(serde_json::json!({ "ok": true })).into_response(),
         Err(error) => git_err(error, "Cannot drop stash."),
     }
@@ -241,7 +242,7 @@ pub async fn diff(State(state): State<AppState>, Query(q): Query<DiffQuery>) -> 
         Err(response) => return response,
     };
     let staged = q.staged.as_deref() == Some("true");
-    match crate::git::read_working_diff(&project, &file, staged).await {
+    match service::read_working_diff(&project, &file, staged).await {
         Ok(diff) => Json(GitWorkingDiffResponse { diff }).into_response(),
         Err(error) => git_err(error, "Cannot read diff."),
     }
@@ -259,7 +260,7 @@ async fn files_action(state: &AppState, body: GitFilesRequest, run: impl AsyncFn
     if let Err(error) = run(&project, &body.files).await {
         return git_err(error, fallback);
     }
-    match crate::git::read_git_status(&project).await {
+    match service::read_git_status(&project).await {
         Ok(status) => {
             state.services.broadcaster.publish("projects", "project.git.changed", &status);
             Json(status).into_response()
@@ -269,15 +270,15 @@ async fn files_action(state: &AppState, body: GitFilesRequest, run: impl AsyncFn
 }
 
 pub async fn stage(State(state): State<AppState>, Json(body): Json<GitFilesRequest>) -> Response {
-    files_action(&state, body, async |p, f| crate::git::stage_files(p, f).await, "Cannot stage files.").await
+    files_action(&state, body, async |p, f| service::stage_files(p, f).await, "Cannot stage files.").await
 }
 
 pub async fn unstage(State(state): State<AppState>, Json(body): Json<GitFilesRequest>) -> Response {
-    files_action(&state, body, async |p, f| crate::git::unstage_files(p, f).await, "Cannot unstage files.").await
+    files_action(&state, body, async |p, f| service::unstage_files(p, f).await, "Cannot unstage files.").await
 }
 
 pub async fn discard(State(state): State<AppState>, Json(body): Json<GitFilesRequest>) -> Response {
-    files_action(&state, body, async |p, f| crate::git::discard_files(p, f).await, "Cannot discard changes.").await
+    files_action(&state, body, async |p, f| service::discard_files(p, f).await, "Cannot discard changes.").await
 }
 
 pub async fn commit(State(state): State<AppState>, Json(body): Json<GitCommitRequest>) -> Response {
@@ -290,7 +291,7 @@ pub async fn commit(State(state): State<AppState>, Json(body): Json<GitCommitReq
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::commit_changes(&project, message).await {
+    match service::commit_changes(&project, message).await {
         Ok(status) => {
             state.services.broadcaster.publish("projects", "project.git.changed", &status);
             Json(status).into_response()
@@ -306,7 +307,7 @@ pub async fn fetch(State(state): State<AppState>, Json(body): Json<GitPathReques
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::fetch_all(&project).await {
+    match service::fetch_all(&project).await {
         Ok(result) => Json(result).into_response(),
         Err(error) => git_err(error, "Cannot fetch."),
     }
@@ -319,7 +320,7 @@ pub async fn pull(State(state): State<AppState>, Json(body): Json<GitPathRequest
         Ok(p) => p,
         Err(response) => return response,
     };
-    match crate::git::pull_current_branch(&project).await {
+    match service::pull_current_branch(&project).await {
         Ok(status) => {
             state.services.broadcaster.publish("projects", "project.git.changed", &status);
             Json(status).into_response()

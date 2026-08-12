@@ -13,7 +13,7 @@ fn err(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
 
 async fn build_response(state: &AppState) -> IntegrationsResponse {
     let daemon = state.services.config.daemon.read().await;
-    let available = crate::catalog::integration_availability().await;
+    let available = crate::integrations::integration_availability().await;
     let integrations = available
         .into_iter()
         .map(|mut entry| {
@@ -32,7 +32,7 @@ pub async fn update(State(state): State<AppState>, Json(body): Json<UpdateIntegr
     if state.options.mode != TransportMode::Local {
         return err(StatusCode::FORBIDDEN, "FORBIDDEN", "Integrations can only be changed locally.");
     }
-    let available = crate::catalog::integration_availability().await;
+    let available = crate::integrations::integration_availability().await;
     let known: std::collections::HashSet<String> = available.iter().map(|entry| entry.id.clone()).collect();
 
     {

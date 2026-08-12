@@ -16,9 +16,18 @@ second device, it belongs to the daemon.
 
 ## Domains
 
-**apps/worker** — the server. Owns PTY sessions, the tool registry, filesystem
-access, configuration and the event bus. Routes stay thin; each domain gets its
-own service module.
+**apps/worker** — the server. A Rust (axum/tokio) binary, not TypeScript — the
+"Writing code" conventions below apply to every other domain, not this one.
+Owns PTY sessions, the tool registry, filesystem access, configuration and the
+event bus, organized as `agents/` (one file per provider's launch def and
+quota/auth scraping), `registry/` (static shell/editor/browser/explorer
+catalogs plus the resolve/install/update service), `integrations/<name>/`
+(one folder per integration, each with its `service` and `routes`),
+`transports/` (the unix-socket/named-pipe and HTTP listeners plus router
+assembly) and `middlewares/` (auth/CORS). Routes stay thin; each domain gets
+its own service module. `api_types.rs` is a hand-maintained mirror of
+`packages/api` — there's no codegen bridging the two, so wire-shape changes
+need both edited together.
 
 **apps/desktop** — Electron shell. Runs the daemon in-process, provides the
 tray, the native window and the socket transport. Node-only work lives here and

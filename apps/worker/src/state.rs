@@ -1,14 +1,14 @@
-use crate::battery::BatteryWatcher;
 use crate::broadcaster::Broadcaster;
 use crate::config::{ClientConfig, DaemonConfig};
-use crate::git::GitProjectWatcher;
-use crate::keep_awake::KeepAwakeController;
-use crate::media::MediaWatcher;
-use crate::networking::NetworkingWatcher;
+use crate::integrations::battery::BatteryWatcher;
+use crate::integrations::git::GitProjectWatcher;
+use crate::integrations::keep_awake::KeepAwakeController;
+use crate::integrations::media::MediaWatcher;
+use crate::integrations::networking::NetworkingWatcher;
+use crate::integrations::system_resources::{SystemResourcesService, SystemResourcesWatcher};
 use crate::paths::ResolvedPaths;
 use crate::registry::RegistryService;
 use crate::sessions::SessionManager;
-use crate::system_resources::{SystemResourcesService, SystemResourcesWatcher};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -55,7 +55,7 @@ impl Services {
         let count = self.broadcaster.client_count();
         let integrations = self.config.daemon.read().await.integrations.clone();
         let is_enabled = |id: &str, default: bool| integrations.get(id).copied().unwrap_or(default);
-        let availability = crate::catalog::integration_availability().await;
+        let availability = crate::integrations::integration_availability().await;
         let is_available = |id: &str| availability.iter().any(|entry| entry.id == id && entry.available);
 
         self.git_watcher.set_active(count > 0 && is_enabled("git", true) && is_available("git"));

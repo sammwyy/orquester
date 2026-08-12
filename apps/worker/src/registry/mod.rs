@@ -1,21 +1,36 @@
-//! Host tool registry. Each agent's bespoke quota/auth logic is not
-//! ported — that's a separate, substantial body of work per provider. What's
-//! here covers the whole catalog (shells, agents, IDEs, file explorers,
-//! browsers): resolve a binary on PATH, list, detect version via the
-//! `versionFlag` (no provider-specific version detection), and fire-and-
-//! forget "open target" launches. Install/update/quota stay behind an
-//! honest NOT_IMPLEMENTED in routes/registry.rs.
+//! Host tool registry. Each agent's bespoke quota/auth logic lives in
+//! `crate::agents` — this covers the whole catalog (shells, agents, IDEs,
+//! file explorers, browsers): resolve a binary on PATH, list, detect version
+//! via the `versionFlag` (no provider-specific version detection), and
+//! fire-and-forget "open target" launches. Install/update/quota stay behind
+//! an honest NOT_IMPLEMENTED in routes/registry.rs where not ported.
+
+mod browsers;
+mod editors;
+mod explorers;
+mod shells;
 
 use crate::api_types::{
     OpenResult, RegistryActionResult, RegistryAuthInfo, RegistryAuthStatus, RegistryEntry, RegistryInstallState, RegistryKind,
     RegistryQuota, RegistryResponse,
 };
 use crate::broadcaster::Broadcaster;
-use crate::host_registry::{HostEntryDef, HOST_BROWSERS, HOST_FILE_EXPLORERS, HOST_IDES};
+use browsers::BROWSERS;
+use editors::EDITORS;
+use explorers::EXPLORERS;
+use shells::materialize_shells;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+/// Static IDE, file explorer and browser candidates by platform, before
+/// PATH/env resolution.
+pub struct HostEntryDef {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub bin: &'static [&'static str],
+}
 
 #[derive(Clone)]
 struct RuntimeEntry {
@@ -52,8 +67,8 @@ fn to_public(entry: &RuntimeEntry) -> RegistryEntry {
     }
 }
 
-/// Expand `$LOCALAPPDATA` / `$PROGRAMFILES` / `$HOME` tokens the same way
-/// Expands a registry command template.
+/// Expands a registry command template's `$LOCALAPPDATA` / `$PROGRAMFILES` /
+/// `$HOME` tokens.
 fn expand_tokens(tokens: &[&str]) -> Vec<String> {
     let home = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")).unwrap_or_default();
     let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
@@ -137,44 +152,8 @@ fn materialize(defs: &[HostEntryDef], kind: RegistryKind) -> Vec<RuntimeEntry> {
         .collect()
 }
 
-const SHELLS: &[(&str, &str, &[&str])] = &[
-    ("bash", "Bash", &["bash"]),
-    ("zsh", "Zsh", &["zsh"]),
-    ("fish", "Fish", &["fish"]),
-    ("nu", "Nushell", &["nu"]),
-    ("pwsh", "PowerShell", &["pwsh", "powershell"]),
-    ("cmd", "Command Prompt", &["cmd"]),
-    ("sh", "sh", &["sh"]),
-];
-
-fn materialize_shells() -> Vec<RuntimeEntry> {
-    SHELLS
-        .iter()
-        .map(|(id, name, bin)| {
-            let bin: Vec<String> = bin.iter().map(|b| b.to_string()).collect();
-            let resolved_bin = resolve_bin(&bin);
-            RuntimeEntry {
-                id: id.to_string(),
-                name: name.to_string(),
-                kind: RegistryKind::Shell,
-                enabled: resolved_bin.is_some(),
-                resolved_bin,
-                bin,
-                version: None,
-                version_flag: None,
-                install_command: None,
-                update_command: None,
-                website_url: None,
-                missing_dependencies: Vec::new(),
-                install_state: RegistryInstallState::Idle,
-                install_error: None,
-            }
-        })
-        .collect()
-}
-
 fn materialize_agents() -> Vec<RuntimeEntry> {
-    crate::agent_defs::AGENT_DEFS
+    crate::agents::AGENT_DEFS
         .iter()
         .map(|def| {
             let bin: Vec<String> = def.bin.iter().map(|b| b.to_string()).collect();
@@ -201,10 +180,9 @@ fn materialize_agents() -> Vec<RuntimeEntry> {
         .collect()
 }
 
-/// Wrap a command in a native UAC elevation prompt, mirroring
-/// Windows elevation command. Unlike
-/// that function's posix branch (sudo with a piped password prompt), the
-/// dialog here is entirely native and out-of-band from our child process.
+/// Wraps a command in a native UAC elevation prompt. Unlike a posix branch
+/// (sudo with a piped password prompt), the dialog here is entirely native
+/// and out-of-band from our child process.
 fn elevate_command_windows(command: &str) -> String {
     let escaped = command.replace('\'', "''");
     format!("powershell -NoProfile -Command \"Start-Process cmd.exe -ArgumentList '/c','{escaped}' -Verb RunAs -Wait\"")
@@ -238,10 +216,9 @@ pub struct RegistryService {
     broadcaster: Arc<Broadcaster>,
 }
 
-/// Update one entry and broadcast the change, same shape as `self.patch()` in
-/// A free function (not a method) so it can run
-/// from both `&self` call sites and background tasks that only hold clones
-/// of `entries`/`broadcaster`, not the whole service.
+/// Update one entry and broadcast the change. A free function (not a method)
+/// so it can run from both `&self` call sites and background tasks that only
+/// hold clones of `entries`/`broadcaster`, not the whole service.
 async fn patch_entry(
     entries: &RwLock<HashMap<String, RuntimeEntry>>,
     broadcaster: &Broadcaster,
@@ -265,9 +242,9 @@ impl RegistryService {
     pub async fn init(&self) {
         let mut all = materialize_shells();
         all.extend(materialize_agents());
-        all.extend(materialize(HOST_IDES, RegistryKind::Ide));
-        all.extend(materialize(HOST_FILE_EXPLORERS, RegistryKind::FileExplorer));
-        all.extend(materialize(HOST_BROWSERS, RegistryKind::Browser));
+        all.extend(materialize(EDITORS, RegistryKind::Ide));
+        all.extend(materialize(EXPLORERS, RegistryKind::FileExplorer));
+        all.extend(materialize(BROWSERS, RegistryKind::Browser));
 
         let mut entries = self.entries.write().await;
         entries.clear();
@@ -327,7 +304,7 @@ impl RegistryService {
         }
     }
 
-    /// Ask the (partially ported, see agent_quota.rs) agent integration for
+    /// Ask the (partially ported, see agents/) agent integration for
     /// account/provider quota without exposing credentials. Caches nothing —
     /// the TS worker's cache lives in the route layer via a 30s poll while
     /// clients are connected, which this worker doesn't run yet either.
@@ -337,10 +314,10 @@ impl RegistryService {
             entries.get(id).cloned()
         };
         let Some(entry) = entry else {
-            return crate::agent_quota::unsupported_quota(id, id, Some("Unknown registry entry."));
+            return crate::agents::unsupported_quota(id, id, Some("Unknown registry entry."));
         };
         if entry.kind != RegistryKind::Agent {
-            return crate::agent_quota::unsupported_quota(id, &entry.name, Some("Quota only applies to agents."));
+            return crate::agents::unsupported_quota(id, &entry.name, Some("Quota only applies to agents."));
         }
         let Some(bin) = entry.resolved_bin.filter(|_| entry.enabled) else {
             return RegistryQuota {
@@ -357,8 +334,8 @@ impl RegistryService {
                 message: Some("The agent is not installed or cannot be resolved.".to_string()),
             };
         };
-        let mut quota = crate::agent_quota::get_quota(id, &bin, &entry.name).await;
-        if let Some(auth) = crate::agent_quota::get_auth_status(id, &bin).await {
+        let mut quota = crate::agents::get_quota(id, &bin, &entry.name).await;
+        if let Some(auth) = crate::agents::get_auth_status(id, &bin).await {
             quota.auth = auth;
         }
         quota

@@ -1,13 +1,23 @@
-//! Integration catalog.
+//! Integration catalog: one module per integration, each owning its service
+//! logic (including its background watcher, where it has one) and its HTTP
+//! routes. `integration_availability()` is the single source of truth for
+//! which integrations exist and whether they're usable on this host.
+
+pub mod battery;
+pub mod git;
+pub mod keep_awake;
+pub mod media;
+pub mod networking;
+pub mod system_resources;
 
 use crate::api_types::IntegrationStatus;
 
 pub async fn integration_availability() -> Vec<IntegrationStatus> {
     let (git_available, battery, media_available, keep_awake_available) = tokio::join!(
-        crate::git::is_git_available(),
-        crate::battery::read_battery_status(),
-        crate::media::is_media_available(),
-        crate::keep_awake::is_keep_awake_available(),
+        git::is_git_available(),
+        battery::read_battery_status(),
+        media::is_media_available(),
+        keep_awake::is_keep_awake_available(),
     );
 
     vec![

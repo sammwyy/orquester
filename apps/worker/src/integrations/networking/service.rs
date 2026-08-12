@@ -6,7 +6,7 @@
 //! correct way to kill a process tree on Windows).
 
 use crate::api_types::{NetworkPort, NetworkStatusResponse, SessionSummary};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Every session pid, plus this worker's own pid, are the roots a listening
 /// port's owning process must descend from to be reported.
@@ -24,7 +24,7 @@ fn root_pids(sessions: &[SessionSummary]) -> HashMap<u32, String> {
 #[cfg(windows)]
 mod win {
     use super::*;
-    use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, HANDLE};
+    use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::NetworkManagement::IpHelper::{
         GetExtendedTcpTable, MIB_TCPTABLE_OWNER_PID, MIB_TCP_STATE_LISTEN, TCP_TABLE_OWNER_PID_LISTENER,
     };
