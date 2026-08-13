@@ -25,6 +25,8 @@
 [data-mode="dark"] {
   color-scheme: dark;
 
+  --chrome-background: rgb(var(--n-900) / var(--sidebar-alpha, 0.6));
+
   --n-50: 250 250 250;
   --n-100: 245 245 245;
   --n-200: 229 229 229;
@@ -60,6 +62,8 @@
 
 [data-mode="light"] {
   color-scheme: light;
+
+  --chrome-background: rgb(var(--n-900));
 
   --n-50: 9 9 11;
   --n-100: 24 24 27;
@@ -272,10 +276,10 @@ body {
 }
 
 @layer components {
-  /* The sidebar/rail panel. Its alpha is a variable so the same class covers
-     the opaque tint and a user-set transparency over the desktop. */
+  /* Shared application chrome: titlebar, navigation, and status bar. */
+  .chrome-surface,
   .sidebar-surface {
-    background-color: rgb(var(--n-900) / var(--sidebar-alpha, 0.4));
+    background-color: transparent;
   }
 
   /* Range inputs (see components/ui/slider.tsx); the track is painted inline. */

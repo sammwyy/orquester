@@ -39,6 +39,21 @@ export {
 } from "./lib/transporters";
 export { toUiConnection, toRemoteConfig } from "./lib/connections";
 export {
+  ORQUESTER_GITHUB_REPOSITORY,
+  getWorkerUpdate,
+  getWorkerVersions,
+  getLatestWorkerRelease,
+  resolveWorkerArtifact,
+  resolveLatestWorkerArtifact,
+  workerPlatformForRuntime,
+  workerVersionsUrl,
+  type WorkerPlatform,
+  type WorkerRelease,
+  type WorkerReleaseChannel,
+  type WorkerUpdate,
+  type WorkerVersions
+} from "./lib/worker-release";
+export {
   createLocalStorageAppConfigAdapter,
   type AppConfigAdapter
 } from "./lib/app-config";

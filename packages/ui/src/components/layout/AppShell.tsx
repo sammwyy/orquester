@@ -14,7 +14,7 @@ import { ConnectionStatusToast, StatusBar } from "../status";
 export const AppShell: React.FC = () => (
   <div className="flex min-h-0 flex-1">
     <Sidebar />
-    <div className="flex min-w-0 flex-1 flex-col bg-neutral-950">
+    <div className="chrome-surface flex min-w-0 flex-1 flex-col">
       <TopBar />
       <MainView />
       <StatusBar />

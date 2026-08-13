@@ -32,7 +32,7 @@ export const Sidebar: React.FC = () => {
     return (
       <aside
         className={cn(
-          "sidebar-surface flex w-64 shrink-0 flex-col border-r border-neutral-800",
+          "sidebar-surface flex w-64 shrink-0 flex-col",
           blurred && "backdrop-blur-2xl"
         )}
       >
@@ -53,7 +53,7 @@ export const Sidebar: React.FC = () => {
       )}
       <aside
         className={cn(
-          "sidebar-surface fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-neutral-800 shadow-xl transition-transform duration-200",
+          "sidebar-surface fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col shadow-xl transition-transform duration-200",
           "rounded-l-[var(--window-radius)]",
           blurred && "backdrop-blur-2xl",
           drawerOpen ? "translate-x-0" : "-translate-x-full"

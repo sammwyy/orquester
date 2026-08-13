@@ -29,20 +29,14 @@ export const AppWrapper: React.FC<AppWrapperProps> = ({ children, className }) =
       style={
         {
           height: height || undefined,
-          // The sidebar surface reads this (see globals.css).
-          "--sidebar-alpha": alpha
+          "--sidebar-alpha": alpha,
+          backgroundColor: transparent ? "transparent" : "var(--chrome-background)"
         } as React.CSSProperties
       }
       className={cn(
         "flex h-screen w-screen flex-col overflow-hidden text-neutral-200",
-        // When the sidebar is see-through the shell paints nothing; every other
-        // region opts back into an opaque background.
-        transparent ? "bg-transparent" : "bg-neutral-950",
         "select-none antialiased",
-        // Frameless windows on platforms without native rounding: the shell
-        // makes the surface transparent and the corners are drawn here.
         "rounded-[var(--window-radius)]",
-        rounded && "ring-1 ring-inset ring-neutral-800",
         className
       )}
     >

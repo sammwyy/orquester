@@ -49,7 +49,7 @@ export const ServerSwitcher: React.FC = () => {
   );
 
   return (
-    <div className="border-t border-neutral-800 p-2">
+    <div className="p-2">
       <Dropdown trigger={trigger} width="w-64">
         <DropdownLabel>Servers</DropdownLabel>
         {connections.map((connection) => (

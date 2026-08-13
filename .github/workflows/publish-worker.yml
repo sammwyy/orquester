@@ -1,0 +1,90 @@
+name: Publish worker
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-worker
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }} worker
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            extension: ""
+          - os: windows-latest
+            platform: windows
+            extension: ".exe"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release binary
+        run: cargo build --locked --release --manifest-path apps/worker/Cargo.toml
+      - name: Stage asset
+        shell: pwsh
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          EXTENSION: ${{ matrix.extension }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:TAG -replace '^v', ''
+          $name = "orquester-worker-$version-$($env:PLATFORM)-x86_64$($env:EXTENSION)"
+          Copy-Item "apps/worker/target/release/orquester-worker$($env:EXTENSION)" $name
+      - uses: actions/upload-artifact@v4
+        with:
+          name: worker-${{ matrix.platform }}
+          path: orquester-worker-*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Update release manifest
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:TAG -replace '^v', ''
+          $manifest = Get-Content version.json -Raw | ConvertFrom-Json
+          if ($env:TAG.Contains('-')) {
+            $manifest.unstable = $version
+          } else {
+            $manifest.stable = $version
+          }
+          $manifest | ConvertTo-Json | Set-Content version.json
+      - name: Commit release manifest
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git diff --cached --quiet || git commit -m "chore(release): update worker versions for $TAG"
+          git push
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=""
+          [[ "$TAG" == *-* ]] && prerelease="--prerelease"
+          gh release create "$TAG" release-assets/* --title "$TAG" --generate-notes $prerelease

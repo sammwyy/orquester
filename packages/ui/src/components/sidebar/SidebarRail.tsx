@@ -58,15 +58,13 @@ export const SidebarRail: React.FC = () => {
   return (
     <aside
       className={cn(
-        "sidebar-surface flex w-12 shrink-0 flex-col items-center gap-1 border-r border-neutral-800 py-2",
+        "sidebar-surface flex w-12 shrink-0 flex-col items-center gap-1 py-2",
         blurred && "backdrop-blur-2xl"
       )}
     >
       <RailButton label="Expand sidebar" onClick={toggleSidebar}>
         <PanelLeftOpen size={16} />
       </RailButton>
-
-      <div className="my-1 h-px w-6 bg-neutral-800" />
 
       <RailButton
         label="Workspaces"
@@ -79,7 +77,7 @@ export const SidebarRail: React.FC = () => {
         <Activity size={16} />
       </RailButton>
 
-      <div className="my-1 h-px w-6 bg-neutral-800" />
+      <div className="my-1 h-px w-6 shrink-0 bg-neutral-800/60" />
 
       {view === "workspaces" && currentWorkspace && (
         <RailButton label="Back to workspaces" onClick={closeWorkspace}>

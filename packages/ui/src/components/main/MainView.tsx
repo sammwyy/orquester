@@ -52,5 +52,5 @@ export const MainView: React.FC = () => {
     ));
   }
 
-  return <main className="min-h-0 flex-1 overflow-hidden bg-neutral-950">{body}</main>;
+  return <main className="my-1 mr-1 min-h-0 flex-1 overflow-hidden rounded-xl bg-neutral-950">{body}</main>;
 };

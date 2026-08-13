@@ -40,6 +40,8 @@ export const ProjectList: React.FC = () => {
         }
       />
 
+      <div className="mx-2 h-px shrink-0 bg-neutral-800/60" />
+
       <div className="flex h-8 shrink-0 items-center px-2 pt-1">
         <button
           type="button"
