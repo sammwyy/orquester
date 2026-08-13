@@ -196,7 +196,19 @@ const DaemonAccessSettings: React.FC<{
 
 export const LocalAccessSettings: React.FC = () => {
   const localApi = useAppStore((s) => s.localApi);
-  return <DaemonAccessSettings api={localApi} editable />;
+  const connections = useAppStore((s) => s.connections);
+  const activeId = useAppStore((s) => s.activeConnectionId);
+  const active = connections.find((connection) => connection.id === activeId);
+  return (
+    <div className="space-y-4">
+      {active?.kind === "remote" && (
+        <div className="rounded-xl border border-amber-900/60 bg-amber-950/30 p-3 text-xs text-amber-200/80">
+          You are connected to {active.name}. These settings belong to this PC’s local worker, not the remote worker currently selected.
+        </div>
+      )}
+      <DaemonAccessSettings api={localApi} editable />
+    </div>
+  );
 };
 
 export const AccessSettings: React.FC<{ onGoToLocalAccess?: () => void }> = ({ onGoToLocalAccess }) => {
@@ -204,5 +216,13 @@ export const AccessSettings: React.FC<{ onGoToLocalAccess?: () => void }> = ({ o
   const connections = useAppStore((s) => s.connections);
   const activeId = useAppStore((s) => s.activeConnectionId);
   const isLocal = connections.find((c) => c.id === activeId)?.kind === "local";
-  return <DaemonAccessSettings api={api} editable={isLocal} remote={!isLocal} onGoToLocalAccess={onGoToLocalAccess} />;
+  if (isLocal) {
+    return (
+      <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-3 text-xs text-neutral-400">
+        Local worker access is configured in Local Access so it is always clear these settings apply to this PC.
+        {onGoToLocalAccess && <Button size="sm" variant="outline" className="mt-3" onClick={onGoToLocalAccess}>Go to Local Access</Button>}
+      </div>
+    );
+  }
+  return <DaemonAccessSettings api={api} editable={false} remote onGoToLocalAccess={onGoToLocalAccess} />;
 };

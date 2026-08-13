@@ -14,7 +14,7 @@ pub async fn serve(pipe_name: &str, router: Router) -> std::io::Result<()> {
 
     let mut server = ServerOptions::new()
         .first_pipe_instance(true)
-        .max_instances(255)
+        .max_instances(254)
         .create(pipe_name)?;
 
     loop {
@@ -23,7 +23,7 @@ pub async fn serve(pipe_name: &str, router: Router) -> std::io::Result<()> {
             // always-on transport — log it and keep serving on a fresh
             // instance instead of propagating.
             tracing::warn!(%error, "named pipe connect failed, recreating the pipe instance");
-            server = ServerOptions::new().max_instances(255).create(pipe_name)?;
+            server = ServerOptions::new().max_instances(254).create(pipe_name)?;
             continue;
         }
 
@@ -32,7 +32,7 @@ pub async fn serve(pipe_name: &str, router: Router) -> std::io::Result<()> {
         // connector (tokio's documented safe pattern for named_pipe servers).
         let connected = std::mem::replace(
             &mut server,
-            ServerOptions::new().max_instances(255).create(pipe_name)?,
+            ServerOptions::new().max_instances(254).create(pipe_name)?,
         );
 
         let router = router.clone();

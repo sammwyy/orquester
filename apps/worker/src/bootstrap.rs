@@ -26,7 +26,7 @@ pub async fn load_config(config_path: &str, env: &HashMap<String, String>) -> Da
         }
     };
 
-    if migrate_http_password(&mut config) || should_persist {
+    if migrate_http_password(&mut config) || normalize_http_access(&mut config) || should_persist {
         if let Some(parent) = Path::new(config_path).parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
         }
@@ -43,6 +43,19 @@ fn migrate_http_password(config: &mut DaemonConfig) -> bool {
         if config.transports.http.password_hash.is_none() {
             config.transports.http.password_hash = Some(hash_password(&password));
         }
+        return true;
+    }
+    false
+}
+
+/// Configs written before username-based authentication may have HTTP enabled
+/// with only a password hash. Keep the daemon reachable locally so the user can
+/// finish that setup in Local Access instead of preventing startup entirely.
+fn normalize_http_access(config: &mut DaemonConfig) -> bool {
+    let http = &mut config.transports.http;
+    if http.enabled && (http.password_hash.is_none() || http.username.as_deref().unwrap_or("").is_empty()) {
+        http.enabled = false;
+        http.serve_web = false;
         return true;
     }
     false

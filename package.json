@@ -5,13 +5,13 @@
   "type": "module",
   "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "dev": "pnpm --filter @orquester/desktop dev",
-    "dev:stage": "cross-env ORQUESTER_APPDIR=./.stage pnpm --filter @orquester/desktop dev",
+    "dev": "cargo build --manifest-path apps/worker/Cargo.toml && pnpm --filter @orquester/desktop dev",
+    "dev:stage": "cross-env ORQUESTER_APPDIR=./.stage cargo build --manifest-path apps/worker/Cargo.toml && cross-env ORQUESTER_APPDIR=./.stage pnpm --filter @orquester/desktop dev",
     "dev:worker": "cargo run --manifest-path apps/worker/Cargo.toml",
     "dev:worker:stage": "cross-env ORQUESTER_APPDIR=./.stage cargo run --manifest-path apps/worker/Cargo.toml",
     "dev:web": "cross-env VITE_ORQUESTER_API_URL=http://127.0.0.1:47831 pnpm --filter @orquester/web dev",
     "dev:desktop": "pnpm --filter @orquester/desktop dev",
-    "dev:remoteworker": "cross-env ORQUESTER_REMOTE_WORKER=1 pnpm --filter @orquester/desktop dev",
+    "dev:remoteworker": "cross-env ORQUESTER_REMOTE_WORKER=1 cargo build --manifest-path apps/worker/Cargo.toml && cross-env ORQUESTER_REMOTE_WORKER=1 pnpm --filter @orquester/desktop dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm -r typecheck"
