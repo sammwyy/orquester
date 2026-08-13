@@ -612,6 +612,10 @@ pub struct SessionSummary {
     pub active: bool,
     /// Rang the terminal bell, or exited, since this was last acknowledged.
     pub needs_attention: bool,
+    /// When `needs_attention` last flipped true; lets clients jump to the
+    /// most recently-flagged session rather than the oldest tab.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub needs_attention_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

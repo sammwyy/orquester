@@ -281,6 +281,10 @@ const AgentsContent: React.FC = () => {
 
   const buckets: Record<keyof typeof AGENT_TONES, AgentSession[]> = { attention: [], active: [], idle: [] };
   for (const entry of sessions) buckets[bucketOf(entry)].push(entry);
+  // Most recently flagged first, same ordering Ctrl+Shift+A jumps through.
+  buckets.attention.sort((a, b) =>
+    (b.session.needsAttentionAt ?? b.session.createdAt).localeCompare(a.session.needsAttentionAt ?? a.session.createdAt)
+  );
 
   const select = (entry: AgentSession) => {
     openProject(entry.project);

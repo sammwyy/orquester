@@ -563,14 +563,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   jumpToAttention: () => {
     const state = get();
+    // Most recently flagged first — "what just needed me" beats whichever
+    // tab happens to be oldest, which `createdAt` would've sorted by.
     const next = state.sessions
       .filter((session) => session.needsAttention)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+      .sort((a, b) => (b.needsAttentionAt ?? b.createdAt).localeCompare(a.needsAttentionAt ?? a.createdAt))[0];
     if (!next) return;
     const { workspace, name } = resolveProjectPath(next.projectPath, state.workspaces);
     state.openProject({ name, workspace, path: next.projectPath });
     // Focusing it acknowledges it (see activateTab), so the next press lands
-    // on whichever session is now oldest among what's left.
+    // on whichever session most recently flagged among what's left.
     state.activateTab(next.id);
   },
 

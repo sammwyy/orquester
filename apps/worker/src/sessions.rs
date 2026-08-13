@@ -28,15 +28,43 @@ struct Session {
     output_tx: broadcast::Sender<Bytes>,
     exit_code: AtomicI32,
     exited: std::sync::atomic::AtomicBool,
-    /// Last time a PTY output chunk arrived; the activity ticker compares
-    /// against this to decide when a session goes from active back to idle.
+    /// Drives the idle ticker. Advances on any byte, unless the session is
+    /// title-driven (see `title_streak`), where only a title change counts.
     last_activity: Mutex<std::time::Instant>,
+    last_title: Mutex<Option<String>>,
+    /// Last title change, and length of the current close-together streak —
+    /// distinguishes a live status spinner from a one-off shell-prompt retitle.
+    last_title_change: Mutex<Option<std::time::Instant>>,
+    title_streak: std::sync::atomic::AtomicU32,
+    /// Last local input write; output arriving within `INPUT_ECHO_GRACE` is
+    /// treated as an echo of it, not real activity.
+    last_input: Mutex<Option<std::time::Instant>>,
 }
 
 /// How long a session stays "active" after its last byte of output.
 const ACTIVITY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(2_000);
 /// How often the idle sweep checks every live session against that timeout.
 const ACTIVITY_TICK: std::time::Duration = std::time::Duration::from_millis(500);
+/// How long after local input to treat output as likely just its echo.
+const INPUT_ECHO_GRACE: std::time::Duration = std::time::Duration::from_millis(1_500);
+/// Max gap between title changes to stay on the same streak / stay title-driven.
+const TITLE_STREAK_WINDOW: std::time::Duration = std::time::Duration::from_millis(3_000);
+/// Streak length before title changes become the sole activity signal.
+const TITLE_STREAK_THRESHOLD: u32 = 2;
+
+/// Last OSC 0 (icon+title) or OSC 2 (title) sequence in a raw PTY chunk, if any.
+fn extract_last_title(chunk: &[u8]) -> Option<String> {
+    static TITLE_RE: std::sync::OnceLock<regex::bytes::Regex> = std::sync::OnceLock::new();
+    let re = TITLE_RE.get_or_init(|| regex::bytes::Regex::new(r"\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)").unwrap());
+    re.captures_iter(chunk).last().map(|c| String::from_utf8_lossy(&c[1]).into_owned())
+}
+
+impl Session {
+    fn is_title_driven(&self) -> bool {
+        self.title_streak.load(Ordering::SeqCst) >= TITLE_STREAK_THRESHOLD
+            && self.last_title_change.lock().unwrap().map(|t| t.elapsed() < TITLE_STREAK_WINDOW).unwrap_or(false)
+    }
+}
 
 pub struct SessionManager {
     sessions: Arc<RwLock<HashMap<String, Arc<Session>>>>,
@@ -67,7 +95,8 @@ impl SessionManager {
                 let live: Vec<Arc<Session>> = sessions.read().await.values().cloned().collect();
                 for session in live {
                     let idle_for = session.last_activity.lock().unwrap().elapsed();
-                    if idle_for < ACTIVITY_TIMEOUT {
+                    let timeout = if session.is_title_driven() { TITLE_STREAK_WINDOW } else { ACTIVITY_TIMEOUT };
+                    if idle_for < timeout {
                         continue;
                     }
                     let updated = {
@@ -133,6 +162,7 @@ impl SessionManager {
             pid,
             active: false,
             needs_attention: false,
+            needs_attention_at: None,
         };
 
         let reader = pair.master.try_clone_reader().map_err(|e| SessionError(format!("Cannot read pty output: {e}")))?;
@@ -150,6 +180,10 @@ impl SessionManager {
             exit_code: AtomicI32::new(0),
             exited: std::sync::atomic::AtomicBool::new(false),
             last_activity: Mutex::new(std::time::Instant::now()),
+            last_title: Mutex::new(None),
+            last_title_change: Mutex::new(None),
+            title_streak: std::sync::atomic::AtomicU32::new(0),
+            last_input: Mutex::new(None),
         });
 
         self.sessions.write().await.insert(id.clone(), session.clone());
@@ -167,23 +201,57 @@ impl SessionManager {
                         Ok(0) => break,
                         Ok(n) => {
                             let data = Bytes::copy_from_slice(&chunk[..n]);
-                            *session.last_activity.lock().unwrap() = std::time::Instant::now();
+
+                            let title_change = extract_last_title(&chunk[..n]);
+                            let title_changed = if let Some(new_title) = &title_change {
+                                let mut last_title = session.last_title.lock().unwrap();
+                                let changed = last_title.as_deref() != Some(new_title.as_str());
+                                *last_title = Some(new_title.clone());
+                                changed
+                            } else {
+                                false
+                            };
+                            if title_changed {
+                                let mut last_change = session.last_title_change.lock().unwrap();
+                                let within_streak = last_change.map(|t| t.elapsed() < TITLE_STREAK_WINDOW).unwrap_or(false);
+                                if within_streak {
+                                    session.title_streak.fetch_add(1, Ordering::SeqCst);
+                                } else {
+                                    session.title_streak.store(1, Ordering::SeqCst);
+                                }
+                                *last_change = Some(std::time::Instant::now());
+                            }
+                            let is_title_driven = session.is_title_driven();
+
+                            // Suppress the echo of what the client just typed.
+                            let recently_typed = session
+                                .last_input
+                                .lock()
+                                .unwrap()
+                                .map(|t| t.elapsed() < INPUT_ECHO_GRACE)
+                                .unwrap_or(false);
+
+                            let is_heartbeat = !recently_typed && (title_changed || !is_title_driven);
+                            if is_heartbeat {
+                                *session.last_activity.lock().unwrap() = std::time::Instant::now();
+                            }
 
                             // Bell (0x07) is the classic "I'm done" signal most
                             // CLIs — including OSC 9/777 notifications, which
                             // are conventionally BEL-terminated too — already
                             // emit, so a raw byte scan catches both without a
                             // full OSC-aware parser.
-                            let has_bell = chunk[..n].contains(&0x07);
+                            let has_bell = !recently_typed && chunk[..n].contains(&0x07);
                             let changed_summary = {
                                 let mut summary = session.summary.lock().unwrap();
                                 let mut changed = false;
-                                if !summary.active {
+                                if is_heartbeat && !summary.active {
                                     summary.active = true;
                                     changed = true;
                                 }
                                 if has_bell && !summary.needs_attention {
                                     summary.needs_attention = true;
+                                    summary.needs_attention_at = Some(chrono::Utc::now().to_rfc3339());
                                     changed = true;
                                 }
                                 changed.then(|| summary.clone())
@@ -235,6 +303,7 @@ impl SessionManager {
                     summary.exit_code = Some(exit_code);
                     summary.active = false;
                     summary.needs_attention = true;
+                    summary.needs_attention_at = Some(chrono::Utc::now().to_rfc3339());
                     summary.clone()
                 };
                 broadcaster.publish("sessions", "session.exited", &updated);
@@ -276,6 +345,7 @@ impl SessionManager {
             let mut summary = session.summary.lock().unwrap();
             let already_clear = !summary.needs_attention;
             summary.needs_attention = false;
+            summary.needs_attention_at = None;
             (already_clear, summary.clone())
         };
         if !already_clear {
@@ -292,6 +362,7 @@ impl SessionManager {
     pub async fn input(&self, id: &str, data: &str) {
         let sessions = self.sessions.read().await;
         if let Some(session) = sessions.get(id) {
+            *session.last_input.lock().unwrap() = Some(std::time::Instant::now());
             if let Some(writer) = session.writer.lock().unwrap().as_mut() {
                 let _ = writer.write_all(data.as_bytes());
                 let _ = writer.flush();

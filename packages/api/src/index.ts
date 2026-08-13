@@ -432,6 +432,8 @@ export interface SessionSummary {
   active: boolean;
   /** Rang the terminal bell, or exited, since this was last acknowledged. */
   needsAttention: boolean;
+  /** When `needsAttention` last flipped true; unset once acknowledged. */
+  needsAttentionAt?: string;
 }
 
 export interface NetworkPort {
