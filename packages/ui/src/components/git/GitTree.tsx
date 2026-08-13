@@ -198,13 +198,14 @@ const CommitRow: React.FC<{
       type="button"
       onClick={onSelect}
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg px-2 text-left transition-colors",
+        "flex w-full items-center rounded-lg px-2 text-left transition-colors",
+        compact ? "gap-2" : "gap-3",
         active ? "bg-neutral-800" : "hover:bg-neutral-900/70"
       )}
       style={{ height: ROW_H }}
     >
       {showGraph ? <GraphCell row={row} maxLanes={maxLanes} isHead={isHead} /> : <FlatDot isHead={isHead} />}
-      <Avatar name={row.commit.author} size={22} className="ring-1 ring-inset ring-black/20" />
+      {!compact && <Avatar name={row.commit.author} size={22} className="ring-1 ring-inset ring-black/20" />}
       <span className={cn("min-w-0 flex-1 truncate text-[13px]", active ? "font-medium text-neutral-100" : "text-neutral-300")}>
         {row.commit.subject}
       </span>

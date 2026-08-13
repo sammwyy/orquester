@@ -105,12 +105,15 @@ export function layoutGraph(commits: GitCommitSummary[]): GraphLayout {
     }
 
     const segments: GraphSegment[] = [];
-    const touched = new Set<number>([col, ...edgesOut.map((edge) => edge.toCol)]);
+    // Only the consumed commit's lane is replaced on this row. A parent that was
+    // already waiting in another lane must keep its vertical line as well as
+    // receive the joining curve; otherwise merge lines appear to stop halfway.
+    const replaced = new Set<number>([col]);
 
-    // Passthrough verticals for every other lane still alive on both sides of this row.
+    // Passthrough verticals for every unchanged lane still alive on both sides of this row.
     const maxLen = Math.max(lanesBefore.length, lanes.length);
     for (let i = 0; i < maxLen; i++) {
-      if (touched.has(i)) continue;
+      if (replaced.has(i)) continue;
       const before = lanesBefore[i];
       const after = lanes[i];
       if (before?.hash && after?.hash && before.hash === after.hash) {
