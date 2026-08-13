@@ -87,6 +87,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/registry/:id/update", post(routes::registry::update))
         .route("/api/open", post(routes::registry::open))
+        .route("/api/agents/conversations", get(routes::agents::conversations))
         .route("/api/sessions", get(routes::sessions::list).post(routes::sessions::create))
         .route("/api/sessions/:id", delete(routes::sessions::close))
         .route("/api/sessions/:id/acknowledge", post(routes::sessions::acknowledge))

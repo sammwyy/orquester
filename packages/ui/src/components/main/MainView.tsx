@@ -1,7 +1,8 @@
 import React from "react";
-import { LayoutGrid, MousePointerClick } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { EmptyState } from "./EmptyState";
+import { ProjectOverview } from "./ProjectOverview";
 import { TerminalView } from "../terminal";
 import { FileBrowser } from "../files";
 import { GitTree } from "../git";
@@ -29,13 +30,7 @@ export const MainView: React.FC = () => {
       />
     );
   } else if (tabs.length === 0) {
-    body = (
-      <EmptyState
-        icon={<MousePointerClick size={40} strokeWidth={1.25} />}
-        title="No tabs open"
-        description='Use the "+" button in the top bar to open a terminal, agent or file browser.'
-      />
-    );
+    body = <ProjectOverview rootPath={currentProject.path} />;
   } else {
     body = tabs.map((tab) => (
       <div

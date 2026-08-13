@@ -9,4 +9,6 @@ pub const DEF: AgentDef = AgentDef {
     install_cmd: "npm install -g @vegamo/deepcode-cli",
     update_cmd: "npm install -g @vegamo/deepcode-cli",
     website_url: "https://github.com/lessweb/deepcode-cli",
+    // No known resume flag/history storage yet (CLI unverified).
+    resume_args: &[],
 };

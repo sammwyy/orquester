@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { create } from "zustand";
-import type { BatteryStatusResponse, GitStatusResponse, IntegrationStatus, MediaControlRequest, MediaStatusResponse, NetworkStatusResponse, ProcessManagerResponse, RegistryQuota, SystemResourcesResponse } from "@orquester/api";
+import type { AgentConversationSummary, BatteryStatusResponse, GitStatusResponse, IntegrationStatus, MediaControlRequest, MediaStatusResponse, NetworkStatusResponse, ProcessManagerResponse, RegistryQuota, SystemResourcesResponse } from "@orquester/api";
 import { ApiClient, ApiError } from "../lib/api-client";
 import { createTransporter } from "../lib/transporters";
 import { toRemoteConfig, toUiConnection } from "../lib/connections";
@@ -281,6 +281,11 @@ export interface AppState {
   toolTabsByProject: Record<string, ToolTab[]>;
   /** Client-local active tab id per project path (session or tool tab). */
   activeTabByProject: Record<string, string | null>;
+  /** Every installed agent's past conversations, cached per project path.
+   * Invalidated (not incrementally patched) when any agent session for that
+   * project closes — the aggregation endpoint is one cheap combined fetch,
+   * so refetching everything is simpler than tracking per-agent staleness. */
+  agentConversationsByProject: Record<string, AgentConversationSummary[]>;
 
   setApi: (api: ApiClient) => void;
   connect: () => Promise<void>;
@@ -340,10 +345,12 @@ export interface AppState {
   loadRegistry: () => Promise<void>;
   installAgent: (id: string) => Promise<void>;
   updateAgent: (id: string) => Promise<void>;
-  openTab: (kind: RegistryKind, refId: string, title?: string) => Promise<void>;
+  openTab: (kind: RegistryKind, refId: string, title?: string, resumeConversationId?: string) => Promise<void>;
   openTool: (kind: ToolKind) => void;
   closeTab: (id: string) => Promise<void>;
   activateTab: (id: string) => void;
+  /** Cached per project; pass force to bypass the cache (e.g. a manual refresh). */
+  loadAgentConversations: (projectPath: string, force?: boolean) => Promise<AgentConversationSummary[]>;
   acknowledgeSession: (id: string) => Promise<void>;
   dismissAgentsBadge: () => void;
 
@@ -390,6 +397,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   sessions: [],
   toolTabsByProject: {},
   activeTabByProject: {},
+  agentConversationsByProject: {},
 
   setApi: (api) => set({ api }),
 
@@ -954,7 +962,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().api?.updateRegistryEntry(id).catch(() => undefined);
   },
 
-  openTab: async (kind, refId, title) => {
+  openTab: async (kind, refId, title, resumeConversationId) => {
     const api = get().api;
     if (!api) {
       return;
@@ -965,7 +973,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       refId,
       title,
       projectPath: project?.path ?? "",
-      cwd: project?.path
+      cwd: project?.path,
+      resumeConversationId
     });
     set((state) => ({
       sessions: upsertSession(state.sessions, session),
@@ -993,10 +1002,37 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   closeTab: async (id) => {
     const api = get().api;
-    const isSession = get().sessions.some((s) => s.id === id);
-    set((state) => (isSession ? removeSession(state, id) : removeToolTab(state, id)));
-    if (isSession) {
+    const session = get().sessions.find((s) => s.id === id);
+    set((state) => (session ? removeSession(state, id) : removeToolTab(state, id)));
+    if (session) {
       await api?.closeSession(id).catch(() => undefined);
+      // The session it just spawned/updated is very likely a new or changed
+      // conversation — drop the cache so the next overview fetch is fresh.
+      if (session.kind === "agent" && session.projectPath) {
+        set((state) => {
+          const next = { ...state.agentConversationsByProject };
+          delete next[session.projectPath];
+          return { agentConversationsByProject: next };
+        });
+      }
+    }
+  },
+
+  loadAgentConversations: async (projectPath, force) => {
+    const cached = get().agentConversationsByProject[projectPath];
+    if (cached && !force) {
+      return cached;
+    }
+    const api = get().api;
+    if (!api) {
+      return cached ?? [];
+    }
+    try {
+      const result = await api.listAgentConversations(projectPath);
+      set((state) => ({ agentConversationsByProject: { ...state.agentConversationsByProject, [projectPath]: result.conversations } }));
+      return result.conversations;
+    } catch {
+      return cached ?? [];
     }
   },
 

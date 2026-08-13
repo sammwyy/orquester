@@ -1,7 +1,8 @@
-use super::support::{call, call_interactive, strip_ansi, unsupported_quota};
+use super::support::{call, call_interactive, home_dir, strip_ansi, summarize, unsupported_quota};
 use super::AgentDef;
-use crate::api_types::{QuotaPeriod, QuotaUnit, QuotaWindow, RegistryAuthInfo, RegistryAuthStatus, RegistryQuota};
+use crate::api_types::{AgentConversationSummary, QuotaPeriod, QuotaUnit, QuotaWindow, RegistryAuthInfo, RegistryAuthStatus, RegistryQuota};
 use chrono::TimeZone;
+use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use std::path::Path;
 
 pub const DEF: AgentDef = AgentDef {
@@ -13,6 +14,7 @@ pub const DEF: AgentDef = AgentDef {
     install_cmd: "curl -fsSL https://x.ai/cli/install.sh | bash",
     update_cmd: "grok update",
     website_url: "https://x.ai/",
+    resume_args: &["--resume", "{id}"],
 };
 
 pub async fn auth_status(bin: &Path) -> RegistryAuthInfo {
@@ -63,6 +65,40 @@ pub async fn quota(bin: &Path, name: &str) -> RegistryQuota {
         windows,
         message: None,
     }
+}
+
+/// `~/.grok/sessions/<percent-encoded absolute path>/<session-uuid>/summary.json`
+/// — richest metadata of any agent here (auto-generated title, both
+/// created/updated timestamps), so this is a near-direct field mapping.
+const COMPONENT: &AsciiSet = &NON_ALPHANUMERIC.remove(b'-').remove(b'_').remove(b'.').remove(b'~').remove(b'!').remove(b'*').remove(b'\'').remove(b'(').remove(b')');
+
+pub async fn list_conversations(project_path: &str) -> Vec<AgentConversationSummary> {
+    let Some(home) = home_dir() else { return Vec::new() };
+    let encoded = utf8_percent_encode(project_path, COMPONENT).to_string();
+    let dir = home.join(".grok").join("sessions").join(encoded);
+    tokio::task::spawn_blocking(move || {
+        let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+        let mut out = Vec::new();
+        for entry in entries.flatten() {
+            let summary_path = entry.path().join("summary.json");
+            let Ok(content) = std::fs::read_to_string(&summary_path) else { continue };
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) else { continue };
+            let Some(id) = value.pointer("/info/id").and_then(|v| v.as_str()) else { continue };
+            let title = value
+                .get("generated_title")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .or_else(|| value.get("session_summary").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
+                .unwrap_or("Untitled session");
+            let updated_at =
+                value.get("last_active_at").or_else(|| value.get("updated_at")).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            out.push(AgentConversationSummary { id: id.to_string(), agent_ref_id: "grok".to_string(), title: summarize(title, 80), preview: None, updated_at });
+        }
+        out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        out
+    })
+    .await
+    .unwrap_or_default()
 }
 
 fn parse_grok_usage(output: &str) -> Vec<QuotaWindow> {

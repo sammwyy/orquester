@@ -705,6 +705,25 @@ pub struct SessionSummary {
     pub needs_attention_at: Option<String>,
 }
 
+/// One past conversation a client can offer to resume — see
+/// `agents::list_conversations` for how each provider produces these.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentConversationSummary {
+    pub id: String,
+    pub agent_ref_id: String,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentConversationsResponse {
+    pub conversations: Vec<AgentConversationSummary>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPort {
@@ -765,6 +784,8 @@ pub struct CreateSessionRequest {
     pub cols: Option<u16>,
     pub rows: Option<u16>,
     pub title: Option<String>,
+    /// Past conversation id to resume, per `AgentDef::resume_args` — ignored for shells.
+    pub resume_conversation_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]

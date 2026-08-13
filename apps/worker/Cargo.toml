@@ -33,6 +33,8 @@ chrono-tz = "0.10"
 reqwest = "0.12"
 ignore = "0.4"
 aes-gcm = "0.10"
+rusqlite = { version = "0.31", features = ["bundled"] }
+percent-encoding = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

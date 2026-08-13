@@ -1,6 +1,7 @@
-use super::support::{call, unsupported_quota};
+use super::support::{call, home_dir, summarize, unsupported_quota};
 use super::AgentDef;
-use crate::api_types::{QuotaPeriod, QuotaUnit, QuotaWindow, RegistryAuthInfo, RegistryAuthStatus, RegistryQuota};
+use crate::api_types::{AgentConversationSummary, QuotaPeriod, QuotaUnit, QuotaWindow, RegistryAuthInfo, RegistryAuthStatus, RegistryQuota};
+use std::io::BufRead;
 use std::path::Path;
 
 pub const DEF: AgentDef = AgentDef {
@@ -12,6 +13,8 @@ pub const DEF: AgentDef = AgentDef {
     install_cmd: "npm install -g @openai/codex",
     update_cmd: "npm update -g @openai/codex",
     website_url: "https://openai.com/codex/",
+    // Subcommand, not a flag — codex's default (no args) launch is a distinct mode.
+    resume_args: &["resume", "{id}"],
 };
 
 pub async fn auth_status(bin: &Path) -> RegistryAuthInfo {
@@ -118,6 +121,79 @@ pub async fn quota(bin: &Path, name: &str) -> RegistryQuota {
         windows,
         message: None,
     }
+}
+
+/// `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` — organized by date, not
+/// project, so every file's first line (always `session_meta`, cheap to
+/// check) has to be read to filter by `cwd`. The first real `response_item`
+/// with `role:"user"` is usually preceded by injected boilerplate (AGENTS.md
+/// contents, skill instructions) rather than what the human actually typed;
+/// skipping oversized or obviously-labeled ones is a heuristic, not exact.
+pub async fn list_conversations(project_path: &str) -> Vec<AgentConversationSummary> {
+    let Some(home) = home_dir() else { return Vec::new() };
+    let sessions_dir = home.join(".codex").join("sessions");
+    let project_path = project_path.to_string();
+    tokio::task::spawn_blocking(move || {
+        let mut out = Vec::new();
+        for entry in ignore::WalkBuilder::new(&sessions_dir).hidden(false).build().flatten() {
+            if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                continue;
+            }
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let Ok(file) = std::fs::File::open(path) else { continue };
+            let mut lines = std::io::BufReader::new(file).lines().map_while(Result::ok);
+            let Some(first_line) = lines.next() else { continue };
+            let Ok(meta) = serde_json::from_str::<serde_json::Value>(&first_line) else { continue };
+            if meta.get("type").and_then(|t| t.as_str()) != Some("session_meta") {
+                continue;
+            }
+            let payload = meta.get("payload").cloned().unwrap_or_default();
+            if payload.get("cwd").and_then(|v| v.as_str()) != Some(project_path.as_str()) {
+                continue;
+            }
+            let Some(id) = payload.get("session_id").and_then(|v| v.as_str()) else { continue };
+
+            let title = lines.find_map(|line| {
+                let value = serde_json::from_str::<serde_json::Value>(&line).ok()?;
+                if value.get("type").and_then(|t| t.as_str()) != Some("response_item") {
+                    return None;
+                }
+                let item = value.get("payload")?;
+                if item.get("role").and_then(|v| v.as_str()) != Some("user") {
+                    return None;
+                }
+                let text = extract_user_text(item)?;
+                // Skip injected context (AGENTS.md, skills) and placeholder
+                // tags like `<image name=...>` for pasted attachments.
+                (text.len() <= 2000 && !text.starts_with('#') && !text.starts_with('<')).then(|| summarize(&text, 80))
+            });
+
+            let updated_at = std::fs::metadata(path)
+                .and_then(|m| m.modified())
+                .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())
+                .unwrap_or_default();
+            out.push(AgentConversationSummary {
+                id: id.to_string(),
+                agent_ref_id: "codex".to_string(),
+                title: title.unwrap_or_else(|| "Untitled session".to_string()),
+                preview: None,
+                updated_at,
+            });
+        }
+        out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        out
+    })
+    .await
+    .unwrap_or_default()
+}
+
+fn extract_user_text(item: &serde_json::Value) -> Option<String> {
+    item.get("content")?.as_array()?.iter().find_map(|block| {
+        (block.get("type").and_then(|t| t.as_str()) == Some("input_text")).then(|| block.get("text")?.as_str().map(str::to_string)).flatten()
+    })
 }
 
 fn codex_window_period(minutes: i64) -> QuotaPeriod {

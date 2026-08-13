@@ -1,7 +1,8 @@
-use super::support::{call, unsupported_quota};
+use super::support::{call, home_dir, summarize, unsupported_quota};
 use super::AgentDef;
-use crate::api_types::{QuotaPeriod, QuotaUnit, QuotaWindow, RegistryAuthInfo, RegistryAuthStatus, RegistryQuota};
+use crate::api_types::{AgentConversationSummary, QuotaPeriod, QuotaUnit, QuotaWindow, RegistryAuthInfo, RegistryAuthStatus, RegistryQuota};
 use chrono::{Datelike, TimeZone};
+use std::io::BufRead;
 use std::path::Path;
 
 pub const DEF: AgentDef = AgentDef {
@@ -13,6 +14,7 @@ pub const DEF: AgentDef = AgentDef {
     install_cmd: "npm install -g @anthropic-ai/claude-code",
     update_cmd: "npm update -g @anthropic-ai/claude-code",
     website_url: "https://www.anthropic.com/claude-code",
+    resume_args: &["--resume", "{id}"],
 };
 
 pub async fn auth_status(bin: &Path) -> RegistryAuthInfo {
@@ -59,6 +61,81 @@ pub async fn quota(bin: &Path, name: &str) -> RegistryQuota {
         windows,
         message: None,
     }
+}
+
+/// One `.jsonl` transcript per session under `~/.claude/projects/<slug>/`,
+/// where `<slug>` is the project's absolute path with every `/` replaced by
+/// `-`. Title prefers the CLI's own auto-generated `slug` field (present on
+/// newer versions) over the raw first user message; `updated_at` is the
+/// file's mtime since no explicit "last activity" field exists in the format.
+pub async fn list_conversations(project_path: &str) -> Vec<AgentConversationSummary> {
+    let Some(home) = home_dir() else { return Vec::new() };
+    let slug = project_path.replace(['/', '\\'], "-");
+    let dir = home.join(".claude").join("projects").join(slug);
+    tokio::task::spawn_blocking(move || {
+        let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+        let mut out = Vec::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let Some(id) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+            let Some((title, created_at)) = first_user_message(&path) else { continue };
+            let updated_at = std::fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())
+                .unwrap_or(created_at);
+            out.push(AgentConversationSummary { id: id.to_string(), agent_ref_id: "claude".to_string(), title, preview: None, updated_at });
+        }
+        out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        out
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// Scans up to 40 lines rather than stopping at the first `type:"user"`
+/// line: Claude Code sometimes wraps slash-command output in a
+/// `<local-command-caveat>` line ahead of the real first message, and
+/// `slug` (a nicer auto-title) doesn't always land on the very first line
+/// either. `slug` wins wherever it's found; otherwise the first message
+/// that isn't an injected wrapper.
+fn first_user_message(path: &std::path::Path) -> Option<(String, String)> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut fallback_created_at: Option<String> = None;
+    let mut clean_text: Option<(String, String)> = None;
+    for line in std::io::BufReader::new(file).lines().take(40).map_while(Result::ok) {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        if value.get("type").and_then(|t| t.as_str()) != Some("user") {
+            continue;
+        }
+        let created_at = value.get("timestamp").and_then(|t| t.as_str()).unwrap_or_default().to_string();
+        fallback_created_at.get_or_insert_with(|| created_at.clone());
+        if let Some(slug) = value.get("slug").and_then(|s| s.as_str()) {
+            return Some((slug.replace('-', " "), created_at));
+        }
+        if clean_text.is_some() {
+            continue;
+        }
+        let Some(content) = value.pointer("/message/content") else { continue };
+        let Some(text) = content
+            .as_str()
+            .map(str::to_string)
+            .or_else(|| content.as_array()?.iter().find_map(|block| block.get("text")?.as_str().map(str::to_string)))
+        else {
+            continue;
+        };
+        if is_injected_wrapper(&text) {
+            continue;
+        }
+        clean_text = Some((summarize(&text, 80), created_at));
+    }
+    clean_text.or_else(|| fallback_created_at.map(|ts| ("Untitled session".to_string(), ts)))
+}
+
+fn is_injected_wrapper(text: &str) -> bool {
+    text.starts_with('<') || text.len() > 4000
 }
 
 fn parse_claude_usage(output: &str) -> Vec<QuotaWindow> {

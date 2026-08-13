@@ -1,4 +1,5 @@
 import type {
+  AgentConversationsResponse,
   AuthInfoResponse,
   BatteryStatusResponse,
   CreateProjectRequest,
@@ -409,6 +410,11 @@ export class ApiClient {
   /** Launch an ide/file-explorer/browser target on a path. */
   open(targetId: string, path: string): Promise<OpenResult> {
     return this.send("POST", "/api/open", { body: { targetId, path } });
+  }
+
+  /** Every installed agent's past conversations for one project, newest first. */
+  listAgentConversations(projectPath: string, signal?: AbortSignal): Promise<AgentConversationsResponse> {
+    return this.send("GET", "/api/agents/conversations", { query: { path: projectPath }, signal });
   }
 
   // Sessions (PTYs)

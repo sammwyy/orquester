@@ -141,6 +141,11 @@ impl SessionManager {
         cmd.cwd(&cwd);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        if let Some(conversation_id) = req.resume_conversation_id.as_deref().filter(|c| !c.is_empty()) {
+            for arg in crate::agents::resume_args(&ref_id, conversation_id) {
+                cmd.arg(arg);
+            }
+        }
 
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| SessionError(format!("Cannot start \"{ref_id}\": {e}")))?;
         drop(pair.slave);

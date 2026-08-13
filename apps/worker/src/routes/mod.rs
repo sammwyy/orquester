@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod config_routes;
 pub mod events;
 pub mod fs;

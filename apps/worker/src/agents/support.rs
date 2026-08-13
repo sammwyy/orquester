@@ -4,7 +4,23 @@
 //! the shared "quota not supported" response.
 
 use crate::api_types::{RegistryActionResult, RegistryAuthInfo, RegistryAuthStatus, RegistryQuota};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Where each CLI's own state directory (`.claude`, `.grok`, ...) lives.
+pub fn home_dir() -> Option<PathBuf> {
+    std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).ok().map(PathBuf::from)
+}
+
+/// Collapses whitespace/newlines to single spaces and trims to `max_chars`
+/// (char-safe), for turning a raw prompt/message into a one-line title.
+pub fn summarize(text: &str, max_chars: usize) -> String {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() <= max_chars {
+        return collapsed;
+    }
+    let truncated: String = collapsed.chars().take(max_chars).collect();
+    format!("{}…", truncated.trim_end())
+}
 
 pub fn unsupported_quota(id: &str, provider: &str, message: Option<&str>) -> RegistryQuota {
     RegistryQuota {

@@ -549,6 +549,21 @@ export interface CreateSessionRequest {
   cols?: number;
   rows?: number;
   title?: string;
+  /** Past conversation id to resume, per that agent's resume flag — ignored for shells. */
+  resumeConversationId?: string;
+}
+
+/** One past conversation a client can offer to resume. */
+export interface AgentConversationSummary {
+  id: string;
+  agentRefId: string;
+  title: string;
+  preview?: string;
+  updatedAt: string;
+}
+
+export interface AgentConversationsResponse {
+  conversations: AgentConversationSummary[];
 }
 
 export interface SessionInputRequest {
