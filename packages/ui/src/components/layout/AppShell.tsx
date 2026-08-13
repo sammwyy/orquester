@@ -4,6 +4,7 @@ import { TopBar } from "../topbar";
 import { MainView } from "../main";
 import { SettingsModal, SudoPasswordModal } from "../settings";
 import { AuthModal } from "../auth";
+import { CommandPalette } from "../command-palette";
 import { MobileKeyBar } from "../terminal";
 import { ConnectionStatusToast, StatusBar } from "../status";
 import { useChromeSurface } from "../../hooks";
@@ -32,6 +33,7 @@ export const AppShell: React.FC = () => {
       <SudoPasswordModal />
       <AuthModal />
       <ConnectionStatusToast />
+      <CommandPalette />
     </div>
   );
 };
