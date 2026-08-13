@@ -5,11 +5,11 @@
     "antigravity": false
   },
   "integrations": {
+    "networking": true,
+    "media": true,
     "git": true,
     "battery": true,
-    "media": true,
     "keep-awake": true,
-    "networking": true,
     "system-resources": true
   },
   "workspacesDir": "$appdir/workspaces",
@@ -17,7 +17,7 @@
   "transports": {
     "http": {
       "enabled": true,
-      "host": "0.0.0.0",
+      "host": "127.0.0.1",
       "port": 47831,
       "passwordHash": "$2b$10$JvlLJ/cbGssmmlzjKcZo9.kvTrbX41iPN9wFZcw6cMBX8GOsG98ei"
     }

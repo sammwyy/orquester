@@ -12,5 +12,7 @@
   "themeMode": "dark",
   "updateChannel": "stable",
   "useTitlebar": true,
-  "version": 1
+  "version": 1,
+  "localWorkerInstalled": true,
+  "setupComplete": true
 }

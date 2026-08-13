@@ -25,6 +25,7 @@ export function createTransporter(
     return new HttpTransporter({
       baseUrl: connection.endpoint,
       password: connection.password,
+      username: connection.username,
       httpClient: options.httpClient
     });
   }

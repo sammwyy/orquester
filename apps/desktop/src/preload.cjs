@@ -15,6 +15,15 @@ contextBridge.exposeInMainWorld("orquesterDesktop", {
   // Byte transport for the renderer's UnixSocketTransporter.
   request: (request) => ipcRenderer.invoke("orquester:request", request),
   openExternal: (url) => ipcRenderer.invoke("orquester:open-external", url),
+  workerStatus: () => ipcRenderer.invoke("orquester:worker:status"),
+  installWorker: () => ipcRenderer.invoke("orquester:worker:install"),
+  configureWorker: (input) => ipcRenderer.invoke("orquester:worker:configure", input),
+  chooseWorkerWorkspaces: () => ipcRenderer.invoke("orquester:worker:choose-workspaces"),
+  startWorker: () => ipcRenderer.invoke("orquester:worker:start"),
+  loadAppConfig: () => ipcRenderer.invoke("orquester:config:load"),
+  saveAppConfig: (patch) => ipcRenderer.invoke("orquester:config:save", patch),
+  loadRemotes: () => ipcRenderer.invoke("orquester:remotes:load"),
+  saveRemotes: (remotes) => ipcRenderer.invoke("orquester:remotes:save", remotes),
   // Chunked streaming (session output, event bus). The renderer supplies the id.
   streamOpen: (streamId, path) => ipcRenderer.send("orquester:stream:open", { streamId, path }),
   streamClose: (streamId) => ipcRenderer.send("orquester:stream:close", streamId),

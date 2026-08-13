@@ -51,6 +51,8 @@ export interface UiConnection {
   status: ConnectionStatus;
   /** Bearer token for authenticated (remote/http) daemons. */
   password?: string;
+  /** Account name required by authenticated remote daemons. */
+  username?: string;
 }
 
 export type {

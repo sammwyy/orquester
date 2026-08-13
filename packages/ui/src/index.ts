@@ -10,7 +10,9 @@ export {
   useApi,
   type OrquesterContextValue,
   type WindowControls,
-  type WindowState
+  type WindowState,
+  type WorkerManager,
+  type LocalWorkerSetup
 } from "./context/orquester-context";
 
 // Connection layer
@@ -89,6 +91,7 @@ export * from "./components/files";
 export * from "./components/settings";
 export * from "./components/auth";
 export * from "./components/status";
+export * from "./components/onboarding";
 
 // Icons
 export { getRegistryIcon, RegistryIcon } from "./icons";

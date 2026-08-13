@@ -125,6 +125,8 @@ export interface UiAppConfig {
   showQuotaMenu: boolean;
   searchForUpdates: boolean;
   updateChannel: "stable" | "nightly";
+  setupComplete: boolean;
+  localWorkerInstalled: boolean;
 }
 
 const DEFAULT_APP_CONFIG: UiAppConfig = {
@@ -139,13 +141,20 @@ const DEFAULT_APP_CONFIG: UiAppConfig = {
   quotaResetFormat: "relative",
   showQuotaMenu: false,
   searchForUpdates: true,
-  updateChannel: "stable"
+  updateChannel: "stable",
+  setupComplete: false,
+  localWorkerInstalled: false
 };
 
 /** Persist the remote-server list to the home daemon (shared across clients). */
 async function persistRemotes(connections: UiConnection[]): Promise<void> {
+  const remotes = connections.filter((c) => c.kind === "remote").map(toRemoteConfig);
+  if (setup?.appConfigAdapter?.saveRemotes) {
+    await setup.appConfigAdapter.saveRemotes(remotes).catch(() => undefined);
+    return;
+  }
   await homeApi
-    ?.saveRemotes(connections.filter((c) => c.kind === "remote").map(toRemoteConfig))
+    ?.saveRemotes(remotes)
     .catch(() => undefined);
 }
 
@@ -275,7 +284,7 @@ export interface AppState {
   // connection management
   initConnections: (setup: ConnectionSetup) => Promise<void>;
   selectConnection: (id: string) => Promise<void>;
-  addRemote: (input: { name: string; baseUrl: string; password?: string }) => Promise<string>;
+  addRemote: (input: { name: string; baseUrl: string; username?: string; password?: string }) => Promise<string>;
   removeRemote: (id: string) => Promise<void>;
   loadRemotes: () => Promise<void>;
 
@@ -292,7 +301,7 @@ export interface AppState {
   setQuota: (quota: RegistryQuota) => void;
 
   // auth
-  submitPassword: (password: string) => Promise<void>;
+  submitPassword: (username: string, password: string) => Promise<void>;
   signOut: () => void;
 
   loadWorkspaces: () => Promise<void>;
@@ -505,7 +514,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             quotaResetFormat: config.quotaResetFormat ?? state.appConfig.quotaResetFormat,
             showQuotaMenu: config.showQuotaMenu ?? state.appConfig.showQuotaMenu,
             searchForUpdates: config.searchForUpdates ?? state.appConfig.searchForUpdates,
-            updateChannel: config.updateChannel ?? state.appConfig.updateChannel
+            updateChannel: config.updateChannel ?? state.appConfig.updateChannel,
+            setupComplete: config.setupComplete ?? state.appConfig.setupComplete,
+            localWorkerInstalled: config.localWorkerInstalled ?? state.appConfig.localWorkerInstalled
           }
         }));
       }
@@ -519,7 +530,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     try {
-      const remotes = (await homeApi.listRemotes()).map(toUiConnection);
+      const adapter = setup?.appConfigAdapter;
+      const remotes = adapter?.loadRemotes
+        ? (await adapter.loadRemotes()).map(toUiConnection)
+        : (await homeApi.listRemotes()).map(toUiConnection);
       set({ connections: [setup.localConnection, ...remotes] });
     } catch {
       /* keep local only */
@@ -559,7 +573,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     return { quotaById: { ...state.quotaById, [quota.id]: next } };
   }),
 
-  submitPassword: async (password) => {
+  submitPassword: async (username, password) => {
     const api = get().api;
     const salt = get().authSalt;
     if (!api || !salt) {
@@ -569,7 +583,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     // plaintext) and use it as the bearer.
     const hash = deriveAuthHash(password, salt);
     storeHash(api.connection.endpoint, hash);
-    set({ api: apiWithPassword(api, hash), authPrompt: null });
+    const connection = { ...api.connection, username: username.trim(), password: hash };
+    const nextApi = new ApiClient(connection, buildTransporter(connection));
+    set({
+      api: nextApi,
+      connections: get().connections.map((item) => item.id === connection.id ? connection : item),
+      authPrompt: null
+    });
     await get().connect();
   },
 
@@ -617,7 +637,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (rawPassword) {
       // Same derivation as submitPassword: never store or transmit the
       // plaintext, only the bcrypt hash derived from the daemon's salt.
-      const probe: UiConnection = { id: "", name: "", kind: "remote", endpoint, status: "disconnected" };
+      const probe: UiConnection = { id: "", name: "", kind: "remote", endpoint, status: "disconnected", username: input.username?.trim() };
       const info = await new ApiClient(probe, buildTransporter(probe)).authInfo().catch(() => null);
       if (info?.salt) {
         password = deriveAuthHash(rawPassword, info.salt);
@@ -630,6 +650,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       kind: "remote",
       endpoint,
       status: "disconnected",
+      username: input.username?.trim() || undefined,
       password
     };
     const connections = [...get().connections, connection];

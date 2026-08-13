@@ -12,6 +12,7 @@ export const AuthModal: React.FC = () => {
   const authPrompt = useAppStore((s) => s.authPrompt);
   const connections = useAppStore((s) => s.connections);
   const submitPassword = useAppStore((s) => s.submitPassword);
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -22,11 +23,11 @@ export const AuthModal: React.FC = () => {
   const connection = connections.find((c) => c.id === authPrompt.connectionId);
 
   const submit = async () => {
-    if (!password || busy) {
+    if (!username.trim() || !password || busy) {
       return;
     }
     setBusy(true);
-    await submitPassword(password);
+    await submitPassword(username, password);
     setBusy(false);
     setPassword("");
   };
@@ -50,6 +51,11 @@ export const AuthModal: React.FC = () => {
 
         <Input
           autoFocus
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
+        <Input
           type="password"
           placeholder="Password"
           value={password}
@@ -69,7 +75,7 @@ export const AuthModal: React.FC = () => {
           >
             Cancel
           </Button>
-          <Button size="sm" disabled={!password || busy} onClick={() => void submit()}>
+          <Button size="sm" disabled={!username.trim() || !password || busy} onClick={() => void submit()}>
             {busy ? "Connecting…" : "Connect"}
           </Button>
         </div>

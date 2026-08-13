@@ -1,4 +1,4 @@
-import type { AppConfig } from "@orquester/config";
+import type { AppConfig, RemoteConnectionConfig } from "@orquester/config";
 
 /**
  * Persistence for the app's own config. It is per-client, so each runtime
@@ -8,6 +8,8 @@ import type { AppConfig } from "@orquester/config";
 export interface AppConfigAdapter {
   load(): Promise<Partial<AppConfig>>;
   save(config: AppConfig): Promise<void>;
+  loadRemotes?(): Promise<RemoteConnectionConfig[]>;
+  saveRemotes?(remotes: RemoteConnectionConfig[]): Promise<void>;
 }
 
 export function createLocalStorageAppConfigAdapter(key = "orquester.app"): AppConfigAdapter {

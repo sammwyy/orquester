@@ -83,6 +83,9 @@ pub struct HttpTransportConfig {
     /// Transient plaintext input (env / settings). Migrated to `password_hash`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    pub serve_web: bool,
     /// bcrypt hash of the password — what's persisted at rest.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password_hash: Option<String>,
@@ -95,6 +98,8 @@ impl Default for HttpTransportConfig {
             host: DEFAULT_HTTP_HOST.to_string(),
             port: DEFAULT_HTTP_PORT,
             password: None,
+            username: None,
+            serve_web: false,
             password_hash: None,
         }
     }
@@ -211,6 +216,11 @@ pub fn create_default_daemon_config(env: &HashMap<String, String>) -> DaemonConf
         .and_then(|v| v.parse().ok())
         .unwrap_or(DEFAULT_HTTP_PORT);
     config.transports.http.password = env.get("ORQUESTER_HTTP_PASSWORD").cloned();
+    config.transports.http.username = env.get("ORQUESTER_HTTP_USERNAME").cloned();
+    config.transports.http.serve_web = env.get("ORQUESTER_HTTP_SERVE_WEB").map(|value| value == "true").unwrap_or(false);
+    if let Some(workspaces_dir) = env.get("ORQUESTER_WORKSPACES_DIR").filter(|value| !value.trim().is_empty()) {
+        config.workspaces_dir = workspaces_dir.clone();
+    }
     config
 }
 
@@ -218,7 +228,7 @@ pub fn create_default_daemon_config(env: &HashMap<String, String>) -> DaemonConf
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ConnectionConfig {
     Local { id: String, name: String, socket_path: String },
-    Remote { id: String, name: String, base_url: String, #[serde(skip_serializing_if = "Option::is_none")] password: Option<String> },
+    Remote { id: String, name: String, base_url: String, #[serde(skip_serializing_if = "Option::is_none")] username: Option<String>, #[serde(skip_serializing_if = "Option::is_none")] password: Option<String> },
 }
 
 pub fn create_local_connection(socket_path: &str) -> ConnectionConfig {
@@ -236,12 +246,14 @@ pub struct RemoteConnectionConfig {
     pub name: String,
     pub base_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
 }
 
 impl Default for RemoteConnectionConfig {
     fn default() -> Self {
-        Self { id: String::new(), name: String::new(), base_url: String::new(), password: None }
+        Self { id: String::new(), name: String::new(), base_url: String::new(), username: None, password: None }
     }
 }
 

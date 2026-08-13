@@ -84,6 +84,8 @@ const DaemonAccessSettings: React.FC<{
   const [httpEnabled, setHttpEnabled] = useState(false);
   const [host, setHost] = useState("");
   const [port, setPort] = useState("");
+  const [username, setUsername] = useState("");
+  const [serveWeb, setServeWeb] = useState(false);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -102,6 +104,8 @@ const DaemonAccessSettings: React.FC<{
         setHttpEnabled(config.transports.http.enabled);
         setHost(config.transports.http.host);
         setPort(String(config.transports.http.port));
+        setUsername(config.transports.http.username ?? "");
+        setServeWeb(config.transports.http.serveWeb);
       })
       .catch(() => setMessage("Could not load access settings."));
     return () => {
@@ -120,6 +124,8 @@ const DaemonAccessSettings: React.FC<{
             enabled: httpEnabled,
             host,
             port: Number(port) || 47831,
+            ...(username ? { username } : {}),
+            serveWeb,
             ...(password ? { password } : {})
           }
         }
@@ -156,6 +162,9 @@ const DaemonAccessSettings: React.FC<{
         <Field label="Port">
           <Input className="w-40 sm:w-64" value={port} disabled={!editable} onChange={(e) => setPort(e.target.value)} />
         </Field>
+        <Field label="Username" hint="Required for remote HTTP access.">
+          <Input className="w-40 sm:w-64" value={username} disabled={!editable} onChange={(e) => setUsername(e.target.value)} />
+        </Field>
         <Field label="Password" hint="Min 8 chars. Leave blank to keep current.">
           <Input
             className="w-40 sm:w-64"
@@ -165,6 +174,12 @@ const DaemonAccessSettings: React.FC<{
             disabled={!editable}
             onChange={(e) => setPassword(e.target.value)}
           />
+        </Field>
+        <Field label="Browser client" hint="Serve Orquester from this worker over HTTP.">
+          <Switch checked={serveWeb} disabled={!editable} onChange={(checked) => {
+            setServeWeb(checked);
+            if (checked) setHttpEnabled(true);
+          }} />
         </Field>
       </Group>
 

@@ -12,6 +12,8 @@ export interface HttpTransporterOptions {
   baseUrl: string;
   /** Bearer token sent as `Authorization: Bearer <password>` when present. */
   password?: string;
+  /** Account name sent with the derived bearer credential. */
+  username?: string;
   /** Defaults to a {@link FetchHttpClient}. */
   httpClient?: HttpClient;
 }
@@ -26,11 +28,13 @@ export class HttpTransporter implements Transporter {
 
   private readonly baseUrl: string;
   private readonly password?: string;
+  private readonly username?: string;
   private readonly client: HttpClient;
 
   constructor(options: HttpTransporterOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.password = options.password;
+    this.username = options.username;
     this.client = options.httpClient ?? new FetchHttpClient();
   }
 
@@ -41,6 +45,7 @@ export class HttpTransporter implements Transporter {
     if (this.password) {
       headers.Authorization = `Bearer ${this.password}`;
     }
+    if (this.username) headers["X-Orquester-Username"] = this.username;
 
     let body: string | undefined;
     if (req.body !== undefined) {
@@ -71,6 +76,7 @@ export class HttpTransporter implements Transporter {
     const url = `${this.baseUrl}${req.path}${buildQueryString(req.query)}`;
     const headers: Record<string, string> = { ...req.headers };
     if (this.password) headers.Authorization = `Bearer ${this.password}`;
+    if (this.username) headers["X-Orquester-Username"] = this.username;
     const response = await this.client.send({ url, method: req.method, headers, signal: req.signal });
     return { status: response.status, ok: response.ok, data: new Uint8Array(await response.arrayBuffer()), headers: response.headers };
   }
@@ -81,6 +87,7 @@ export class HttpTransporter implements Transporter {
     if (this.password) {
       headers.Authorization = `Bearer ${this.password}`;
     }
+    if (this.username) headers["X-Orquester-Username"] = this.username;
 
     fetch(`${this.baseUrl}${path}`, { headers, signal: controller.signal })
       .then((response) => {

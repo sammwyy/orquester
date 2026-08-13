@@ -25,14 +25,16 @@ pub async fn auth_and_cors(State(state): State<AppState>, request: Request<Body>
 
     if needs_auth {
         let expected = state.services.config.daemon.read().await.transports.http.password_hash.clone();
+        let expected_username = state.services.config.daemon.read().await.transports.http.username.clone();
+        let provided_username = request.headers().get("x-orquester-username").and_then(|value| value.to_str().ok());
         let provided = request
             .headers()
             .get(header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer ").or_else(|| v.strip_prefix("bearer ")));
 
-        let authorized = match (&expected, provided) {
-            (Some(expected), Some(provided)) => bootstrap::safe_equal(expected, provided),
+        let authorized = match (&expected, &expected_username, provided, provided_username) {
+            (Some(expected), Some(expected_username), Some(provided), Some(provided_username)) => bootstrap::safe_equal(expected, provided) && bootstrap::safe_equal(expected_username, provided_username),
             _ => false,
         };
         if !authorized {
@@ -52,7 +54,7 @@ pub async fn auth_and_cors(State(state): State<AppState>, request: Request<Body>
 fn cors_headers(mut response: Response) -> Response {
     let headers = response.headers_mut();
     headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
-    headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("authorization, content-type"));
+    headers.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("authorization, content-type, x-orquester-username"));
     headers.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET, POST, DELETE, OPTIONS"));
     response
 }

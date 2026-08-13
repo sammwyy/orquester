@@ -116,6 +116,10 @@ export const httpTransportSchema = z.object({
   port: z.coerce.number().int().min(1).max(65535).default(DEFAULT_HTTP_PORT),
   /** Transient plaintext input (env / settings). Migrated to `passwordHash`. */
   password: z.string().min(8).optional(),
+  /** Single account name required by remote HTTP clients. */
+  username: z.string().min(1).optional(),
+  /** Serve the browser client from the worker's HTTP listener. */
+  serveWeb: z.boolean().default(false),
   /** bcrypt hash of the password — what's persisted at rest. */
   passwordHash: z.string().optional()
 });
@@ -178,14 +182,16 @@ export function createDefaultDaemonConfig(input: {
 
   return parseDaemonConfig({
     version: 1,
-    workspacesDir: "$userhome/workspaces",
+    workspacesDir: env.ORQUESTER_WORKSPACES_DIR ?? "$userhome/workspaces",
     logsDir: "$appdir/daemon/logs",
     transports: {
       http: {
         enabled: env.ORQUESTER_HTTP_ENABLED === "true",
         host: env.ORQUESTER_HTTP_HOST ?? DEFAULT_HTTP_HOST,
         port: env.ORQUESTER_HTTP_PORT ?? String(DEFAULT_HTTP_PORT),
-        password: env.ORQUESTER_HTTP_PASSWORD
+        password: env.ORQUESTER_HTTP_PASSWORD,
+        username: env.ORQUESTER_HTTP_USERNAME,
+        serveWeb: env.ORQUESTER_HTTP_SERVE_WEB === "true"
       }
     }
   });
@@ -214,6 +220,7 @@ export const remoteConnectionSchema = z.object({
   name: z.string().min(1),
   kind: z.literal("remote"),
   baseUrl: z.string().url(),
+  username: z.string().min(1).optional(),
   password: z.string().optional()
 });
 
@@ -252,7 +259,11 @@ export const appConfigSchema = z.object({
   /** Check GitHub releases when the app starts. */
   searchForUpdates: z.boolean().default(true),
   /** Stable releases or prerelease/nightly builds. */
-  updateChannel: z.enum(["stable", "nightly"]).default("stable")
+  updateChannel: z.enum(["stable", "nightly"]).default("stable"),
+  /** Whether the initial local/remote worker setup has been completed. */
+  setupComplete: z.boolean().default(false),
+  /** This client is configured to manage a worker on this machine. */
+  localWorkerInstalled: z.boolean().default(false)
 })
   // Clients own this file; a daemon that predates a field must hand it back
   // untouched instead of silently dropping the client's setting.

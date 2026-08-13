@@ -29,6 +29,24 @@ export interface WindowControls {
   capabilities?(): Promise<WindowCapabilities>;
 }
 
+export interface WorkerManager {
+  status(): Promise<{ installed: boolean; running: boolean; source: "repository" | "release" }>;
+  install(): Promise<void>;
+  configure(input: LocalWorkerSetup): Promise<void>;
+  start(): Promise<void>;
+  chooseWorkspacesDirectory(): Promise<string | undefined>;
+}
+
+export interface LocalWorkerSetup {
+  runInBackground: boolean;
+  remoteAccess: boolean;
+  port: number;
+  username?: string;
+  password?: string;
+  serveWeb: boolean;
+  workspacesDir?: string;
+}
+
 export interface OrquesterContextValue {
   runtime: Runtime;
   api: ApiClient;
@@ -36,6 +54,7 @@ export interface OrquesterContextValue {
   clientVersion: string;
   /** Opens a trusted external URL through the host shell when available. */
   openExternal?: (url: string) => Promise<boolean>;
+  workerManager?: WorkerManager;
   /** Render a custom titlebar (frameless window). */
   useTitlebar: boolean;
   windowControls?: WindowControls;
@@ -50,7 +69,7 @@ export interface OrquesterProviderProps extends OrquesterContextValue {
 export const OrquesterProvider: React.FC<OrquesterProviderProps> = ({ children, ...value }) => {
   const memo = useMemo(
     () => value,
-    [value.runtime, value.api, value.clientVersion, value.openExternal, value.useTitlebar, value.windowControls]
+    [value.runtime, value.api, value.clientVersion, value.openExternal, value.workerManager, value.useTitlebar, value.windowControls]
   );
 
   return <OrquesterContext.Provider value={memo}>{children}</OrquesterContext.Provider>;

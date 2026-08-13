@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { AppWrapper, AppShell } from "./components/layout";
+import { Onboarding } from "./components/onboarding";
 import { useTheme } from "./hooks";
-import { OrquesterProvider, type WindowControls } from "./context/orquester-context";
+import { OrquesterProvider, type WindowControls, type WorkerManager } from "./context/orquester-context";
 import { ApiClient } from "./lib/api-client";
 import { createTransporter } from "./lib/transporters";
 import type { AppConfigAdapter } from "./lib/app-config";
@@ -18,6 +19,8 @@ export interface OrquesterAppProps {
   clientVersion?: string;
   /** Opens a trusted release URL outside the UI. */
   openExternal?: (url: string) => Promise<boolean>;
+  /** Installs and starts a local worker when the host supports it. */
+  workerManager?: WorkerManager;
   /** The default/local daemon connection (always present, not removable). */
   initialConnection: UiConnection;
   /** Render a custom (frameless) titlebar. Defaults to true on desktop. */
@@ -39,6 +42,7 @@ export const OrquesterApp: React.FC<OrquesterAppProps> = ({
   runtime,
   clientVersion = "0.0.0",
   openExternal,
+  workerManager,
   initialConnection,
   useTitlebar,
   transporter,
@@ -95,11 +99,13 @@ export const OrquesterApp: React.FC<OrquesterAppProps> = ({
       api={api}
       clientVersion={clientVersion}
       openExternal={openExternal}
+      workerManager={workerManager}
       useTitlebar={titlebar}
       windowControls={windowControls}
     >
       <AppWrapper>
         <AppShell />
+        <Onboarding />
       </AppWrapper>
     </OrquesterProvider>
   );

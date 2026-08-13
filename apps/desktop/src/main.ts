@@ -1,10 +1,11 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, shell, Tray, type IpcMainEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, screen, shell, Tray, type IpcMainEvent, type OpenDialogOptions } from "electron";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import http from "node:http";
 import path from "node:path";
 import zlib from "node:zlib";
+import crypto from "node:crypto";
 
 interface DaemonRequest {
   method?: string;
@@ -37,6 +38,7 @@ let tray: Tray | undefined;
 let daemonSocketPath: string | undefined;
 let isDaemonOwner = false;
 let quitting = false;
+let pendingWorkerSetup: { runInBackground: boolean; remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string } | undefined;
 
 function checkExistingDaemon(socketPath: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -108,6 +110,77 @@ function readAppConfig(): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function writeAppConfig(patch: Record<string, unknown>): Record<string, unknown> {
+  const config = { ...readAppConfig(), ...patch, version: 1 };
+  fs.mkdirSync(appDir(), { recursive: true });
+  fs.writeFileSync(path.join(appDir(), "app.json"), `${JSON.stringify(config, null, 2)}\n`);
+  return config;
+}
+
+const remoteWorkerMode = () => process.env.ORQUESTER_REMOTE_WORKER === "1";
+const repoWorkerMode = () => !app.isPackaged && process.env.ORQUESTER_USE_RELEASE_WORKER !== "1";
+
+interface InstalledWorker {
+  version: string;
+  path: string;
+}
+
+function installedWorkerFile(): string {
+  return path.join(app.getPath("userData"), "workers", "current.json");
+}
+
+function readInstalledWorker(): InstalledWorker | null {
+  try {
+    const installed = JSON.parse(fs.readFileSync(installedWorkerFile(), "utf8")) as InstalledWorker;
+    return typeof installed.version === "string" && typeof installed.path === "string" && fs.existsSync(installed.path)
+      ? installed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function workerAssetName(version: string): string {
+  if (process.arch !== "x64") {
+    throw new Error(`No worker artifact is available for ${process.arch}.`);
+  }
+  const platform = process.platform === "win32" ? "windows" : process.platform === "linux" ? "linux" : null;
+  if (!platform) {
+    throw new Error(`No worker artifact is available for ${process.platform}.`);
+  }
+  return `orquester-worker-${version}-${platform}-x86_64${platform === "windows" ? ".exe" : ""}`;
+}
+
+async function installLatestWorker(): Promise<InstalledWorker> {
+  const manifestUrl = "https://raw.githubusercontent.com/sammwyy/orquester/main/version.json";
+  const manifest = await fetch(manifestUrl).then(async (response) => {
+    if (!response.ok) throw new Error(`Could not load worker release manifest (${response.status}).`);
+    return response.json() as Promise<{ worker?: { stable?: string | null } }>;
+  });
+  const version = manifest.worker?.stable;
+  if (!version) throw new Error("No stable worker release is available yet.");
+
+  const asset = workerAssetName(version);
+  const baseUrl = `https://github.com/sammwyy/orquester/releases/download/v${encodeURIComponent(version)}/${asset}`;
+  const [binaryResponse, checksumResponse] = await Promise.all([fetch(baseUrl), fetch(`${baseUrl}.sha256`)]);
+  if (!binaryResponse.ok || !checksumResponse.ok) throw new Error("Could not download the worker release or its checksum.");
+  const binary = Buffer.from(await binaryResponse.arrayBuffer());
+  const expected = (await checksumResponse.text()).trim().split(/\s+/, 1)[0]?.toLowerCase();
+  const actual = crypto.createHash("sha256").update(binary).digest("hex");
+  if (!expected || actual !== expected) throw new Error("Worker checksum verification failed.");
+
+  const dir = path.join(app.getPath("userData"), "workers", version);
+  const binaryPath = path.join(dir, process.platform === "win32" ? "orquester-worker.exe" : "orquester-worker");
+  fs.mkdirSync(dir, { recursive: true });
+  const temporary = `${binaryPath}.download`;
+  fs.writeFileSync(temporary, binary);
+  fs.renameSync(temporary, binaryPath);
+  if (process.platform !== "win32") fs.chmodSync(binaryPath, 0o755);
+  fs.writeFileSync(installedWorkerFile(), `${JSON.stringify({ version, path: binaryPath }, null, 2)}\n`);
+  writeAppConfig({ localWorkerInstalled: true });
+  return { version, path: binaryPath };
 }
 const runInBackground = () => readAppConfig().runInBackground === true;
 /** Blur only counts when the system actually offers a backend for it. */
@@ -316,7 +389,7 @@ function ensureAppFiles(): void {
   fs.mkdirSync(logsDir, { recursive: true });
   const appConfigPath = path.join(dir, "app.json");
   if (!fs.existsSync(appConfigPath)) {
-    const defaults = { version: 1, activeConnectionId: "local", useTitlebar: true, runInBackground: false };
+    const defaults = { version: 1, activeConnectionId: "local", useTitlebar: true, runInBackground: false, setupComplete: false, localWorkerInstalled: false };
     fs.writeFileSync(appConfigPath, `${JSON.stringify(defaults, null, 2)}\n`);
   }
   const remotesPath = path.join(dir, "remotes.json");
@@ -326,11 +399,32 @@ function ensureAppFiles(): void {
   fs.appendFileSync(dailyLogFile(logsDir), `${new Date().toISOString()} app: started\n`);
 }
 
-/** Debug build unless ORQUESTER_WORKER_PROFILE=release (e.g. for packaged builds). */
-function workerBinaryPath(): string {
+/** Development uses the repository build; packaged clients use the installed worker. */
+function workerBinaryPath(): string | null {
+  if (!repoWorkerMode()) {
+    return readInstalledWorker()?.path ?? null;
+  }
   const profile = process.env.ORQUESTER_WORKER_PROFILE === "release" ? "release" : "debug";
   const exe = process.platform === "win32" ? "orquester-worker.exe" : "orquester-worker";
   return path.join(repoRoot, "apps", "worker", "target", profile, exe);
+}
+
+function registerBackgroundWorker(): void {
+  const binary = workerBinaryPath();
+  if (!binary || repoWorkerMode()) return;
+  const workerArgs = `"${binary}" --appdir "${baseDir()}"`;
+  if (process.platform === "win32") {
+    const result = spawnSync("schtasks", ["/Create", "/TN", "Orquester Worker", "/SC", "ONLOGON", "/TR", workerArgs, "/F"], { windowsHide: true });
+    if (result.status !== 0) throw new Error("Could not register the background worker task.");
+    return;
+  }
+  if (process.platform === "linux") {
+    const unitDir = path.join(app.getPath("home"), ".config", "systemd", "user");
+    fs.mkdirSync(unitDir, { recursive: true });
+    fs.writeFileSync(path.join(unitDir, "orquester-worker.service"), `[Unit]\nDescription=Orquester Worker\n\n[Service]\nExecStart=${workerArgs}\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n`);
+    const result = spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore" });
+    if (result.status === 0) spawnSync("systemctl", ["--user", "enable", "orquester-worker.service"], { stdio: "ignore" });
+  }
 }
 
 function sleep(ms: number): Promise<void> {
@@ -357,12 +451,22 @@ async function startIntegratedDaemon(): Promise<void> {
     ...process.env,
     ORQUESTER_UNIX_SOCKET: socketPath,
     ORQUESTER_WEB_DIR: webDir,
-    ...(process.env.ORQUESTER_HTTP_ENABLED ? {} : { ORQUESTER_HTTP_ENABLED: "false" })
+    ...(process.env.ORQUESTER_HTTP_ENABLED ? {} : { ORQUESTER_HTTP_ENABLED: pendingWorkerSetup?.remoteAccess ? "true" : "false" }),
+    ...(pendingWorkerSetup?.remoteAccess ? {
+      ORQUESTER_HTTP_HOST: "0.0.0.0",
+      ORQUESTER_HTTP_PORT: String(pendingWorkerSetup.port),
+      ORQUESTER_HTTP_USERNAME: pendingWorkerSetup.username,
+      ORQUESTER_HTTP_PASSWORD: pendingWorkerSetup.password,
+      ORQUESTER_HTTP_SERVE_WEB: String(pendingWorkerSetup.serveWeb),
+      ORQUESTER_WORKSPACES_DIR: pendingWorkerSetup.workspacesDir
+    } : {})
   };
 
   const binary = workerBinaryPath();
-  if (!fs.existsSync(binary)) {
-    throw new Error(`Orquester worker binary not found at ${binary}. Run "cargo build" in apps/worker first.`);
+  if (!binary || !fs.existsSync(binary)) {
+    throw new Error(repoWorkerMode()
+      ? "Orquester worker binary not found. Run \"cargo build\" in apps/worker first."
+      : "No local worker is installed. Complete local worker setup first.");
   }
 
   const args = appdir ? ["--appdir", appdir] : [];
@@ -423,6 +527,32 @@ function requestOverSocket({ method, path: requestPath, headers, body, binary }:
   });
 }
 
+async function applyWorkerSetup(input: { remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string }): Promise<void> {
+  if (!daemonSocketPath) return;
+  const http = input.remoteAccess
+    ? {
+        enabled: true,
+        host: "0.0.0.0",
+        port: input.port,
+        username: input.username,
+        password: input.password,
+        serveWeb: input.serveWeb
+      }
+    : { enabled: false, serveWeb: false };
+  const response = await requestOverSocket({
+    method: "PUT",
+    path: "/api/config/daemon",
+    body: JSON.stringify({
+      ...(input.workspacesDir ? { workspacesDir: input.workspacesDir } : {}),
+      transports: { http }
+    }),
+    headers: { "Content-Type": "application/json" }
+  });
+  if (!response.ok) {
+    throw new Error("Could not apply local worker settings.");
+  }
+}
+
 const streams = new Map<string, http.ClientRequest>();
 
 function openStreamOverSocket(event: IpcMainEvent, { streamId, path: streamPath }: { streamId: string; path: string }): void {
@@ -463,6 +593,63 @@ function registerIpc(): void {
     if (!/^https?:\/\//i.test(url)) return false;
     await shell.openExternal(url);
     return true;
+  });
+  ipcMain.handle("orquester:worker:status", () => ({
+    installed: repoWorkerMode() || readInstalledWorker() !== null,
+    running: Boolean(workerProcess),
+    source: repoWorkerMode() ? "repository" : "release"
+  }));
+  ipcMain.handle("orquester:worker:install", async () => {
+    if (remoteWorkerMode()) throw new Error("Local worker installation is disabled by ORQUESTER_REMOTE_WORKER.");
+    if (repoWorkerMode()) {
+      const binary = workerBinaryPath();
+      if (!binary || !fs.existsSync(binary)) throw new Error("Build the worker with cargo before installing it for development.");
+      writeAppConfig({ localWorkerInstalled: true });
+      return { source: "repository" };
+    }
+    const installed = await installLatestWorker();
+    return { source: "release", version: installed.version };
+  });
+  ipcMain.handle("orquester:worker:configure", async (_event, input: { runInBackground: boolean; remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string }) => {
+    if (input.remoteAccess && (!input.username?.trim() || !input.password || input.password.length < 8)) {
+      throw new Error("Remote access requires a username and a password with at least 8 characters.");
+    }
+    pendingWorkerSetup = { ...input, port: Number.isInteger(input.port) && input.port > 0 && input.port < 65536 ? input.port : 47831, username: input.username?.trim() };
+    writeAppConfig({ runInBackground: input.runInBackground });
+    await applyWorkerSetup(pendingWorkerSetup);
+  });
+  ipcMain.handle("orquester:worker:choose-workspaces", async () => {
+    const options: OpenDialogOptions = {
+      title: "Choose a workspace folder",
+      defaultPath: app.getPath("documents"),
+      properties: ["openDirectory", "createDirectory"]
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled ? undefined : result.filePaths[0];
+  });
+  ipcMain.handle("orquester:worker:start", async () => {
+    if (!workerProcess && !await checkExistingDaemon(socketPathFor())) {
+      await startIntegratedDaemon();
+      isDaemonOwner = true;
+      createTray();
+    }
+    if (pendingWorkerSetup?.runInBackground) registerBackgroundWorker();
+    pendingWorkerSetup = undefined;
+    return { socketPath: daemonSocketPath };
+  });
+  ipcMain.handle("orquester:config:load", () => readAppConfig());
+  ipcMain.handle("orquester:config:save", (_event, patch: Record<string, unknown>) => writeAppConfig(patch));
+  ipcMain.handle("orquester:remotes:load", () => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(appDir(), "remotes.json"), "utf8")).remotes ?? [];
+    } catch {
+      return [];
+    }
+  });
+  ipcMain.handle("orquester:remotes:save", (_event, remotes: unknown[]) => {
+    fs.writeFileSync(path.join(appDir(), "remotes.json"), `${JSON.stringify({ version: 1, remotes }, null, 2)}\n`);
   });
   ipcMain.on("orquester:stream:open", (event, payload: { streamId: string; path: string }) => openStreamOverSocket(event, payload));
   ipcMain.on("orquester:stream:close", (_event, streamId: string) => {
@@ -709,7 +896,7 @@ app.whenReady().then(async () => {
     daemonSocketPath = socketPath;
     process.env.ORQUESTER_UNIX_SOCKET = socketPath;
     isDaemonOwner = false;
-  } else {
+  } else if (!remoteWorkerMode() && (repoWorkerMode() || readAppConfig().localWorkerInstalled === true)) {
     if (process.platform !== "win32" && fs.existsSync(socketPath)) {
       fs.unlinkSync(socketPath);
     }

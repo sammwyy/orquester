@@ -10,18 +10,23 @@ use std::path::Path;
 /// unparseable file degrades to defaults rather than failing the run — the
 /// same fail-safe posture as the rest of the worker.
 pub async fn load_config(config_path: &str, env: &HashMap<String, String>) -> DaemonConfig {
+    let mut should_persist = false;
     let mut config = match tokio::fs::read_to_string(config_path).await {
         Ok(raw) => match serde_json::from_str::<DaemonConfig>(&raw) {
             Ok(parsed) => parsed,
             Err(error) => {
                 tracing::warn!(%error, config_path, "daemon.json is unparseable, using defaults");
+                should_persist = true;
                 crate::config::create_default_daemon_config(env)
             }
         },
-        Err(_) => crate::config::create_default_daemon_config(env),
+        Err(_) => {
+            should_persist = true;
+            crate::config::create_default_daemon_config(env)
+        }
     };
 
-    if migrate_http_password(&mut config) {
+    if migrate_http_password(&mut config) || should_persist {
         if let Some(parent) = Path::new(config_path).parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
         }
@@ -62,9 +67,9 @@ pub fn safe_equal(a: &str, b: &str) -> bool {
 }
 
 pub fn validate_transport_config(config: &DaemonConfig) -> Result<(), String> {
-    if config.transports.http.enabled && config.transports.http.password_hash.is_none() {
+    if config.transports.http.enabled && (config.transports.http.password_hash.is_none() || config.transports.http.username.as_deref().unwrap_or("").is_empty()) {
         return Err(
-            "HTTP transport requires a password (ORQUESTER_HTTP_PASSWORD or transports.http.password in daemon.json)."
+            "HTTP transport requires a username and password."
                 .to_string(),
         );
     }

@@ -26,7 +26,7 @@ pub async fn run_supervisor(services: Arc<Services>, serve_web: Option<String>) 
                 options: Arc::new(RouterOptions {
                     auth_required: true,
                     mode: TransportMode::Remote,
-                    serve_web: serve_web.clone(),
+                    serve_web: http.serve_web.then(|| serve_web.clone()).flatten(),
                 }),
             };
             let router = super::router::build_router(remote_state);

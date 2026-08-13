@@ -108,13 +108,17 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` opens the desktop app with a local worker process, using the repo's
-`.stage` sandbox so it never touches your real config. When you're ready to use
-it for real:
+`pnpm dev` opens the desktop app against your normal per-user Orquester config.
+Use the explicit sandbox command when you need isolated development state:
 
 ```sh
-pnpm dev:bare     # same app, but against ~/.orquester
+pnpm dev:stage
 ```
+
+`pnpm dev` uses the worker already compiled in `apps/worker/target`; it never
+downloads a release worker unless `ORQUESTER_USE_RELEASE_WORKER=1` is set. Use
+`pnpm dev:remoteworker` to run the desktop client without a local worker and
+exercise the remote-worker onboarding flow.
 
 ### Building the desktop app
 

@@ -41,14 +41,52 @@ jobs:
           $version = $env:TAG -replace '^v', ''
           $name = "orquester-worker-$version-$($env:PLATFORM)-x86_64$($env:EXTENSION)"
           Copy-Item "apps/worker/target/release/orquester-worker$($env:EXTENSION)" $name
+          $hash = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+          Set-Content "$name.sha256" "$hash  $name"
       - uses: actions/upload-artifact@v4
         with:
           name: worker-${{ matrix.platform }}
           path: orquester-worker-*
           if-no-files-found: error
 
+  build-client:
+    name: Build ${{ matrix.platform }} client
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+      - run: pnpm install --frozen-lockfile
+      - name: Build client packages
+        run: pnpm --filter @orquester/desktop build:main && pnpm --filter @orquester/desktop build:ui
+      - name: Package client
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:TAG -replace '^v', ''
+          pnpm --filter @orquester/desktop exec electron-builder --config.extraMetadata.version=$version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-${{ matrix.platform }}
+          path: apps/desktop/release/*
+          if-no-files-found: error
+
   publish:
-    needs: build
+    needs: [build, build-client]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

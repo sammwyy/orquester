@@ -87,11 +87,19 @@ pub async fn put_daemon_config(State(state): State<AppState>, Json(patch): Json<
                 merged.transports.http.password_hash = Some(bootstrap::hash_password(password));
             }
         }
+        if let Some(username) = http_patch.get("username").and_then(|v| v.as_str()) {
+            if !username.trim().is_empty() {
+                merged.transports.http.username = Some(username.trim().to_string());
+            }
+        }
+        if let Some(serve_web) = http_patch.get("serveWeb").and_then(|v| v.as_bool()) {
+            merged.transports.http.serve_web = serve_web;
+        }
     }
     merged.version = 1;
 
-    if merged.transports.http.enabled && merged.transports.http.password_hash.is_none() {
-        return ApiError::response(StatusCode::BAD_REQUEST, "PASSWORD_REQUIRED", "Enabling external HTTP access requires a password (min 8 chars).");
+    if merged.transports.http.enabled && (merged.transports.http.password_hash.is_none() || merged.transports.http.username.as_deref().unwrap_or("").is_empty()) {
+        return ApiError::response(StatusCode::BAD_REQUEST, "CREDENTIALS_REQUIRED", "Enabling external HTTP access requires a username and password (min 8 chars)." );
     }
 
     let config_path = state.services.config.resolved.read().await.config_path.clone();

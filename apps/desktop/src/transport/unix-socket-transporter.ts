@@ -29,6 +29,15 @@ export interface DesktopBridge {
   clientVersion: string;
   request(request: DesktopBridgeRequest): Promise<DesktopBridgeResponse>;
   openExternal(url: string): Promise<boolean>;
+  workerStatus(): Promise<{ installed: boolean; running: boolean; source: "repository" | "release" }>;
+  installWorker(): Promise<{ source: "repository" | "release"; version?: string }>;
+  configureWorker(input: { runInBackground: boolean; remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string }): Promise<void>;
+  chooseWorkerWorkspaces(): Promise<string | undefined>;
+  startWorker(): Promise<{ socketPath?: string }>;
+  loadAppConfig(): Promise<Record<string, unknown>>;
+  saveAppConfig(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
+  loadRemotes(): Promise<Array<{ name: string; baseUrl: string; password?: string }>>;
+  saveRemotes(remotes: Array<{ name: string; baseUrl: string; password?: string }>): Promise<void>;
   streamOpen(streamId: string, path: string): void;
   streamClose(streamId: string): void;
   onStreamData(cb: (payload: { streamId: string; chunk: string }) => void): () => void;
