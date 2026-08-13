@@ -634,6 +634,32 @@ pub struct KillNetworkProcessRequest {
     pub pid: Option<u32>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessNode {
+    pub pid: u32,
+    pub name: String,
+    pub command: String,
+    pub cpu_percentage: f64,
+    pub memory_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    pub is_session_root: bool,
+    pub children: Vec<ProcessNode>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessManagerResponse {
+    pub roots: Vec<ProcessNode>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct KillProcessRequest {
+    pub pid: Option<u32>,
+}
+
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CreateSessionRequest {

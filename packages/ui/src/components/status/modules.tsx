@@ -1,6 +1,7 @@
 import React from "react";
-import { Battery, BatteryCharging, Cpu, ExternalLink, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, LockKeyhole, LockKeyholeOpen, MemoryStick, Music2, Network, Pause, Play, Plug, SkipBack, SkipForward, Volume2, X } from "lucide-react";
+import { Battery, BatteryCharging, Cpu, ExternalLink, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, ListTree, LockKeyhole, LockKeyholeOpen, MemoryStick, Music2, Network, Pause, Play, Plug, SkipBack, SkipForward, Volume2, X } from "lucide-react";
 import { registerStatusModule } from "./registry";
+import { countProcessNodes, ProcessTree } from "./ProcessTree";
 import { useApi } from "../../context/orquester-context";
 import { useAppStore } from "../../store/app";
 
@@ -190,6 +191,20 @@ const NetworkingContent: React.FC = () => {
       </div>
     </div>
   );
+};
+
+const ProcessManagerLabel: React.FC = () => {
+  const status = useAppStore((state) => state.processManagerStatus);
+  const count = status ? countProcessNodes(status.roots) : 0;
+  return <span className="flex items-center gap-1"><ListTree size={11} />{count} {count === 1 ? "process" : "processes"}</span>;
+};
+
+const ProcessManagerContent: React.FC = () => {
+  const status = useAppStore((state) => state.processManagerStatus);
+  const killProcess = useAppStore((state) => state.killProcess);
+  const activateTab = useAppStore((state) => state.activateTab);
+  if (!status) return <p className="text-xs text-neutral-500">Process information unavailable.</p>;
+  return <ProcessTree roots={status.roots} onKill={killProcess} onFocusSession={activateTab} />;
 };
 
 type ResourceBarUsage = { percentage: number; usedBytes?: number; freeBytes?: number; totalBytes?: number };
@@ -385,6 +400,14 @@ registerStatusModule({
   side: "left",
   integration: "networking",
   content: NetworkingContent
+});
+
+registerStatusModule({
+  id: "system.processManager",
+  label: <ProcessManagerLabel />,
+  side: "left",
+  integration: "process-manager",
+  content: ProcessManagerContent
 });
 
 registerStatusModule({

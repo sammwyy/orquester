@@ -447,6 +447,28 @@ export interface KillNetworkProcessRequest {
   pid: number;
 }
 
+/** One process in the tree rooted at this worker, nested to its own descendants. */
+export interface ProcessNode {
+  pid: number;
+  name: string;
+  command: string;
+  cpuPercentage: number;
+  memoryBytes: number;
+  /** Set on this node and everything beneath it once a session's shell is reached. */
+  sessionId?: string;
+  /** True exactly at the process that is a session's own shell. */
+  isSessionRoot: boolean;
+  children: ProcessNode[];
+}
+
+export interface ProcessManagerResponse {
+  roots: ProcessNode[];
+}
+
+export interface KillProcessRequest {
+  pid: number;
+}
+
 export interface CreateSessionRequest {
   kind: RegistryKind;
   refId: string;

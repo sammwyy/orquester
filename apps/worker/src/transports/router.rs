@@ -66,6 +66,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/system/media/control", post(integrations::media::routes::media_control))
         .route("/api/system/networking", get(integrations::networking::routes::networking))
         .route("/api/system/networking/kill", post(integrations::networking::routes::networking_kill))
+        .route("/api/system/process-manager", get(integrations::process_manager::routes::process_manager))
+        .route("/api/system/process-manager/kill", post(integrations::process_manager::routes::process_manager_kill))
         .route("/api/integrations", get(routes::integrations::list).put(routes::integrations::update))
         .route("/api/registry", get(routes::registry::list))
         .route("/api/registry/:id/version", get(routes::registry::version))

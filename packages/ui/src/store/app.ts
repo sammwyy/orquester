@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { create } from "zustand";
-import type { BatteryStatusResponse, GitStatusResponse, IntegrationStatus, MediaControlRequest, MediaStatusResponse, NetworkStatusResponse, RegistryQuota, SystemResourcesResponse } from "@orquester/api";
+import type { BatteryStatusResponse, GitStatusResponse, IntegrationStatus, MediaControlRequest, MediaStatusResponse, NetworkStatusResponse, ProcessManagerResponse, RegistryQuota, SystemResourcesResponse } from "@orquester/api";
 import { ApiClient, ApiError } from "../lib/api-client";
 import { createTransporter } from "../lib/transporters";
 import { toRemoteConfig, toUiConnection } from "../lib/connections";
@@ -261,6 +261,7 @@ export interface AppState {
   systemResources: SystemResourcesResponse | null;
   mediaStatus: MediaStatusResponse | null;
   networkingStatus: NetworkStatusResponse | null;
+  processManagerStatus: ProcessManagerResponse | null;
 
   // data
   registry: RegistryResponse;
@@ -326,6 +327,8 @@ export interface AppState {
   controlMedia: (request: MediaControlRequest) => Promise<void>;
   loadNetworkingStatus: () => Promise<void>;
   killNetworkingProcess: (pid: number) => Promise<void>;
+  loadProcessManagerStatus: () => Promise<void>;
+  killProcess: (pid: number) => Promise<void>;
 
   loadSessions: () => Promise<void>;
   loadRegistry: () => Promise<void>;
@@ -367,6 +370,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   systemResources: null,
   mediaStatus: null,
   networkingStatus: null,
+  processManagerStatus: null,
   registry: EMPTY_REGISTRY,
   quotaById: {},
   workspaces: [],
@@ -428,7 +432,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({ connectionStatus: "connected", reconnectAttempt: 0, authPrompt: null });
-    await Promise.all([get().loadWorkspaces(), get().loadSessions(), get().loadRegistry(), get().loadBatteryStatus(), get().loadSystemResources(), get().loadMediaStatus(), get().loadNetworkingStatus(), get().loadIntegrations()]);
+    await Promise.all([get().loadWorkspaces(), get().loadSessions(), get().loadRegistry(), get().loadBatteryStatus(), get().loadSystemResources(), get().loadMediaStatus(), get().loadNetworkingStatus(), get().loadProcessManagerStatus(), get().loadIntegrations()]);
 
     // Live event sync. The stream ending unexpectedly (e.g. the transport was
     // restarted) is the primary disconnect signal.
@@ -876,6 +880,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().loadNetworkingStatus();
   },
 
+  loadProcessManagerStatus: async () => {
+    const api = get().api;
+    if (!api) return;
+    try { set({ processManagerStatus: await api.processManagerStatus() }); }
+    catch { set({ processManagerStatus: null }); }
+  },
+
+  killProcess: async (pid) => {
+    const api = get().api;
+    if (!api) return;
+    await api.killProcess(pid);
+    await get().loadProcessManagerStatus();
+  },
+
   loadSessions: async () => {
     const api = get().api;
     if (!api) {
@@ -979,6 +997,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (event.channel === "system" && event.type === "networking.changed") {
       set({ networkingStatus: event.payload as NetworkStatusResponse });
+      return;
+    }
+    if (event.channel === "system" && event.type === "processes.changed") {
+      set({ processManagerStatus: event.payload as ProcessManagerResponse });
       return;
     }
     if (event.channel === "projects" && event.type === "project.git.changed") {

@@ -28,6 +28,7 @@ import type {
   MediaStatusResponse,
   NetworkStatusResponse,
   OpenResult,
+  ProcessManagerResponse,
   ProjectSummary,
   RegistryActionResult,
   RegistryQuota,
@@ -322,6 +323,14 @@ export class ApiClient {
 
   killNetworkingProcess(pid: number): Promise<{ ok: true }> {
     return this.send("POST", "/api/system/networking/kill", { body: { pid } });
+  }
+
+  processManagerStatus(signal?: AbortSignal): Promise<ProcessManagerResponse> {
+    return this.send("GET", "/api/system/process-manager", { signal });
+  }
+
+  killProcess(pid: number): Promise<{ ok: true }> {
+    return this.send("POST", "/api/system/process-manager/kill", { body: { pid } });
   }
 
   updateIntegrations(integrations: Record<string, boolean>): Promise<IntegrationsResponse> {

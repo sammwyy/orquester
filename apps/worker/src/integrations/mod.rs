@@ -8,6 +8,7 @@ pub mod git;
 pub mod keep_awake;
 pub mod media;
 pub mod networking;
+pub mod process_manager;
 pub mod system_resources;
 
 use crate::api_types::IntegrationStatus;
@@ -66,6 +67,14 @@ pub async fn integration_availability() -> Vec<IntegrationStatus> {
             id: "networking".to_string(),
             name: "Networking".to_string(),
             description: "Ports exposed by Orquester child processes and their sessions.".to_string(),
+            enabled: true,
+            available: true,
+            unavailable_reason: None,
+        },
+        IntegrationStatus {
+            id: "process-manager".to_string(),
+            name: "Process Manager".to_string(),
+            description: "Tree of processes spawned by this worker and its sessions.".to_string(),
             enabled: true,
             available: true,
             unavailable_reason: None,

@@ -5,9 +5,9 @@
     "antigravity": false
   },
   "integrations": {
+    "git": true,
     "networking": true,
     "media": true,
-    "git": true,
     "battery": true,
     "keep-awake": true,
     "system-resources": true
@@ -16,9 +16,10 @@
   "logsDir": "$appdir/daemon/logs",
   "transports": {
     "http": {
-      "enabled": true,
+      "enabled": false,
       "host": "127.0.0.1",
       "port": 47831,
+      "serveWeb": false,
       "passwordHash": "$2b$10$JvlLJ/cbGssmmlzjKcZo9.kvTrbX41iPN9wFZcw6cMBX8GOsG98ei"
     }
   }

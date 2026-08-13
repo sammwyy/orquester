@@ -5,6 +5,7 @@ use crate::integrations::git::GitProjectWatcher;
 use crate::integrations::keep_awake::KeepAwakeController;
 use crate::integrations::media::MediaWatcher;
 use crate::integrations::networking::NetworkingWatcher;
+use crate::integrations::process_manager::{ProcessManagerService, ProcessManagerWatcher};
 use crate::integrations::system_resources::{SystemResourcesService, SystemResourcesWatcher};
 use crate::paths::ResolvedPaths;
 use crate::registry::RegistryService;
@@ -34,6 +35,8 @@ pub struct Services {
     pub resources_watcher: SystemResourcesWatcher,
     pub resources_service: Arc<SystemResourcesService>,
     pub networking_watcher: NetworkingWatcher,
+    pub process_manager_watcher: ProcessManagerWatcher,
+    pub process_manager_service: Arc<ProcessManagerService>,
     pub keep_awake: KeepAwakeController,
     /// Signaled after daemon.json's `transports.http` changes so the remote
     /// transport supervisor in main.rs can restart just that listener —
@@ -64,6 +67,7 @@ impl Services {
         self.media_watcher.set_active(count > 0 && is_enabled("media", true) && is_available("media"));
         self.keep_awake.set_enabled(is_enabled("keep-awake", false) && is_available("keep-awake"));
         self.networking_watcher.set_active(count > 0 && is_enabled("networking", true) && is_available("networking"));
+        self.process_manager_watcher.set_active(count > 0 && is_enabled("process-manager", true) && is_available("process-manager"));
     }
 }
 

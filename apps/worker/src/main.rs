@@ -99,6 +99,16 @@ async fn main() {
             move |status| broadcaster.publish("system", "networking.changed", &status),
         )
     };
+    let process_manager_service = Arc::new(integrations::process_manager::ProcessManagerService::new());
+    let process_manager_watcher = {
+        let broadcaster = broadcaster.clone();
+        let sessions_for_watch = sessions.clone();
+        integrations::process_manager::watch_process_manager(
+            process_manager_service.clone(),
+            move || sessions_for_watch.try_list().unwrap_or_default(),
+            move |status| broadcaster.publish("system", "processes.changed", &status),
+        )
+    };
     let keep_awake = integrations::keep_awake::create_keep_awake_controller();
 
     let services = Arc::new(Services {
@@ -115,6 +125,8 @@ async fn main() {
         resources_watcher,
         resources_service,
         networking_watcher,
+        process_manager_watcher,
+        process_manager_service,
         keep_awake,
         http_reload: tokio::sync::Notify::new(),
     });
@@ -157,6 +169,7 @@ async fn main() {
     services.media_watcher.stop();
     services.resources_watcher.stop();
     services.networking_watcher.stop();
+    services.process_manager_watcher.stop();
     services.keep_awake.stop();
     services.sessions.close_all().await;
     local_handle.abort();
