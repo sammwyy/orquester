@@ -4,6 +4,7 @@ import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import { languages } from "@codemirror/language-data";
 import { LanguageDescription } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
+import { editorSearchExtension, openFindBar, openReplaceBar } from "./editorSearchPanel";
 
 export interface EditorProps {
   filename: string;
@@ -113,6 +114,12 @@ export const Editor: React.FC<EditorProps> = ({ filename, value, readOnly, onCha
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
           e.preventDefault();
           onSave?.();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+          e.preventDefault();
+          openFindBar(viewRef.current);
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "h") {
+          e.preventDefault();
+          openReplaceBar(viewRef.current);
         }
       }}
     >
@@ -123,7 +130,7 @@ export const Editor: React.FC<EditorProps> = ({ filename, value, readOnly, onCha
         theme="none"
         readOnly={readOnly}
         editable={!readOnly}
-        extensions={[editorTheme, syntaxHighlighting(defaultHighlightStyle), ...langExtension]}
+        extensions={[editorTheme, syntaxHighlighting(defaultHighlightStyle), editorSearchExtension, ...langExtension]}
         onCreateEditor={(view) => { viewRef.current = view; }}
         onChange={onChange}
         basicSetup={{
@@ -131,7 +138,8 @@ export const Editor: React.FC<EditorProps> = ({ filename, value, readOnly, onCha
           highlightActiveLineGutter: !readOnly,
           foldGutter: true,
           lineNumbers: true,
-          autocompletion: true
+          autocompletion: true,
+          searchKeymap: false
         }}
       />
     </div>

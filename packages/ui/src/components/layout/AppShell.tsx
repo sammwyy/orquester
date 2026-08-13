@@ -5,6 +5,7 @@ import { MainView } from "../main";
 import { SettingsModal, SudoPasswordModal } from "../settings";
 import { AuthModal } from "../auth";
 import { CommandPalette } from "../command-palette";
+import { GlobalShortcutListener, ShortcutsModal } from "../shortcuts";
 import { MobileKeyBar } from "../terminal";
 import { ConnectionStatusToast, StatusBar } from "../status";
 import { useChromeSurface } from "../../hooks";
@@ -34,6 +35,8 @@ export const AppShell: React.FC = () => {
       <AuthModal />
       <ConnectionStatusToast />
       <CommandPalette />
+      <ShortcutsModal />
+      <GlobalShortcutListener />
     </div>
   );
 };

@@ -26,19 +26,32 @@ export const Sidebar: React.FC = () => {
 
   // --- Desktop ---
   if (isDesktop) {
-    if (collapsed) {
-      return <SidebarRail />;
-    }
     return (
       <aside
         className={cn(
-          "sidebar-surface flex w-64 shrink-0 flex-col",
+          "sidebar-surface relative flex shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-in-out",
+          collapsed ? "w-12" : "w-64",
           blurred && "backdrop-blur-2xl"
         )}
         style={{ backgroundColor: `rgb(var(--n-900) / ${alpha})` }}
       >
-        {body}
-        <ServerSwitcher />
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0 flex w-64 flex-col transition-opacity duration-150",
+            collapsed ? "pointer-events-none opacity-0" : "opacity-100"
+          )}
+        >
+          {body}
+          <ServerSwitcher />
+        </div>
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0 transition-opacity duration-150",
+            collapsed ? "opacity-100" : "pointer-events-none opacity-0"
+          )}
+        >
+          <SidebarRail />
+        </div>
       </aside>
     );
   }

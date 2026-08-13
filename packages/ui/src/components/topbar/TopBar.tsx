@@ -7,6 +7,7 @@ import { NewTabMenu } from "./NewTabMenu";
 import { OpenOnMenu } from "./OpenOnMenu";
 import { QuotaMenu } from "./QuotaMenu";
 import { WindowControls } from "../layout/WindowControls";
+import { ShortcutsButton } from "../shortcuts";
 import { IconButton } from "../ui";
 import { useIsDesktop } from "../../hooks";
 import { useOrquester } from "../../context/orquester-context";
@@ -86,6 +87,7 @@ export const TopBar: React.FC = () => {
         )}
         <QuotaMenu />
         <SettingsButton />
+        <ShortcutsButton />
         {useTitlebar && <WindowControls />}
       </div>
     </header>

@@ -235,6 +235,7 @@ export interface AppState {
   // app config + settings modal
   appConfig: UiAppConfig;
   settingsOpen: boolean;
+  shortcutsOpen: boolean;
   /** Theme mode in effect once system/dynamic have been resolved. */
   resolvedMode: "light" | "dark";
   /** What the host window can do; defaults deny everything until reported. */
@@ -297,6 +298,8 @@ export interface AppState {
   // app config + settings
   loadAppConfig: () => Promise<void>;
   setSettingsOpen: (open: boolean) => void;
+  setShortcutsOpen: (open: boolean) => void;
+  jumpToAttention: () => void;
   setResolvedMode: (mode: "light" | "dark") => void;
   setWindowCapabilities: (capabilities: WindowCapabilities) => void;
   toggleSidebar: () => void;
@@ -356,6 +359,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeConnectionId: null,
   appConfig: DEFAULT_APP_CONFIG,
   settingsOpen: false,
+  shortcutsOpen: false,
   resolvedMode: "dark",
   windowCapabilities: { blur: null, transparency: false },
   sidebarCollapsed: false,
@@ -554,6 +558,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setSettingsOpen: (open) => set({ settingsOpen: open }),
+
+  setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+
+  jumpToAttention: () => {
+    const state = get();
+    const next = state.sessions
+      .filter((session) => session.needsAttention)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+    if (!next) return;
+    const { workspace, name } = resolveProjectPath(next.projectPath, state.workspaces);
+    state.openProject({ name, workspace, path: next.projectPath });
+    // Focusing it acknowledges it (see activateTab), so the next press lands
+    // on whichever session is now oldest among what's left.
+    state.activateTab(next.id);
+  },
 
   setResolvedMode: (mode) => set({ resolvedMode: mode }),
 
