@@ -428,6 +428,10 @@ export interface SessionSummary {
   exitCode?: number;
   createdAt: string;
   pid?: number;
+  /** Produced PTY output within the last couple of seconds. */
+  active: boolean;
+  /** Rang the terminal bell, or exited, since this was last acknowledged. */
+  needsAttention: boolean;
 }
 
 export interface NetworkPort {

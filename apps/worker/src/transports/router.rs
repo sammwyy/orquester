@@ -81,6 +81,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/open", post(routes::registry::open))
         .route("/api/sessions", get(routes::sessions::list).post(routes::sessions::create))
         .route("/api/sessions/:id", delete(routes::sessions::close))
+        .route("/api/sessions/:id/acknowledge", post(routes::sessions::acknowledge))
         .route("/api/sessions/:id/input", post(routes::sessions::input))
         .route("/api/sessions/:id/resize", post(routes::sessions::resize))
         .route("/api/sessions/:id/output", get(routes::sessions::output))

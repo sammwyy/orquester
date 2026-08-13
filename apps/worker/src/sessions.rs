@@ -28,7 +28,15 @@ struct Session {
     output_tx: broadcast::Sender<Bytes>,
     exit_code: AtomicI32,
     exited: std::sync::atomic::AtomicBool,
+    /// Last time a PTY output chunk arrived; the activity ticker compares
+    /// against this to decide when a session goes from active back to idle.
+    last_activity: Mutex<std::time::Instant>,
 }
+
+/// How long a session stays "active" after its last byte of output.
+const ACTIVITY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(2_000);
+/// How often the idle sweep checks every live session against that timeout.
+const ACTIVITY_TICK: std::time::Duration = std::time::Duration::from_millis(500);
 
 pub struct SessionManager {
     sessions: Arc<RwLock<HashMap<String, Arc<Session>>>>,
@@ -38,7 +46,45 @@ pub struct SessionManager {
 
 impl SessionManager {
     pub fn new(registry: Arc<RegistryService>, broadcaster: Arc<Broadcaster>) -> Self {
-        Self { sessions: Arc::new(RwLock::new(HashMap::new())), registry, broadcaster }
+        let manager = Self { sessions: Arc::new(RwLock::new(HashMap::new())), registry, broadcaster };
+        manager.spawn_activity_ticker();
+        manager
+    }
+
+    /// Sweeps every live session for `active` sessions that have gone quiet
+    /// past `ACTIVITY_TIMEOUT` and flips them back to idle. The other
+    /// direction (idle -> active) reacts instantly from the output-pump
+    /// thread instead, so only "stopped producing output" needs polling.
+    /// Cheap enough (in-memory timestamp checks) to just always run rather
+    /// than gating it behind connected-client/integration checks like the
+    /// other watchers.
+    fn spawn_activity_ticker(&self) {
+        let sessions = self.sessions.clone();
+        let broadcaster = self.broadcaster.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(ACTIVITY_TICK).await;
+                let live: Vec<Arc<Session>> = sessions.read().await.values().cloned().collect();
+                for session in live {
+                    let idle_for = session.last_activity.lock().unwrap().elapsed();
+                    if idle_for < ACTIVITY_TIMEOUT {
+                        continue;
+                    }
+                    let updated = {
+                        let mut summary = session.summary.lock().unwrap();
+                        if !summary.active {
+                            None
+                        } else {
+                            summary.active = false;
+                            Some(summary.clone())
+                        }
+                    };
+                    if let Some(updated) = updated {
+                        broadcaster.publish("sessions", "session.updated", &updated);
+                    }
+                }
+            }
+        });
     }
 
     pub async fn create(&self, req: CreateSessionRequest) -> Result<SessionSummary, SessionError> {
@@ -85,6 +131,8 @@ impl SessionManager {
             exit_code: None,
             created_at: chrono::Utc::now().to_rfc3339(),
             pid,
+            active: false,
+            needs_attention: false,
         };
 
         let reader = pair.master.try_clone_reader().map_err(|e| SessionError(format!("Cannot read pty output: {e}")))?;
@@ -101,6 +149,7 @@ impl SessionManager {
             output_tx,
             exit_code: AtomicI32::new(0),
             exited: std::sync::atomic::AtomicBool::new(false),
+            last_activity: Mutex::new(std::time::Instant::now()),
         });
 
         self.sessions.write().await.insert(id.clone(), session.clone());
@@ -109,6 +158,7 @@ impl SessionManager {
         // and fan output out to the buffer + broadcast channel.
         {
             let session = session.clone();
+            let broadcaster = self.broadcaster.clone();
             std::thread::spawn(move || {
                 let mut reader = reader;
                 let mut chunk = [0u8; 8192];
@@ -117,6 +167,31 @@ impl SessionManager {
                         Ok(0) => break,
                         Ok(n) => {
                             let data = Bytes::copy_from_slice(&chunk[..n]);
+                            *session.last_activity.lock().unwrap() = std::time::Instant::now();
+
+                            // Bell (0x07) is the classic "I'm done" signal most
+                            // CLIs — including OSC 9/777 notifications, which
+                            // are conventionally BEL-terminated too — already
+                            // emit, so a raw byte scan catches both without a
+                            // full OSC-aware parser.
+                            let has_bell = chunk[..n].contains(&0x07);
+                            let changed_summary = {
+                                let mut summary = session.summary.lock().unwrap();
+                                let mut changed = false;
+                                if !summary.active {
+                                    summary.active = true;
+                                    changed = true;
+                                }
+                                if has_bell && !summary.needs_attention {
+                                    summary.needs_attention = true;
+                                    changed = true;
+                                }
+                                changed.then(|| summary.clone())
+                            };
+                            if let Some(updated) = changed_summary {
+                                broadcaster.publish("sessions", "session.updated", &updated);
+                            }
+
                             {
                                 let mut buffer = session.buffer.lock().unwrap();
                                 buffer.extend_from_slice(&data);
@@ -158,6 +233,8 @@ impl SessionManager {
                     let mut summary = session.summary.lock().unwrap();
                     summary.status = SessionStatus::Exited;
                     summary.exit_code = Some(exit_code);
+                    summary.active = false;
+                    summary.needs_attention = true;
                     summary.clone()
                 };
                 broadcaster.publish("sessions", "session.exited", &updated);
@@ -188,6 +265,23 @@ impl SessionManager {
     pub async fn get(&self, id: &str) -> Option<SessionSummary> {
         let sessions = self.sessions.read().await;
         sessions.get(id).map(|s| s.summary.lock().unwrap().clone())
+    }
+
+    /// Clears `needs_attention` — called when a client actually focuses this
+    /// session's tab, not just when it appears in a list.
+    pub async fn acknowledge(&self, id: &str) -> Option<SessionSummary> {
+        let sessions = self.sessions.read().await;
+        let session = sessions.get(id)?;
+        let (already_clear, updated) = {
+            let mut summary = session.summary.lock().unwrap();
+            let already_clear = !summary.needs_attention;
+            summary.needs_attention = false;
+            (already_clear, summary.clone())
+        };
+        if !already_clear {
+            self.broadcaster.publish("sessions", "session.updated", &updated);
+        }
+        Some(updated)
     }
 
     pub async fn buffer(&self, id: &str) -> Vec<u8> {

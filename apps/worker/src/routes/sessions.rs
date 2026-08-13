@@ -32,6 +32,13 @@ pub async fn close(State(state): State<AppState>, Path(id): Path<String>) -> Res
     if ok { StatusCode::NO_CONTENT.into_response() } else { StatusCode::NOT_FOUND.into_response() }
 }
 
+pub async fn acknowledge(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    match state.services.sessions.acknowledge(&id).await {
+        Some(summary) => Json(summary).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 pub async fn input(State(state): State<AppState>, Path(id): Path<String>, Json(body): Json<SessionInputRequest>) -> Response {
     state.services.sessions.input(&id, &body.data.unwrap_or_default()).await;
     StatusCode::NO_CONTENT.into_response()

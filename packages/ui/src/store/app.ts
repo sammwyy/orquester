@@ -262,6 +262,8 @@ export interface AppState {
   mediaStatus: MediaStatusResponse | null;
   networkingStatus: NetworkStatusResponse | null;
   processManagerStatus: ProcessManagerResponse | null;
+  /** False after a session newly needs attention; cleared once the Agents panel is opened. */
+  agentsBadgeSeen: boolean;
 
   // data
   registry: RegistryResponse;
@@ -338,6 +340,8 @@ export interface AppState {
   openTool: (kind: ToolKind) => void;
   closeTab: (id: string) => Promise<void>;
   activateTab: (id: string) => void;
+  acknowledgeSession: (id: string) => Promise<void>;
+  dismissAgentsBadge: () => void;
 
   applyEvent: (event: EventMessage) => void;
   clearSudoPrompt: () => void;
@@ -371,6 +375,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   mediaStatus: null,
   networkingStatus: null,
   processManagerStatus: null,
+  agentsBadgeSeen: true,
   registry: EMPTY_REGISTRY,
   quotaById: {},
   workspaces: [],
@@ -973,14 +978,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  activateTab: (id) =>
+  activateTab: (id) => {
     set((state) => {
       const project = state.currentProject;
       if (!project) {
         return state;
       }
       return { activeTabByProject: { ...state.activeTabByProject, [project.path]: id } };
-    }),
+    });
+    // Focusing a session's tab is what "I've seen this" means, not just it
+    // appearing in a list — clear needsAttention only here.
+    const session = get().sessions.find((s) => s.id === id);
+    if (session?.needsAttention) {
+      void get().acknowledgeSession(id);
+    }
+  },
+
+  acknowledgeSession: async (id) => {
+    set((state) => ({
+      sessions: state.sessions.map((s) => (s.id === id && s.needsAttention ? { ...s, needsAttention: false } : s))
+    }));
+    const api = get().api;
+    if (!api) return;
+    await api.acknowledgeSession(id).catch(() => undefined);
+  },
+
+  dismissAgentsBadge: () => set({ agentsBadgeSeen: true }),
 
   applyEvent: (event) => {
     if (event.channel === "system" && event.type === "battery.changed") {
@@ -1025,9 +1048,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (event.channel !== "sessions") {
       return;
     }
-    if (event.type === "session.created" || event.type === "session.exited") {
+    if (event.type === "session.created" || event.type === "session.exited" || event.type === "session.updated") {
       const summary = event.payload as SessionSummary;
-      set((state) => ({ sessions: upsertSession(state.sessions, summary) }));
+      set((state) => {
+        const previous = state.sessions.find((s) => s.id === summary.id);
+        const newlyNeedsAttention = summary.needsAttention && !previous?.needsAttention;
+        return {
+          sessions: upsertSession(state.sessions, summary),
+          agentsBadgeSeen: newlyNeedsAttention ? false : state.agentsBadgeSeen
+        };
+      });
     } else if (event.type === "session.closed") {
       const { id } = event.payload as { id: string };
       set((state) => removeSession(state, id));
@@ -1174,6 +1204,28 @@ export function useActiveWorkspaces(): ActiveWorkspace[] {
       }))
       .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
   }, [sessions, toolTabsByProject, workspaces]);
+}
+
+/** An agent session paired with the project it belongs to (agent sessions can be in any workspace). */
+export interface AgentSession {
+  session: SessionSummary;
+  project: ProjectSummary;
+}
+
+/** Every agent-kind session across every workspace — the Attention Center's data source. */
+export function useAgentSessions(): AgentSession[] {
+  const sessions = useAppStore((s) => s.sessions);
+  const workspaces = useAppStore((s) => s.workspaces);
+  return useMemo(
+    () =>
+      sessions
+        .filter((session) => session.kind === "agent")
+        .map((session) => {
+          const { workspace, name } = resolveProjectPath(session.projectPath, workspaces);
+          return { session, project: { name, workspace, path: session.projectPath } };
+        }),
+    [sessions, workspaces]
+  );
 }
 
 export function useActiveTabId(): string | null {

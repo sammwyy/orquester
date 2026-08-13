@@ -1,9 +1,10 @@
 import React from "react";
-import { Battery, BatteryCharging, Cpu, ExternalLink, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, ListTree, LockKeyhole, LockKeyholeOpen, MemoryStick, Music2, Network, Pause, Play, Plug, SkipBack, SkipForward, Volume2, X } from "lucide-react";
+import { Bot, Battery, BatteryCharging, Cpu, ExternalLink, FileDiff, GitBranch, GitBranchPlus, GitCommitHorizontal, HardDrive, ListTree, LockKeyhole, LockKeyholeOpen, MemoryStick, Music2, Network, Pause, Play, Plug, SkipBack, SkipForward, Volume2, X } from "lucide-react";
 import { registerStatusModule } from "./registry";
 import { countProcessNodes, ProcessTree } from "./ProcessTree";
 import { useApi } from "../../context/orquester-context";
-import { useAppStore } from "../../store/app";
+import { useAppStore, useAgentSessions, type AgentSession } from "../../store/app";
+import { cn } from "../../lib/cn";
 
 const GitLabel: React.FC = () => {
   const status = useAppStore((state) => state.gitStatus);
@@ -207,6 +208,94 @@ const ProcessManagerContent: React.FC = () => {
   return <ProcessTree roots={status.roots} onKill={killProcess} onFocusSession={activateTab} />;
 };
 
+/** Agent count and dot color per bucket in the Attention Center. */
+const AGENT_TONES = { attention: "bg-amber-400", active: "bg-emerald-400", idle: "bg-neutral-600" } as const;
+
+function bucketOf({ session }: AgentSession): keyof typeof AGENT_TONES {
+  if (session.needsAttention) return "attention";
+  if (session.active) return "active";
+  return "idle";
+}
+
+const AgentsLabel: React.FC = () => {
+  const sessions = useAgentSessions();
+  const seen = useAppStore((state) => state.agentsBadgeSeen);
+  if (sessions.length === 0) return null;
+
+  const activeCount = sessions.filter((s) => bucketOf(s) === "active").length;
+  const attentionCount = sessions.filter((s) => bucketOf(s) === "attention").length;
+  const parts = [attentionCount > 0 ? `${attentionCount} fn` : null, activeCount > 0 ? `${activeCount} ac` : null].filter(Boolean);
+  const suffix = !seen && parts.length > 0 ? ` (${parts.join(", ")})` : "";
+
+  return (
+    <span className="flex items-center gap-1">
+      <Bot size={11} className={attentionCount > 0 && !seen ? "text-amber-400" : undefined} />
+      {sessions.length} {sessions.length === 1 ? "Agent" : "Agents"}
+      {suffix}
+    </span>
+  );
+};
+
+const AgentRow: React.FC<{ entry: AgentSession; onSelect: () => void }> = ({ entry, onSelect }) => (
+  <button
+    type="button"
+    onClick={onSelect}
+    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-neutral-300 transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
+  >
+    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", AGENT_TONES[bucketOf(entry)])} />
+    <span className="min-w-0 flex-1 truncate">{entry.session.title}</span>
+    <span className="shrink-0 truncate text-[10px] text-neutral-500">
+      {entry.project.workspace ? `${entry.project.workspace}/` : ""}
+      {entry.project.name}
+    </span>
+  </button>
+);
+
+const AgentGroup: React.FC<{ title: string; items: AgentSession[]; onSelect: (entry: AgentSession) => void }> = ({ title, items, onSelect }) => {
+  if (items.length === 0) return null;
+  return (
+    <div className="mb-2 last:mb-0">
+      <p className="px-1.5 pb-1 text-[10px] font-medium uppercase tracking-wider text-neutral-600">{title}</p>
+      <div className="space-y-0.5">
+        {items.map((entry) => <AgentRow key={entry.session.id} entry={entry} onSelect={() => onSelect(entry)} />)}
+      </div>
+    </div>
+  );
+};
+
+const AgentsContent: React.FC = () => {
+  const sessions = useAgentSessions();
+  const openProject = useAppStore((state) => state.openProject);
+  const activateTab = useAppStore((state) => state.activateTab);
+  const dismissAgentsBadge = useAppStore((state) => state.dismissAgentsBadge);
+
+  // Opening the panel is "I've seen the summary" — clearing needsAttention on
+  // individual sessions still only happens when their own tab is focused.
+  React.useEffect(() => {
+    dismissAgentsBadge();
+  }, [dismissAgentsBadge]);
+
+  if (sessions.length === 0) {
+    return <p className="text-xs text-neutral-500">No agents open.</p>;
+  }
+
+  const buckets: Record<keyof typeof AGENT_TONES, AgentSession[]> = { attention: [], active: [], idle: [] };
+  for (const entry of sessions) buckets[bucketOf(entry)].push(entry);
+
+  const select = (entry: AgentSession) => {
+    openProject(entry.project);
+    activateTab(entry.session.id);
+  };
+
+  return (
+    <div className="w-72 max-w-[calc(100vw-2rem)]">
+      <AgentGroup title="Needs Attention" items={buckets.attention} onSelect={select} />
+      <AgentGroup title="Active" items={buckets.active} onSelect={select} />
+      <AgentGroup title="Idle" items={buckets.idle} onSelect={select} />
+    </div>
+  );
+};
+
 type ResourceBarUsage = { percentage: number; usedBytes?: number; freeBytes?: number; totalBytes?: number };
 
 const ResourceCard: React.FC<{
@@ -408,6 +497,15 @@ registerStatusModule({
   side: "left",
   integration: "process-manager",
   content: ProcessManagerContent
+});
+
+// No `integration`: the Attention Center reads sessions the client already
+// has, so it isn't gated behind worker availability like the others.
+registerStatusModule({
+  id: "system.agents",
+  label: <AgentsLabel />,
+  side: "left",
+  content: AgentsContent
 });
 
 registerStatusModule({

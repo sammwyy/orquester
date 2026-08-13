@@ -50,7 +50,11 @@ export const TabStrip: React.FC = () => {
           >
             <span className="text-neutral-500">{icon}</span>
             <span className="max-w-[140px] truncate">{title}</span>
-            {tab.type === "session" && tab.session.status === "exited" ? (
+            {tab.type === "session" && tab.session.needsAttention ? (
+              <Circle size={7} className="ml-0.5 animate-pulse fill-amber-400 text-amber-400" />
+            ) : tab.type === "session" && tab.session.active ? (
+              <Circle size={7} className="ml-0.5 fill-emerald-400 text-emerald-400" />
+            ) : tab.type === "session" && tab.session.status === "exited" ? (
               <Circle size={7} className="ml-0.5 fill-neutral-600 text-neutral-600" />
             ) : null}
             <button

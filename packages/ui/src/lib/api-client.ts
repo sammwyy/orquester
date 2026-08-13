@@ -400,6 +400,10 @@ export class ApiClient {
     return this.send("DELETE", `/api/sessions/${encodeURIComponent(id)}`);
   }
 
+  acknowledgeSession(id: string): Promise<SessionSummary> {
+    return this.send("POST", `/api/sessions/${encodeURIComponent(id)}/acknowledge`);
+  }
+
   sendSessionInput(id: string, data: string): Promise<void> {
     return this.send("POST", `/api/sessions/${encodeURIComponent(id)}/input`, { body: { data } });
   }

@@ -608,6 +608,10 @@ pub struct SessionSummary {
     pub created_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pid: Option<u32>,
+    /// Produced PTY output within the last couple of seconds.
+    pub active: bool,
+    /// Rang the terminal bell, or exited, since this was last acknowledged.
+    pub needs_attention: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
