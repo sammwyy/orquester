@@ -38,7 +38,12 @@ import { useAppStore } from "../../store/app";
 
 const parentOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/"))) || p;
 const joinPath = (dir: string, name: string) => `${dir.replace(/\/$/, "")}/${name}`;
-const baseName = (p: string) => p.slice(p.lastIndexOf("/") + 1);
+const baseName = (p: string) => p.slice(Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")) + 1);
+const relativeToWorkspace = (path: string, rootPath: string) => {
+  const normalizedPath = path.replace(/\\/g, "/");
+  const normalizedRoot = rootPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  return normalizedPath.startsWith(`${normalizedRoot}/`) ? normalizedPath.slice(normalizedRoot.length + 1) : baseName(path);
+};
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Extension → icon/color, so the tree and tabs read like a real IDE instead of one flat gray glyph per file. */
@@ -647,6 +652,7 @@ export const FileBrowser: React.FC<{ rootPath: string }> = ({ rootPath }) => {
         )}
       >
         <FileContent
+          rootPath={rootPath}
           path={selectedFile}
           jumpLine={jumpLine}
           diff={diffPreview}
@@ -863,6 +869,7 @@ const SearchPanel: React.FC<SearchPanelProps> = ({
 };
 
 const FileContent: React.FC<{
+  rootPath: string;
   path: string | null;
   jumpLine: number | null;
   diff: DiffPreview | null;
@@ -874,7 +881,7 @@ const FileContent: React.FC<{
   onSelectTab: (path: string) => void;
   onCloseTab: (path: string) => void;
   onBack: () => void;
-}> = ({ path, jumpLine, diff, refreshToken, changedFileCount, onReplaceFile, onReplaceAll, tabs, onSelectTab, onCloseTab, onBack }) => {
+}> = ({ rootPath, path, jumpLine, diff, refreshToken, changedFileCount, onReplaceFile, onReplaceAll, tabs, onSelectTab, onCloseTab, onBack }) => {
   const api = useApi();
   const [content, setContent] = useState("");
   const [original, setOriginal] = useState("");
@@ -950,6 +957,7 @@ const FileContent: React.FC<{
         <div role="tablist" aria-label="Open files" className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto">
           {tabs.map((tab) => {
             const active = tab === path;
+            const label = relativeToWorkspace(tab, rootPath);
             return (
               <div
                 key={tab}
@@ -973,13 +981,13 @@ const FileContent: React.FC<{
                 )}
               >
                 <FileTypeIcon name={tab} size={13} className={active ? "" : "opacity-70"} />
-                <span title={tab} className="min-w-0 flex-1 truncate">{baseName(tab)}</span>
+                <span title={label} className="min-w-0 flex-1 truncate">{label}</span>
                 {active && dirty ? (
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-300" title="Unsaved changes" />
                 ) : null}
                 <button
                   type="button"
-                  aria-label={`Close ${baseName(tab)}`}
+                  aria-label={`Close ${label}`}
                   onClick={(event) => {
                     event.stopPropagation();
                     onCloseTab(tab);

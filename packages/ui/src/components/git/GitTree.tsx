@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useId, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Archive,
   ArrowDown,
   ArrowDownToLine,
   ArrowRightLeft,
   ArrowUp,
+  ChevronDown,
   CloudDownload,
   CornerUpLeft,
   GitBranch,
@@ -187,8 +188,9 @@ const CommitRow: React.FC<{
   showGraph: boolean;
   maxLanes: number;
   active: boolean;
+  compact: boolean;
   onSelect: () => void;
-}> = ({ row, showGraph, maxLanes, active, onSelect }) => {
+}> = ({ row, showGraph, maxLanes, active, compact, onSelect }) => {
   const badges = parseRefBadges(row.commit.refs);
   const isHead = row.commit.refs.some((ref) => ref === "HEAD" || ref.startsWith("HEAD -> "));
   return (
@@ -206,30 +208,29 @@ const CommitRow: React.FC<{
       <span className={cn("min-w-0 flex-1 truncate text-[13px]", active ? "font-medium text-neutral-100" : "text-neutral-300")}>
         {row.commit.subject}
       </span>
-      {badges.length > 0 && (
-        <span className="flex shrink-0 items-center gap-1">
+      {badges.length > 0 && !compact && (
+        <span className="flex max-w-[35%] shrink items-center gap-1 overflow-hidden">
           {badges.map((badge, index) => (
             <RefPill key={index} badge={badge} />
           ))}
         </span>
       )}
-      <span className="w-8 shrink-0 text-right font-mono text-[10px] text-neutral-600">
-        {formatRelative(row.commit.date)}
-      </span>
-      <span className="w-12 shrink-0 text-right font-mono text-[10px] text-neutral-600">{row.commit.hash.slice(0, 7)}</span>
+      {!compact && <span className="hidden w-8 shrink-0 text-right font-mono text-[10px] text-neutral-600 xl:block">{formatRelative(row.commit.date)}</span>}
+      {!compact && <span className="hidden w-12 shrink-0 text-right font-mono text-[10px] text-neutral-600 2xl:block">{row.commit.hash.slice(0, 7)}</span>}
     </button>
   );
 };
 
 const BranchRow: React.FC<{
   branch: GitBranchSummary;
+  label?: string;
   selected: boolean;
   checkingOut: boolean;
   pulling: boolean;
   onSelect: () => void;
   onCheckout: () => void;
   onPull: () => void;
-}> = ({ branch, selected, checkingOut, pulling, onSelect, onCheckout, onPull }) => (
+}> = ({ branch, label, selected, checkingOut, pulling, onSelect, onCheckout, onPull }) => (
   <div
     role="button"
     tabIndex={0}
@@ -245,7 +246,7 @@ const BranchRow: React.FC<{
     )}
   >
     <GitBranch size={13} className={cn("shrink-0", branch.current ? "text-emerald-400" : "text-neutral-600")} />
-    <span className="min-w-0 flex-1 truncate">{branch.name}</span>
+    <span className="min-w-0 flex-1 truncate" title={branch.name}>{label ?? branch.name}</span>
     {branch.current && <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-emerald-500">current</span>}
     {branch.ahead > 0 && (
       <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-emerald-500">
@@ -351,7 +352,6 @@ const StashRow: React.FC<{
 export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
   const api = useApi();
   const [branches, setBranches] = useState<GitBranchSummary[]>([]);
-  const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [branchesLoading, setBranchesLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState<string | undefined>(undefined);
   const [commits, setCommits] = useState<GitCommitSummary[]>([]);
@@ -372,6 +372,9 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
   const [creatingStash, setCreatingStash] = useState(false);
   const [workingStatus, setWorkingStatus] = useState<GitStatusResponse | null>(null);
   const [showWorking, setShowWorking] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(248);
+  const resizingSidebar = useRef(false);
+  const [collapsedRemotes, setCollapsedRemotes] = useState<Set<string>>(new Set());
 
   const loadWorkingStatus = useCallback(async () => {
     try {
@@ -385,7 +388,6 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
     try {
       const res = await api.gitBranches(rootPath);
       setBranches(res.branches);
-      setCurrentBranch(res.currentBranch);
       setNotARepo(false);
     } catch {
       setNotARepo(true);
@@ -468,7 +470,6 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
     try {
       const res = await api.fetchGitRemote(rootPath);
       setBranches(res.branches);
-      setCurrentBranch(res.currentBranch);
       await loadLog(selectedBranch, 0);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not fetch.");
@@ -520,6 +521,29 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
     }
   };
 
+  const startSidebarResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizingSidebar.current = true;
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    const maxWidth = () => {
+      if (window.innerWidth < 1024) return 400;
+      const mainMinimum = selectedHash || showWorking ? 360 : 280;
+      return Math.max(200, Math.min(400, window.innerWidth - mainMinimum - 320));
+    };
+    const move = (moveEvent: PointerEvent) => {
+      if (!resizingSidebar.current) return;
+      setSidebarWidth(Math.min(maxWidth(), Math.max(200, startWidth + moveEvent.clientX - startX)));
+    };
+    const end = () => {
+      resizingSidebar.current = false;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+  };
+
   const filteredCommits = useMemo(() => {
     const query = filter.trim().toLowerCase();
     if (!query) return commits;
@@ -538,8 +562,32 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
     ? filteredCommits.map((commit) => rowsByHash.get(commit.hash)).filter((row): row is GraphRow => Boolean(row))
     : rows;
 
-  const localBranches = branches.filter((branch) => !branch.remote);
+  const localBranches = branches
+    .filter((branch) => !branch.remote)
+    .sort((a, b) => Number(b.current) - Number(a.current) || a.name.localeCompare(b.name));
   const remoteBranches = branches.filter((branch) => branch.remote);
+  const remoteBranchGroups = useMemo(() => {
+    const groups = new Map<string, GitBranchSummary[]>();
+    for (const branch of remoteBranches) {
+      const separator = branch.name.indexOf("/");
+      const remote = separator === -1 ? "Remote" : branch.name.slice(0, separator);
+      const entries = groups.get(remote) ?? [];
+      entries.push(branch);
+      groups.set(remote, entries);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([remote, entries]) => [remote, entries.sort((a, b) => a.name.localeCompare(b.name))] as const);
+  }, [remoteBranches]);
+
+  const toggleRemote = (remote: string) => {
+    setCollapsedRemotes((current) => {
+      const next = new Set(current);
+      if (next.has(remote)) next.delete(remote);
+      else next.add(remote);
+      return next;
+    });
+  };
 
   if (notARepo && !branchesLoading) {
     return (
@@ -553,7 +601,10 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
 
   return (
     <div className="flex h-full min-h-0 bg-neutral-950">
-      <div className="hidden min-h-0 w-64 shrink-0 flex-col bg-neutral-900/35 md:flex">
+      <div
+        className="hidden min-h-0 shrink-0 flex-col bg-neutral-900/35 md:flex md:w-[var(--git-sidebar-width)]"
+        style={{ "--git-sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}
+      >
         <div className="flex h-11 shrink-0 items-center justify-between gap-2 px-3">
           <div role="tablist" aria-label="Git panels" className="flex h-7 min-w-0 items-center gap-0.5 rounded-lg bg-neutral-900/70 p-0.5">
             {(["branches", "stash"] as const).map((tab) => (
@@ -604,17 +655,29 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
         </div>
 
         {sidebarTab === "branches" ? (
-          <div className="min-h-0 flex-1 space-y-3 overflow-auto px-2 pb-3">
-            <div className="space-y-0.5">
-              <BranchRow
-                branch={{ name: "All branches", remote: false, current: false, commitHash: "", ahead: 0, behind: 0 }}
-                selected={selectedBranch === undefined}
-                checkingOut={false}
-                pulling={false}
-                onSelect={() => setSelectedBranch(undefined)}
-                onCheckout={() => undefined}
-                onPull={() => undefined}
-              />
+          <div className="min-h-0 flex-1 space-y-4 overflow-auto px-2 pb-3">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedBranch(undefined);
+                setSelectedHash(null);
+                setShowWorking(false);
+              }}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] font-medium transition-colors",
+                selectedBranch === undefined ? "bg-neutral-800 text-neutral-100" : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
+              )}
+            >
+              <GitCommitHorizontal size={14} className={cn("shrink-0", selectedBranch === undefined ? "text-emerald-400" : "text-neutral-600")} />
+              <span className="min-w-0 flex-1">All history</span>
+              <span className="text-[10px] font-normal text-neutral-600">{commits.length || ""}</span>
+            </button>
+
+            <section className="space-y-1">
+              <p className="flex items-center justify-between px-2.5 pb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-600">
+                <span>Local branches</span>
+                <span>{localBranches.length}</span>
+              </p>
               {localBranches.map((branch) => (
                 <BranchRow
                   key={branch.name}
@@ -622,28 +685,54 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
                   selected={selectedBranch === branch.name}
                   checkingOut={checkingOut === branch.name}
                   pulling={pulling && branch.current}
-                  onSelect={() => setSelectedBranch(branch.name)}
+                  onSelect={() => {
+                    setSelectedBranch(branch.name);
+                    setSelectedHash(null);
+                    setShowWorking(false);
+                  }}
                   onCheckout={() => void checkout(branch.name)}
                   onPull={() => void pull()}
                 />
               ))}
-            </div>
-            {remoteBranches.length > 0 && (
-              <div className="space-y-0.5">
-                <p className="px-2.5 pb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-700">Remote</p>
-                {remoteBranches.map((branch) => (
-                  <BranchRow
-                    key={branch.name}
-                    branch={branch}
-                    selected={selectedBranch === branch.name}
-                    checkingOut={checkingOut === branch.name}
-                    pulling={false}
-                    onSelect={() => setSelectedBranch(branch.name)}
-                    onCheckout={() => void checkout(branch.name)}
-                    onPull={() => undefined}
-                  />
-                ))}
-              </div>
+            </section>
+            {remoteBranchGroups.length > 0 && (
+              <section className="space-y-1">
+                <p className="px-2.5 pb-1 text-[10px] font-medium uppercase tracking-wide text-neutral-600">Remotes</p>
+                {remoteBranchGroups.map(([remote, remoteGroup]) => {
+                  const collapsed = collapsedRemotes.has(remote);
+                  return (
+                    <div key={remote} className="space-y-0.5">
+                      <button
+                        type="button"
+                        onClick={() => toggleRemote(remote)}
+                        aria-expanded={!collapsed}
+                        className="flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-[11px] font-medium text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"
+                      >
+                        <ChevronDown size={13} className={cn("shrink-0 transition-transform", collapsed && "-rotate-90")} />
+                        <span className="min-w-0 flex-1 truncate">{remote}</span>
+                        <span className="text-[10px] font-normal text-neutral-700">{remoteGroup.length}</span>
+                      </button>
+                      {!collapsed && remoteGroup.map((branch) => (
+                        <BranchRow
+                          key={branch.name}
+                          branch={branch}
+                          label={branch.name.slice(remote.length + 1)}
+                          selected={selectedBranch === branch.name}
+                          checkingOut={checkingOut === branch.name}
+                          pulling={false}
+                          onSelect={() => {
+                            setSelectedBranch(branch.name);
+                            setSelectedHash(null);
+                            setShowWorking(false);
+                          }}
+                          onCheckout={() => void checkout(branch.name)}
+                          onPull={() => undefined}
+                        />
+                      ))}
+                    </div>
+                  );
+                })}
+              </section>
             )}
           </div>
         ) : (
@@ -687,7 +776,19 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
         )}
       </div>
 
-      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", selectedHash || showWorking ? "hidden md:flex" : "flex")}>
+      <div
+        className="group relative hidden w-px shrink-0 md:flex"
+        role="separator"
+        aria-label="Resize Git sidebar"
+        aria-valuemin={200}
+        aria-valuemax={400}
+        aria-valuenow={sidebarWidth}
+      >
+        <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize touch-none" onPointerDown={startSidebarResize} />
+        <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-neutral-600/60" />
+      </div>
+
+      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", selectedHash || showWorking ? "hidden lg:flex" : "flex")}>
         <div className="flex h-11 shrink-0 items-center gap-2 px-3">
           <div className="flex h-8 flex-1 items-center gap-2 rounded-lg bg-neutral-900/70 px-2.5 text-neutral-500 transition-colors focus-within:bg-neutral-900 focus-within:text-neutral-300">
             <Search size={13} />
@@ -698,12 +799,6 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
               className="min-w-0 flex-1 bg-transparent text-[12px] text-neutral-200 outline-none placeholder:text-neutral-600"
             />
           </div>
-          {currentBranch && (
-            <span className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-neutral-900/70 px-2.5 py-1.5 text-[11px] text-neutral-400 lg:flex">
-              <GitBranch size={12} className="text-emerald-400" />
-              {currentBranch}
-            </span>
-          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-2 pb-3">
@@ -717,7 +812,7 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
             <p className="px-2 py-6 text-center text-xs text-neutral-600">No commits match.</p>
           )}
           <div className="space-y-px">
-            {!isFiltering && workingStatus && workingStatus.files.length > 0 && (
+            {!isFiltering && workingStatus && (
               <button
                 type="button"
                 onClick={() => {
@@ -741,11 +836,11 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
                     strokeDasharray="2.5 2"
                   />
                 </svg>
-                <span className={cn("min-w-0 flex-1 truncate text-[12.5px] font-medium", showWorking ? "text-neutral-100" : "text-amber-300/90")}>
-                  Uncommitted Changes
+                <span className={cn("min-w-0 flex-1 truncate text-[12.5px] font-medium", showWorking ? "text-neutral-100" : workingStatus.files.length ? "text-amber-300/90" : "text-neutral-400")}>
+                  Working tree
                 </span>
-                <span className="shrink-0 rounded bg-neutral-800/80 px-1.5 py-0.5 text-[10px] text-neutral-400">
-                  {workingStatus.files.length}
+                <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px]", workingStatus.files.length ? "bg-amber-500/15 text-amber-300" : "bg-neutral-800/80 text-neutral-600")}>
+                  {workingStatus.files.length ? `${workingStatus.files.length} changed` : "clean"}
                 </span>
               </button>
             )}
@@ -756,6 +851,7 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
                 showGraph={!isFiltering}
                 maxLanes={maxLanes}
                 active={row.commit.hash === selectedHash}
+                compact={Boolean(selectedHash || showWorking)}
                 onSelect={() => {
                   setSelectedHash(row.commit.hash);
                   setShowWorking(false);

@@ -388,15 +388,18 @@ body {
     animation: sheet-out 180ms cubic-bezier(0.4, 0, 1, 1) forwards;
   }
 
-  /* Subtle scrollbars, themed like everything else. */
-  .overflow-y-auto::-webkit-scrollbar,
-  .overflow-x-auto::-webkit-scrollbar {
+  /* Keep native and component-managed scroll areas visually consistent. */
+  * {
+    scrollbar-color: rgb(var(--n-700)) transparent;
+    scrollbar-width: thin;
+  }
+
+  *::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
 
-  .overflow-y-auto::-webkit-scrollbar-thumb,
-  .overflow-x-auto::-webkit-scrollbar-thumb {
+  *::-webkit-scrollbar-thumb {
     background-color: rgb(var(--n-700));
     border-radius: 9999px;
   }

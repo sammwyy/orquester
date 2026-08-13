@@ -1,14 +1,14 @@
 {
-  "version": 1,
   "activeConnectionId": "local",
-  "useTitlebar": true,
-  "runInBackground": true,
-  "sidebarTransparent": true,
-  "sidebarOpacity": 0.7,
   "glassSidebar": true,
+  "quotaResetFormat": "relative",
   "roundedWindow": true,
+  "runInBackground": true,
+  "showQuotaMenu": true,
+  "sidebarOpacity": 0.7,
+  "sidebarTransparent": true,
   "theme": "mono",
   "themeMode": "dark",
-  "quotaResetFormat": "relative",
-  "showQuotaMenu": true
+  "useTitlebar": true,
+  "version": 1
 }

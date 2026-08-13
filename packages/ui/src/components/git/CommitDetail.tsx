@@ -86,7 +86,7 @@ export const CommitDetail: React.FC<{
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-neutral-900/25 md:w-[26rem] md:shrink-0">
+    <div className="flex h-full min-h-0 w-full flex-col bg-neutral-900/25 md:w-[22rem] md:shrink-0 lg:w-[clamp(20rem,30vw,26rem)]">
       <div className="flex h-11 shrink-0 items-center gap-2 px-3">
         <button
           type="button"
