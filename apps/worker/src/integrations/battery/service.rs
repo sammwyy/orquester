@@ -43,6 +43,51 @@ fn read_windows_battery() -> BatteryStatusResponse {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn read_linux_battery() -> BatteryStatusResponse {
+    let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") else {
+        return no_battery();
+    };
+
+    let mut has_battery = false;
+    let mut percentage = None;
+    let mut charging = false;
+    let mut plugged_in = false;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let kind = std::fs::read_to_string(path.join("type")).unwrap_or_default();
+        match kind.trim() {
+            "Battery" => {
+                has_battery = true;
+                percentage = std::fs::read_to_string(path.join("capacity"))
+                    .ok()
+                    .and_then(|value| value.trim().parse::<u32>().ok())
+                    .map(|value| value.min(100));
+                let status = std::fs::read_to_string(path.join("status")).unwrap_or_default();
+                charging = matches!(status.trim(), "Charging" | "Full");
+            }
+            "Mains" | "USB" | "USB_C" => {
+                plugged_in |= std::fs::read_to_string(path.join("online"))
+                    .map(|value| value.trim() == "1")
+                    .unwrap_or(false);
+            }
+            _ => {}
+        }
+    }
+
+    if !has_battery {
+        return no_battery();
+    }
+
+    BatteryStatusResponse {
+        has_battery,
+        percentage,
+        charging,
+        plugged_in: plugged_in || charging,
+    }
+}
+
 pub async fn read_battery_status() -> BatteryStatusResponse {
     #[cfg(windows)]
     {
@@ -51,7 +96,14 @@ pub async fn read_battery_status() -> BatteryStatusResponse {
     }
     #[cfg(not(windows))]
     {
-        no_battery()
+        #[cfg(target_os = "linux")]
+        {
+            read_linux_battery()
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            no_battery()
+        }
     }
 }
 
