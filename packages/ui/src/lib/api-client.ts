@@ -24,6 +24,12 @@ import type {
   GitWorkingDiffResponse,
   IntegrationsResponse,
   HealthResponse,
+  HttpExecuteRequest,
+  HttpExecuteResponse,
+  HttpFileListResponse,
+  HttpVariableDeleteRequest,
+  HttpVariableListResponse,
+  HttpVariableSetRequest,
   MediaControlRequest,
   MediaStatusResponse,
   NetworkStatusResponse,
@@ -285,6 +291,28 @@ export class ApiClient {
 
   pullGitBranch(projectPath: string): Promise<GitStatusResponse> {
     return this.send("POST", "/api/git/pull", { body: { path: projectPath } });
+  }
+
+  // --- Rest Client -----------------------------------------------------
+
+  listHttpFiles(projectPath: string, signal?: AbortSignal): Promise<HttpFileListResponse> {
+    return this.send("GET", "/api/rest-client/files", { query: { path: projectPath }, signal });
+  }
+
+  executeHttpRequest(request: HttpExecuteRequest, signal?: AbortSignal): Promise<HttpExecuteResponse> {
+    return this.send("POST", "/api/rest-client/execute", { body: request, signal });
+  }
+
+  listHttpVariables(projectPath: string, signal?: AbortSignal): Promise<HttpVariableListResponse> {
+    return this.send("GET", "/api/rest-client/variables", { query: { path: projectPath }, signal });
+  }
+
+  setHttpVariable(request: HttpVariableSetRequest): Promise<{ ok: true }> {
+    return this.send("PUT", "/api/rest-client/variables", { body: request });
+  }
+
+  deleteHttpVariable(request: HttpVariableDeleteRequest): Promise<{ ok: true }> {
+    return this.send("DELETE", "/api/rest-client/variables", { body: request });
   }
 
   batteryStatus(signal?: AbortSignal): Promise<BatteryStatusResponse> {

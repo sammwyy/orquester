@@ -176,7 +176,7 @@ function buildTransporter(connection: UiConnection): Transporter {
 }
 
 /** A built-in, client-local (non-PTY) tool. */
-export type ToolKind = "files" | "git";
+export type ToolKind = "files" | "git" | "rest-client";
 
 /** A client-local, non-PTY tab (e.g. the file browser or the git tree). */
 export interface ToolTab {
@@ -193,7 +193,8 @@ export type ProjectTab =
 
 const TOOL_TITLES: Record<ToolKind, string> = {
   files: "Files",
-  git: "Git Tree"
+  git: "Git Tree",
+  "rest-client": "Rest Client"
 };
 
 /** Which list the sidebar shows: the workspace browser or the active tree. */

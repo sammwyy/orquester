@@ -1,12 +1,13 @@
 import React from "react";
-import { Circle, FolderTree, GitGraph, X } from "lucide-react";
+import { Circle, FolderTree, GitGraph, Globe, X } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { getRegistryIcon } from "../../icons";
 import { useActiveTabId, useAppStore, useProjectTabs } from "../../store/app";
 
 const TOOL_ICONS = {
   files: <FolderTree size={13} />,
-  git: <GitGraph size={13} />
+  git: <GitGraph size={13} />,
+  "rest-client": <Globe size={13} />
 };
 
 /** Tabs for the current project — daemon sessions plus local tool tabs. */

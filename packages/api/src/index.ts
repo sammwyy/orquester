@@ -293,6 +293,72 @@ export interface FsSearchResponse {
   truncated: boolean;
 }
 
+export interface HttpHeader {
+  key: string;
+  value: string;
+}
+
+export interface HttpRequestDef {
+  name: string;
+  method: string;
+  url: string;
+  headers: HttpHeader[];
+  body?: string;
+  /** `{{name}}` references this request makes that no `@name = value` in the file defines — resolved from this project's worker-side variable store at execute time, never given a value here. */
+  storeVariables: string[];
+  /** `{{env_NAME}}` references — resolved from the project's own `.env`. */
+  envVariables: string[];
+}
+
+export interface HttpFileParsed {
+  path: string;
+  name: string;
+  variables: Record<string, string>;
+  requests: HttpRequestDef[];
+}
+
+export interface HttpFileListResponse {
+  files: HttpFileParsed[];
+}
+
+export interface HttpExecuteRequest {
+  method: string;
+  url: string;
+  headers: HttpHeader[];
+  body?: string;
+  /** Project whose variable store / .env resolve any {{name}} left unresolved. */
+  projectPath?: string;
+}
+
+export interface HttpExecuteResponse {
+  ok: boolean;
+  /** 0 when the request never got a response (invalid method/URL, network error). */
+  status: number;
+  /** Canonical reason phrase on success, the error message otherwise. */
+  statusText: string;
+  headers: HttpHeader[];
+  body: string;
+  durationMs: number;
+  sizeBytes: number;
+  truncated: boolean;
+}
+
+/** Variable *names* only — values never leave the worker. */
+export interface HttpVariableListResponse {
+  names: string[];
+}
+
+export interface HttpVariableSetRequest {
+  path: string;
+  name: string;
+  value: string;
+}
+
+export interface HttpVariableDeleteRequest {
+  path: string;
+  name: string;
+}
+
 /** Public auth metadata for the HTTP transport (no secrets). */
 export interface AuthInfoResponse {
   authRequired: boolean;

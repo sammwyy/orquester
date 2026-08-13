@@ -433,6 +433,93 @@ pub struct FsSearchResponse {
     pub truncated: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpHeader {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpRequestDef {
+    pub name: String,
+    pub method: String,
+    pub url: String,
+    pub headers: Vec<HttpHeader>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    /// `{{name}}` references this request makes that no `@name = value` in
+    /// the file defines — resolved from this project's worker-side variable
+    /// store at execute time, never given a value here.
+    pub store_variables: Vec<String>,
+    /// `{{env_NAME}}` references — resolved from the project's own `.env`.
+    pub env_variables: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpFileParsed {
+    pub path: String,
+    pub name: String,
+    pub variables: std::collections::HashMap<String, String>,
+    pub requests: Vec<HttpRequestDef>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpFileListResponse {
+    pub files: Vec<HttpFileParsed>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HttpExecuteRequest {
+    pub method: Option<String>,
+    pub url: Option<String>,
+    pub headers: Option<Vec<HttpHeader>>,
+    pub body: Option<String>,
+    /// Project whose variable store / `.env` resolve any `{{name}}` left unresolved.
+    pub project_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpExecuteResponse {
+    pub ok: bool,
+    /// 0 when the request never got a response (invalid method/URL, network error).
+    pub status: u16,
+    /// Canonical reason phrase on success, the error message otherwise.
+    pub status_text: String,
+    pub headers: Vec<HttpHeader>,
+    pub body: String,
+    pub duration_ms: u64,
+    pub size_bytes: u64,
+    pub truncated: bool,
+}
+
+/// Variable *names* only — values never leave the worker (see integrations::rest_client::variables).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpVariableListResponse {
+    pub names: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HttpVariableSetRequest {
+    pub path: Option<String>,
+    pub name: Option<String>,
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HttpVariableDeleteRequest {
+    pub path: Option<String>,
+    pub name: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthInfoResponse {

@@ -9,6 +9,7 @@ pub mod keep_awake;
 pub mod media;
 pub mod networking;
 pub mod process_manager;
+pub mod rest_client;
 pub mod system_resources;
 
 use crate::api_types::IntegrationStatus;

@@ -59,6 +59,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/git/discard", post(integrations::git::routes::discard))
         .route("/api/git/fetch", post(integrations::git::routes::fetch))
         .route("/api/git/pull", post(integrations::git::routes::pull))
+        .route("/api/rest-client/files", get(integrations::rest_client::routes::files))
+        .route("/api/rest-client/execute", post(integrations::rest_client::routes::execute))
+        .route(
+            "/api/rest-client/variables",
+            get(integrations::rest_client::routes::list_variables)
+                .put(integrations::rest_client::routes::set_variable)
+                .delete(integrations::rest_client::routes::delete_variable),
+        )
         .route("/api/system/battery", get(integrations::battery::routes::battery))
         .route("/api/system/resources", get(integrations::system_resources::routes::resources))
         .route("/api/system/media", get(integrations::media::routes::media))

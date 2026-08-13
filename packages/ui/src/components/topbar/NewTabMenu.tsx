@@ -1,5 +1,5 @@
 import React from "react";
-import { FolderTree, GitGraph, Plus } from "lucide-react";
+import { FolderTree, GitGraph, Globe, Plus } from "lucide-react";
 import {
   AdaptiveMenu,
   DropdownEmpty,
@@ -55,6 +55,9 @@ export const NewTabMenu: React.FC = () => {
       </DropdownItem>
       <DropdownItem icon={<GitGraph size={14} />} onClick={() => openTool("git")}>
         Git Tree
+      </DropdownItem>
+      <DropdownItem icon={<Globe size={14} />} onClick={() => openTool("rest-client")}>
+        Rest Client
       </DropdownItem>
 
       <DropdownSeparator />

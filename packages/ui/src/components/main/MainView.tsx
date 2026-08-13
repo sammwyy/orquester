@@ -5,6 +5,7 @@ import { EmptyState } from "./EmptyState";
 import { TerminalView } from "../terminal";
 import { FileBrowser } from "../files";
 import { GitTree } from "../git";
+import { RestClient } from "../rest-client";
 import { useActiveTabId, useAppStore, useProjectTabs } from "../../store/app";
 
 /**
@@ -45,6 +46,8 @@ export const MainView: React.FC = () => {
           <TerminalView session={tab.session} />
         ) : tab.type === "git" ? (
           <GitTree rootPath={currentProject.path} />
+        ) : tab.type === "rest-client" ? (
+          <RestClient rootPath={currentProject.path} />
         ) : (
           <FileBrowser rootPath={currentProject.path} />
         )}
