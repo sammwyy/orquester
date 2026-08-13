@@ -183,9 +183,14 @@ async function installLatestWorker(): Promise<InstalledWorker> {
   return { version, path: binaryPath };
 }
 const runInBackground = () => readAppConfig().runInBackground === true;
-/** Blur only counts when the system actually offers a backend for it. */
-const glassSidebar = () => readAppConfig().glassSidebar === true && blurStrategy() !== null;
-const sidebarTransparent = () => readAppConfig().sidebarTransparent === true;
+const sidebarOpacity = () => Number(readAppConfig().sidebarOpacity) || 1;
+const titlebarOpacity = () => Number(readAppConfig().titlebarOpacity) || 1;
+/** Blur only counts when transparency and a native backend are both active. */
+const glassSidebar = () =>
+  sidebarOpacity() < 1 && readAppConfig().glassSidebar === true && blurStrategy() !== null;
+const glassTitlebar = () =>
+  titlebarOpacity() < 1 && readAppConfig().glassTitlebar === true && blurStrategy() !== null;
+const glassChrome = () => glassSidebar() || glassTitlebar();
 /** Corners are rounded unless the user turned them off (default on). */
 const roundedWindow = () => readAppConfig().roundedWindow !== false;
 
@@ -302,6 +307,7 @@ public static class OrquesterAcrylic {
 }
 
 const KWIN_BLUR_PROPERTY = "_KDE_NET_WM_BLUR_BEHIND_REGION";
+const LINUX_SIDEBAR_WIDTH = 280;
 /** Keep in sync with the `--window-radius` the shell draws its corners with. */
 const WINDOW_RADIUS = 12;
 
@@ -367,11 +373,19 @@ function applyKwinBlur(win: BrowserWindow, enabled: boolean): void {
     const bounds = win.getBounds();
     const { scaleFactor } = screen.getDisplayNearestPoint(bounds);
     const rounded = roundedWindow() && !win.isMaximized() && !win.isFullScreen();
-    const region = roundedRegion(
-      Math.round(bounds.width * scaleFactor),
-      Math.round(bounds.height * scaleFactor),
-      rounded ? Math.round(WINDOW_RADIUS * scaleFactor) : 0
-    );
+    const width = Math.round(bounds.width * scaleFactor);
+    const height = Math.round(bounds.height * scaleFactor);
+    const radius = rounded ? Math.round(WINDOW_RADIUS * scaleFactor) : 0;
+    const sidebarWidth = Math.min(width, Math.round(LINUX_SIDEBAR_WIDTH * scaleFactor));
+    const sidebar = glassSidebar();
+    const chrome = glassTitlebar();
+    const region = sidebar && chrome
+      ? roundedRegion(width, height, radius)
+      : chrome
+        ? [sidebarWidth, 0, width - sidebarWidth, height]
+        : sidebar
+          ? [0, 0, sidebarWidth, height]
+          : [];
     args.push("-f", KWIN_BLUR_PROPERTY, "32c", "-set", KWIN_BLUR_PROPERTY, region.join(", "));
   } else {
     args.push("-remove", KWIN_BLUR_PROPERTY);
@@ -787,8 +801,8 @@ function createWindow(): void {
   // Transparency and blur are separate wishes: the sidebar can be see-through
   // without any blur backend, and blur is only ever visible through a
   // see-through sidebar.
-  const glass = glassSidebar();
-  const translucent = glass || sidebarTransparent();
+  const glass = glassChrome();
+  const translucent = glass || sidebarOpacity() < 1 || titlebarOpacity() < 1;
   // The surface can't be made transparent after creation; the native backdrop
   // (vibrancy/acrylic) can, and is re-applied from the renderer. Windows draws
   // acrylic behind the window itself, over a zero-alpha background.
@@ -829,7 +843,7 @@ function createWindow(): void {
   // so it has to be redrawn on every resize and maximize.
   let blurResync: ReturnType<typeof setTimeout> | undefined;
   const resyncBlur = (delay = 150) => {
-    if (!glassSidebar() || blurStrategy() !== "kwin") {
+    if (!glassChrome() || blurStrategy() !== "kwin") {
       return;
     }
     clearTimeout(blurResync);

@@ -16,7 +16,7 @@ export interface AppWrapperProps {
 export const AppWrapper: React.FC<AppWrapperProps> = ({ children, className }) => {
   const height = useViewportHeight();
   const rounded = useRoundedWindow();
-  const { transparent, alpha } = useChromeSurface();
+  const { transparent, alpha, chromeTransparent, chromeAlpha } = useChromeSurface();
 
   // Portalled overlays live outside this element, so the radius travels as a
   // variable instead of a class.
@@ -30,7 +30,8 @@ export const AppWrapper: React.FC<AppWrapperProps> = ({ children, className }) =
         {
           height: height || undefined,
           "--sidebar-alpha": alpha,
-          backgroundColor: transparent ? "transparent" : "var(--chrome-background)"
+          "--chrome-alpha": chromeAlpha,
+          backgroundColor: transparent || chromeTransparent ? "transparent" : "var(--chrome-background)"
         } as React.CSSProperties
       }
       className={cn(

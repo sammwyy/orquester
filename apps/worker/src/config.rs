@@ -274,9 +274,10 @@ impl Default for AppConfig {
         extra.insert("activeConnectionId".into(), LOCAL_CONNECTION_ID.into());
         extra.insert("useTitlebar".into(), true.into());
         extra.insert("runInBackground".into(), false.into());
-        extra.insert("sidebarTransparent".into(), false.into());
         extra.insert("sidebarOpacity".into(), 0.85.into());
         extra.insert("glassSidebar".into(), false.into());
+        extra.insert("titlebarOpacity".into(), 0.85.into());
+        extra.insert("glassTitlebar".into(), false.into());
         extra.insert("roundedWindow".into(), true.into());
         extra.insert("theme".into(), "mono".into());
         extra.insert("themeMode".into(), "dark".into());

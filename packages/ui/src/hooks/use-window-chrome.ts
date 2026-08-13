@@ -27,9 +27,6 @@ export function useRoundedWindow(): boolean {
   return rounded && Boolean(windowControls?.cssRoundedCorners) && !maximized && !fullScreen;
 }
 
-/** Sidebar tint over an opaque shell — the look when nothing shows through. */
-const OPAQUE_TINT = 0.4;
-
 export interface ChromeSurface {
   /** The shell stops painting so the sidebar can show the desktop. */
   transparent: boolean;
@@ -37,6 +34,12 @@ export interface ChromeSurface {
   blurred: boolean;
   /** Alpha the sidebar surface is drawn with. */
   alpha: number;
+  /** Whether the main chrome surface can show the desktop through. */
+  chromeTransparent: boolean;
+  /** Whether the main chrome surface should use native/compositor blur. */
+  chromeBlurred: boolean;
+  /** Alpha the main chrome surface is drawn with. */
+  chromeAlpha: number;
 }
 
 /**
@@ -46,16 +49,25 @@ export interface ChromeSurface {
  */
 export function useChromeSurface(): ChromeSurface {
   const { runtime } = useOrquester();
-  const wantsTransparent = useAppStore((s) => s.appConfig.sidebarTransparent);
   const wantsBlur = useAppStore((s) => s.appConfig.glassSidebar);
   const opacity = useAppStore((s) => s.appConfig.sidebarOpacity);
+  const wantsChromeBlur = useAppStore((s) => s.appConfig.glassTitlebar);
+  const chromeOpacity = useAppStore((s) => s.appConfig.titlebarOpacity);
   const capabilities = useAppStore((s) => s.windowCapabilities);
 
-  const transparent = runtime === "desktop" && capabilities.transparency && wantsTransparent;
+  const transparent = runtime === "desktop" && capabilities.transparency && opacity < 1;
 
   return {
     transparent,
     blurred: transparent && wantsBlur && capabilities.blur !== null,
-    alpha: transparent ? opacity : OPAQUE_TINT
+    alpha: transparent ? opacity : 1,
+    chromeTransparent: runtime === "desktop" && capabilities.transparency && chromeOpacity < 1,
+    chromeBlurred:
+      runtime === "desktop" &&
+      capabilities.transparency &&
+      chromeOpacity < 1 &&
+      wantsChromeBlur &&
+      capabilities.blur !== null,
+    chromeAlpha: capabilities.transparency ? chromeOpacity : 1
   };
 }

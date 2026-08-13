@@ -14,7 +14,7 @@ import { useAppStore } from "../../store/app";
  */
 export const Sidebar: React.FC = () => {
   const isDesktop = useIsDesktop();
-  const { blurred } = useChromeSurface();
+  const { blurred, alpha } = useChromeSurface();
   const view = useAppStore((s) => s.sidebarView);
   const currentWorkspace = useAppStore((s) => s.currentWorkspace);
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -35,6 +35,7 @@ export const Sidebar: React.FC = () => {
           "sidebar-surface flex w-64 shrink-0 flex-col",
           blurred && "backdrop-blur-2xl"
         )}
+        style={{ backgroundColor: `rgb(var(--n-900) / ${alpha})` }}
       >
         {body}
         <ServerSwitcher />
@@ -58,6 +59,7 @@ export const Sidebar: React.FC = () => {
           blurred && "backdrop-blur-2xl",
           drawerOpen ? "translate-x-0" : "-translate-x-full"
         )}
+        style={{ backgroundColor: `rgb(var(--n-900) / ${alpha})` }}
       >
         {body}
         <ServerSwitcher />

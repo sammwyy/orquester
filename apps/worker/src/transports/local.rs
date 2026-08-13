@@ -48,7 +48,25 @@ pub async fn serve(pipe_name: &str, router: Router) -> std::io::Result<()> {
 
 #[cfg(unix)]
 pub async fn serve(socket_path: &str, router: Router) -> std::io::Result<()> {
+    use hyper_util::rt::TokioIo;
+    use hyper_util::service::TowerToHyperService;
+
     let _ = tokio::fs::remove_file(socket_path).await;
     let listener = tokio::net::UnixListener::bind(socket_path)?;
-    axum::serve(listener, router).await
+
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let router = router.clone();
+
+        tokio::spawn(async move {
+            let io = TokioIo::new(stream);
+            let service = TowerToHyperService::new(router);
+            if let Err(error) = hyper::server::conn::http1::Builder::new()
+                .serve_connection(io, service)
+                .await
+            {
+                tracing::debug!(%error, "unix socket connection ended");
+            }
+        });
+    }
 }

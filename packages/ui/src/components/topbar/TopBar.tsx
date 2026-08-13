@@ -36,7 +36,7 @@ export const TopBar: React.FC = () => {
 
   if (!isDesktop) {
     return (
-      <header className="chrome-surface flex shrink-0 flex-col">
+      <header className="flex shrink-0 flex-col">
         <div className="flex h-11 items-center gap-1 px-1">
           <IconButton label="Open menu" onClick={() => setSidebarDrawer(true)}>
             <Menu size={18} />
@@ -63,7 +63,7 @@ export const TopBar: React.FC = () => {
   }
 
   return (
-    <header className="chrome-surface app-drag flex h-11 shrink-0 items-stretch">
+    <header className="app-drag flex h-11 shrink-0 items-stretch">
       <div className="flex flex-1 items-center gap-2 overflow-hidden pl-2">
         {currentProject ? (
           <>

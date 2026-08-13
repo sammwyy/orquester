@@ -103,7 +103,6 @@ export const AppearanceSettings: React.FC = () => {
   const drawsCorners = Boolean(windowControls?.cssRoundedCorners);
   const desktop = runtime === "desktop";
   const canBlur = capabilities.blur !== null;
-  const transparent = appConfig.sidebarTransparent && capabilities.transparency;
 
   return (
     <div className="space-y-6">
@@ -148,22 +147,8 @@ export const AppearanceSettings: React.FC = () => {
       </section>
 
       {desktop && (
-        <Group title="Sidebar">
-          <Field
-            label="Transparent"
-            hint={
-              capabilities.transparency
-                ? "Let the desktop show through the sidebar."
-                : "This window can't show what's behind it."
-            }
-          >
-            <Switch
-              checked={transparent}
-              disabled={!capabilities.transparency}
-              onChange={(checked) => void updateAppConfig({ sidebarTransparent: checked })}
-            />
-          </Field>
-
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Group title="Sidebar">
           <StackedField label="Opacity">
             <div className="flex items-center gap-3">
               <Slider
@@ -171,7 +156,7 @@ export const AppearanceSettings: React.FC = () => {
                 max={1}
                 step={0.05}
                 value={appConfig.sidebarOpacity}
-                disabled={!transparent}
+                disabled={!capabilities.transparency}
                 onChange={(value) => void updateAppConfig({ sidebarOpacity: value })}
               />
               <span className="w-9 shrink-0 text-right text-xs tabular-nums text-neutral-400">
@@ -185,16 +170,50 @@ export const AppearanceSettings: React.FC = () => {
             hint={
               canBlur
                 ? (capabilities.blur && BLUR_HINT[capabilities.blur]) ?? ""
-                : "No window blur here — needs macOS, Windows 10 version 1709+, Windows 11 or KDE/KWin."
+                : "Unavailable on this desktop."
             }
           >
             <Switch
-              checked={appConfig.glassSidebar && canBlur}
-              disabled={!canBlur || !transparent}
+              checked={appConfig.glassSidebar && canBlur && appConfig.sidebarOpacity < 1}
+              disabled={!canBlur || appConfig.sidebarOpacity >= 1}
               onChange={(checked) => void updateAppConfig({ glassSidebar: checked })}
             />
           </Field>
-        </Group>
+          </Group>
+
+          <Group title="Titlebar · status · surface">
+          <StackedField label="Opacity">
+            <div className="flex items-center gap-3">
+              <Slider
+                min={0.3}
+                max={1}
+                step={0.05}
+                value={appConfig.titlebarOpacity}
+                disabled={!capabilities.transparency}
+                onChange={(value) => void updateAppConfig({ titlebarOpacity: value })}
+              />
+              <span className="w-9 shrink-0 text-right text-xs tabular-nums text-neutral-400">
+                {Math.round(appConfig.titlebarOpacity * 100)}%
+              </span>
+            </div>
+          </StackedField>
+
+          <Field
+            label="Glass blur"
+            hint={
+              canBlur
+                ? (capabilities.blur && BLUR_HINT[capabilities.blur]) ?? ""
+                : "Unavailable on this desktop."
+            }
+          >
+            <Switch
+              checked={appConfig.glassTitlebar && canBlur && appConfig.titlebarOpacity < 1}
+              disabled={!canBlur || appConfig.titlebarOpacity >= 1}
+              onChange={(checked) => void updateAppConfig({ glassTitlebar: checked })}
+            />
+          </Field>
+          </Group>
+        </div>
       )}
 
       <Group title="Window">

@@ -77,7 +77,7 @@ export const StatusBar: React.FC = () => {
   const right = visible.filter((module) => module.side === "right");
 
   return (
-    <footer className="chrome-surface relative z-20 flex h-7 shrink-0 items-stretch justify-between px-1 backdrop-blur-xl">
+    <footer className="relative z-20 flex h-7 shrink-0 items-stretch justify-between px-1">
       <div className="flex items-center">
         {left.map((definition) => <StatusModule key={definition.id} definition={definition} />)}
       </div>

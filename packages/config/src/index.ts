@@ -241,12 +241,14 @@ export const appConfigSchema = z.object({
   useTitlebar: z.boolean().default(true),
   /** Desktop: keep the daemon running in a tray when the window is closed. */
   runInBackground: z.boolean().default(false),
-  /** Let the desktop show through the sidebar. */
-  sidebarTransparent: z.boolean().default(false),
-  /** How opaque the sidebar stays while transparent. */
+  /** Sidebar opacity; 1 keeps the surface opaque. */
   sidebarOpacity: z.coerce.number().min(0.3).max(1).default(0.85),
   /** Ask the compositor to blur behind the transparent sidebar. */
   glassSidebar: z.boolean().default(false),
+  /** Main chrome opacity; 1 keeps the surface opaque. */
+  titlebarOpacity: z.coerce.number().min(0.3).max(1).default(0.85),
+  /** Ask the compositor to blur behind the transparent main chrome surface. */
+  glassTitlebar: z.boolean().default(false),
   /** Rounded window corners where the app draws them itself (Linux). */
   roundedWindow: z.boolean().default(true),
   /** Colour scheme id; matches a `[data-scheme]` block in the UI stylesheet. */

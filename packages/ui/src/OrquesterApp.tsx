@@ -67,6 +67,9 @@ export const OrquesterApp: React.FC<OrquesterAppProps> = ({
   // Live values from app config (settings can toggle them).
   const titlebar = useAppStore((s) => s.appConfig.useTitlebar);
   const glassSidebar = useAppStore((s) => s.appConfig.glassSidebar);
+  const sidebarOpacity = useAppStore((s) => s.appConfig.sidebarOpacity);
+  const glassTitlebar = useAppStore((s) => s.appConfig.glassTitlebar);
+  const titlebarOpacity = useAppStore((s) => s.appConfig.titlebarOpacity);
 
   // What the window can do decides which appearance options are offered at all;
   // the native backdrop itself then follows the setting.
@@ -78,8 +81,10 @@ export const OrquesterApp: React.FC<OrquesterAppProps> = ({
   }, [windowControls]);
 
   useEffect(() => {
-    windowControls?.setBackdrop?.(glassSidebar);
-  }, [windowControls, glassSidebar]);
+    windowControls?.setBackdrop?.(
+      (sidebarOpacity < 1 && glassSidebar) || (titlebarOpacity < 1 && glassTitlebar)
+    );
+  }, [windowControls, sidebarOpacity, glassSidebar, titlebarOpacity, glassTitlebar]);
 
   // Set up connections, then connect (app config + remotes load from the daemon).
   useEffect(() => {

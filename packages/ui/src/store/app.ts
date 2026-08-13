@@ -113,10 +113,12 @@ let homeApi: ApiClient | null = null;
 export interface UiAppConfig {
   useTitlebar: boolean;
   runInBackground: boolean;
-  sidebarTransparent: boolean;
   /** Sidebar alpha while transparent (0.3–1). */
   sidebarOpacity: number;
   glassSidebar: boolean;
+  /** Titlebar and main chrome alpha while transparent (0.3–1). */
+  titlebarOpacity: number;
+  glassTitlebar: boolean;
   roundedWindow: boolean;
   /** Colour scheme id (see COLOR_SCHEMES). */
   theme: string;
@@ -132,9 +134,10 @@ export interface UiAppConfig {
 const DEFAULT_APP_CONFIG: UiAppConfig = {
   useTitlebar: false,
   runInBackground: false,
-  sidebarTransparent: false,
   sidebarOpacity: 0.85,
   glassSidebar: false,
+  titlebarOpacity: 0.85,
+  glassTitlebar: false,
   roundedWindow: true,
   theme: "mono",
   themeMode: "dark",
@@ -505,9 +508,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           appConfig: {
             useTitlebar: config.useTitlebar ?? state.appConfig.useTitlebar,
             runInBackground: config.runInBackground ?? state.appConfig.runInBackground,
-            sidebarTransparent: config.sidebarTransparent ?? state.appConfig.sidebarTransparent,
             sidebarOpacity: config.sidebarOpacity ?? state.appConfig.sidebarOpacity,
             glassSidebar: config.glassSidebar ?? state.appConfig.glassSidebar,
+            titlebarOpacity: config.titlebarOpacity ?? state.appConfig.titlebarOpacity,
+            glassTitlebar: config.glassTitlebar ?? state.appConfig.glassTitlebar,
             roundedWindow: config.roundedWindow ?? state.appConfig.roundedWindow,
             theme: config.theme ?? state.appConfig.theme,
             themeMode: config.themeMode ?? state.appConfig.themeMode,
