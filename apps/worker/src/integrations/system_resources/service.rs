@@ -51,7 +51,12 @@ impl SystemResourcesService {
 
         let memory = {
             let system = self.system.lock().unwrap();
-            usage(system.total_memory(), system.free_memory())
+            // `free_memory` is unallocated-only and counts reclaimable page
+            // cache as "used", which is why this read 90%+ on an idle Linux
+            // box with a warm cache. `available_memory` (Linux's
+            // MemAvailable) is what could actually be handed to a new
+            // process, which is what "used" should mean here.
+            usage(system.total_memory(), system.available_memory())
         };
 
         let disk = read_disk(workspaces_dir);
