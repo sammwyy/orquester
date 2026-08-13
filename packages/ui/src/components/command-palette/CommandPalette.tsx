@@ -22,7 +22,6 @@ export const CommandPalette: React.FC = () => {
   const [query, setQuery] = useState("");
   const [allProjects, setAllProjects] = useState<ProjectSummary[] | null>(null);
   const [highlight, setHighlight] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
   const highlightedRef = useRef<HTMLButtonElement>(null);
 
   // Global open shortcut. Skipped inside the terminal, where Ctrl+K is the
@@ -46,10 +45,8 @@ export const CommandPalette: React.FC = () => {
     setQuery("");
     setHighlight(0);
     setAllProjects(null);
-    const frame = requestAnimationFrame(() => inputRef.current?.focus());
     Promise.all(workspaces.map((workspace) => workspaceService.listProjects(api, workspace.name).catch(() => [] as ProjectSummary[])))
       .then((lists) => setAllProjects(lists.flat()));
-    return () => cancelAnimationFrame(frame);
   }, [open, api, workspaces]);
 
   const activeProjects = useMemo(
@@ -87,7 +84,7 @@ export const CommandPalette: React.FC = () => {
       <div className="flex items-center gap-2 border-b border-neutral-800/70 px-3.5 py-3">
         <Search size={15} className="shrink-0 text-neutral-500" />
         <input
-          ref={inputRef}
+          autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
