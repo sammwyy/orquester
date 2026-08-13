@@ -38,6 +38,97 @@ async fn assert_project_repository(project_path: &str) -> std::io::Result<()> {
     tokio::fs::metadata(Path::new(project_path).join(".git")).await.map(|_| ())
 }
 
+/// Splits `-z` output on NUL and drops the single trailing empty element
+/// left by the terminator on the last record.
+fn nul_tokens(output: &str) -> Vec<&str> {
+    let mut tokens: Vec<&str> = output.split('\0').collect();
+    if tokens.last() == Some(&"") {
+        tokens.pop();
+    }
+    tokens
+}
+
+/// Parses `git status --porcelain=v1 -z` output.
+/// Plain (non-`-z`) porcelain quotes/escapes paths with spaces, unicode or
+/// backslashes, and renders renames as a single `"old" -> "new"` string —
+/// both unusable as a pathspec for follow-up commands. `-z` sidesteps both:
+/// paths are raw bytes, and a rename is two consecutive NUL-terminated
+/// records (new path, then original path).
+fn parse_status_entries(output: &str) -> Vec<GitFileStatus> {
+    let tokens = nul_tokens(output);
+    let mut files = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        let entry = tokens[i];
+        i += 1;
+        if entry.len() < 3 {
+            continue;
+        }
+        let status = entry[..2].to_string();
+        let path = entry[3..].to_string();
+        let is_rename_or_copy = status.as_bytes().iter().any(|b| *b == b'R' || *b == b'C');
+        if is_rename_or_copy && i < tokens.len() {
+            i += 1; // original path, before the rename — not currently surfaced
+        }
+        files.push(GitFileStatus { status, path });
+    }
+    files
+}
+
+/// Parses `git diff --name-status -z` (old path then new path for renames,
+/// the opposite order from status `-z`) into a path -> status-code map.
+fn parse_name_status_map(output: &str) -> std::collections::HashMap<String, String> {
+    let tokens = nul_tokens(output);
+    let mut map = std::collections::HashMap::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        let status = tokens[i].to_string();
+        i += 1;
+        let is_rename_or_copy = status.starts_with('R') || status.starts_with('C');
+        let path = if is_rename_or_copy {
+            let _old = tokens.get(i).copied().unwrap_or("");
+            i += 1;
+            let new = tokens.get(i).copied().unwrap_or("").to_string();
+            i += 1;
+            new
+        } else {
+            let path = tokens.get(i).copied().unwrap_or("").to_string();
+            i += 1;
+            path
+        };
+        map.insert(path, status);
+    }
+    map
+}
+
+/// Parses `git diff --numstat -z`: a normal record is `add\tdel\tpath`; a
+/// renamed file has an empty path field followed by two more NUL records
+/// (old path, new path).
+fn parse_numstat_entries(output: &str) -> Vec<(i64, i64, String)> {
+    let tokens = nul_tokens(output);
+    let mut entries = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        let entry = tokens[i];
+        i += 1;
+        let mut parts = entry.splitn(3, '\t');
+        let additions = parts.next().unwrap_or("0").parse::<i64>().unwrap_or(0);
+        let deletions = parts.next().unwrap_or("0").parse::<i64>().unwrap_or(0);
+        let inline_path = parts.next().unwrap_or("");
+        let path = if inline_path.is_empty() {
+            let _old = tokens.get(i).copied().unwrap_or("");
+            i += 1;
+            let new = tokens.get(i).copied().unwrap_or("").to_string();
+            i += 1;
+            new
+        } else {
+            inline_path.to_string()
+        };
+        entries.push((additions, deletions, path));
+    }
+    entries
+}
+
 pub async fn initialize_git(project_path: &str) -> std::io::Result<GitStatusResponse> {
     let mut command = Command::new("git");
     command.arg("-C").arg(project_path).arg("init");
@@ -52,22 +143,14 @@ pub async fn read_git_status(project_path: &str) -> std::io::Result<GitStatusRes
     let branch = if branch.is_empty() { "HEAD".to_string() } else { branch };
     let origin = git(project_path, &["remote", "get-url", "origin"]).await.unwrap_or_default();
     let log_output = git(project_path, &["log", "-5", "--format=%H%x09%an%x09%aI%x09%s"]).await.unwrap_or_default();
-    let files_output = git(project_path, &["status", "--porcelain=v1"]).await.unwrap_or_default();
-    let diff_output = git(project_path, &["diff", "--numstat", "HEAD"]).await.unwrap_or_default();
+    let files_output = git(project_path, &["status", "--porcelain=v1", "-z"]).await.unwrap_or_default();
+    let diff_output = git(project_path, &["diff", "--numstat", "-z", "HEAD"]).await.unwrap_or_default();
 
     let mut additions = 0i64;
     let mut deletions = 0i64;
-    for line in diff_output.lines().filter(|l| !l.is_empty()) {
-        let mut parts = line.splitn(2, '\t');
-        if let (Some(a), Some(rest)) = (parts.next(), parts.next()) {
-            let d = rest.split('\t').next().unwrap_or("");
-            if let Ok(v) = a.parse::<i64>() {
-                additions += v;
-            }
-            if let Ok(v) = d.parse::<i64>() {
-                deletions += v;
-            }
-        }
+    for (a, d, _) in parse_numstat_entries(&diff_output) {
+        additions += a;
+        deletions += d;
     }
 
     let commits = log_output
@@ -83,15 +166,7 @@ pub async fn read_git_status(project_path: &str) -> std::io::Result<GitStatusRes
         })
         .collect();
 
-    let files = files_output
-        .lines()
-        .filter(|l| !l.is_empty())
-        .map(|line| {
-            let status = line.get(0..2).unwrap_or("").to_string();
-            let path = line.get(3..).unwrap_or("").to_string();
-            GitFileStatus { status, path }
-        })
-        .collect();
+    let files = parse_status_entries(&files_output);
 
     Ok(GitStatusResponse {
         project_path: project_path.to_string(),
@@ -228,37 +303,22 @@ pub async fn read_commit(project_path: &str, hash: &str) -> std::io::Result<GitC
 
     let (status_out, numstat_out, diff_out) = if is_merge {
         (
-            git(project_path, &["diff", "--name-status", &range]).await.unwrap_or_default(),
-            git(project_path, &["diff", "--numstat", &range]).await.unwrap_or_default(),
+            git(project_path, &["diff", "--name-status", "-z", &range]).await.unwrap_or_default(),
+            git(project_path, &["diff", "--numstat", "-z", &range]).await.unwrap_or_default(),
             git(project_path, &["diff", &range]).await.unwrap_or_default(),
         )
     } else {
         (
-            git(project_path, &["show", "--format=", "--name-status", &range]).await.unwrap_or_default(),
-            git(project_path, &["show", "--format=", "--numstat", &range]).await.unwrap_or_default(),
+            git(project_path, &["show", "--format=", "--name-status", "-z", &range]).await.unwrap_or_default(),
+            git(project_path, &["show", "--format=", "--numstat", "-z", &range]).await.unwrap_or_default(),
             git(project_path, &["show", "--format=", &range]).await.unwrap_or_default(),
         )
     };
 
-    // Rename lines are "R100\told\tnew" — the path is always the last field.
-    let mut status_by_path = std::collections::HashMap::new();
-    for line in status_out.lines().filter(|l| !l.is_empty()) {
-        let fields: Vec<&str> = line.split('\t').collect();
-        if let (Some(status), Some(path)) = (fields.first(), fields.last()) {
-            if fields.len() > 1 {
-                status_by_path.insert(path.to_string(), status.to_string());
-            }
-        }
-    }
-
-    let files: Vec<GitCommitFile> = numstat_out
-        .lines()
-        .filter(|l| !l.is_empty())
-        .map(|line| {
-            let mut parts = line.split('\t');
-            let additions: i64 = parts.next().unwrap_or("0").parse().unwrap_or(0);
-            let deletions: i64 = parts.next().unwrap_or("0").parse().unwrap_or(0);
-            let path = parts.next().unwrap_or("").to_string();
+    let status_by_path = parse_name_status_map(&status_out);
+    let files: Vec<GitCommitFile> = parse_numstat_entries(&numstat_out)
+        .into_iter()
+        .map(|(additions, deletions, path)| {
             let status = status_by_path.get(&path).cloned().unwrap_or_else(|| "M".to_string());
             GitCommitFile { path, status, additions, deletions }
         })
@@ -377,14 +437,36 @@ pub async fn unstage_files(project_path: &str, files: &[String]) -> std::io::Res
     git(project_path, &args).await.map(|_| ())
 }
 
+/// `git restore` refuses to touch a pathspec it doesn't recognize as tracked,
+/// and aborts the *entire* invocation if even one of several paths is
+/// untracked — so untracked and tracked paths must be split and run through
+/// separate commands (`clean` and `restore`) rather than one combined call.
 pub async fn discard_files(project_path: &str, files: &[String]) -> std::io::Result<()> {
     assert_project_repository(project_path).await?;
-    let mut clean_args = vec!["clean", "-fd", "--"];
-    clean_args.extend(files.iter().map(|s| s.as_str()));
-    let _ = git(project_path, &clean_args).await;
-    let mut restore_args = vec!["restore", "--"];
-    restore_args.extend(files.iter().map(|s| s.as_str()));
-    let _ = git(project_path, &restore_args).await;
+    let mut status_args = vec!["status", "--porcelain=v1", "-z", "--"];
+    status_args.extend(files.iter().map(|s| s.as_str()));
+    let status_out = git(project_path, &status_args).await.unwrap_or_default();
+
+    let mut untracked = Vec::new();
+    let mut tracked = Vec::new();
+    for entry in parse_status_entries(&status_out) {
+        if entry.status.starts_with('?') {
+            untracked.push(entry.path);
+        } else {
+            tracked.push(entry.path);
+        }
+    }
+
+    if !tracked.is_empty() {
+        let mut restore_args = vec!["restore", "--staged", "--worktree", "--"];
+        restore_args.extend(tracked.iter().map(|s| s.as_str()));
+        git(project_path, &restore_args).await?;
+    }
+    if !untracked.is_empty() {
+        let mut clean_args = vec!["clean", "-fd", "--"];
+        clean_args.extend(untracked.iter().map(|s| s.as_str()));
+        git(project_path, &clean_args).await?;
+    }
     Ok(())
 }
 
