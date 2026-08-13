@@ -1,4 +1,10 @@
 {
-  "stable": null,
-  "unstable": null
+  "client": {
+    "stable": null,
+    "unstable": null
+  },
+  "worker": {
+    "stable": null,
+    "unstable": null
+  }
 }

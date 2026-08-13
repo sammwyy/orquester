@@ -32,6 +32,10 @@ export interface WindowControls {
 export interface OrquesterContextValue {
   runtime: Runtime;
   api: ApiClient;
+  /** Version of the app shell rendering this UI. */
+  clientVersion: string;
+  /** Opens a trusted external URL through the host shell when available. */
+  openExternal?: (url: string) => Promise<boolean>;
   /** Render a custom titlebar (frameless window). */
   useTitlebar: boolean;
   windowControls?: WindowControls;
@@ -46,7 +50,7 @@ export interface OrquesterProviderProps extends OrquesterContextValue {
 export const OrquesterProvider: React.FC<OrquesterProviderProps> = ({ children, ...value }) => {
   const memo = useMemo(
     () => value,
-    [value.runtime, value.api, value.useTitlebar, value.windowControls]
+    [value.runtime, value.api, value.clientVersion, value.openExternal, value.useTitlebar, value.windowControls]
   );
 
   return <OrquesterContext.Provider value={memo}>{children}</OrquesterContext.Provider>;

@@ -14,6 +14,10 @@ import "./styles/globals.css";
 export interface OrquesterAppProps {
   /** Which shell is hosting the UI. */
   runtime: Runtime;
+  /** Version of the desktop or web client hosting this UI. */
+  clientVersion?: string;
+  /** Opens a trusted release URL outside the UI. */
+  openExternal?: (url: string) => Promise<boolean>;
   /** The default/local daemon connection (always present, not removable). */
   initialConnection: UiConnection;
   /** Render a custom (frameless) titlebar. Defaults to true on desktop. */
@@ -33,6 +37,8 @@ export interface OrquesterAppProps {
 
 export const OrquesterApp: React.FC<OrquesterAppProps> = ({
   runtime,
+  clientVersion = "0.0.0",
+  openExternal,
   initialConnection,
   useTitlebar,
   transporter,
@@ -87,6 +93,8 @@ export const OrquesterApp: React.FC<OrquesterAppProps> = ({
     <OrquesterProvider
       runtime={runtime}
       api={api}
+      clientVersion={clientVersion}
+      openExternal={openExternal}
       useTitlebar={titlebar}
       windowControls={windowControls}
     >

@@ -628,7 +628,8 @@ function createWindow(): void {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(desktopRoot, "dist-electron", "preload.cjs")
+      preload: path.join(desktopRoot, "dist-electron", "preload.cjs"),
+      additionalArguments: [`--orquester-client-version=${app.getVersion()}`]
     }
   });
 

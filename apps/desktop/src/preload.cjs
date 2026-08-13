@@ -1,7 +1,9 @@
 const { contextBridge, ipcRenderer } = require("electron");
+const clientVersion = process.argv.find((argument) => argument.startsWith("--orquester-client-version="))?.split("=", 2)[1] ?? "0.0.0";
 
 contextBridge.exposeInMainWorld("orquesterDesktop", {
   runtime: "desktop",
+  clientVersion,
   socketPath: process.env.ORQUESTER_UNIX_SOCKET,
   defaultConnection: {
     id: "local",

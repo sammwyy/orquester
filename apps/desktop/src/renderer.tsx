@@ -13,6 +13,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <OrquesterApp
       runtime="desktop"
+      clientVersion={desktopBridge.clientVersion}
+      openExternal={desktopBridge.openExternal}
       useTitlebar
       initialConnection={desktopBridge.defaultConnection}
       transporter={transporter}
@@ -25,6 +27,7 @@ declare global {
   interface Window {
     orquesterDesktop: DesktopBridge & {
       runtime: "desktop";
+      clientVersion: string;
       socketPath?: string;
       defaultConnection: UiConnection;
       windowControls: WindowControls;

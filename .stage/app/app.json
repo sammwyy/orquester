@@ -4,11 +4,13 @@
   "quotaResetFormat": "relative",
   "roundedWindow": true,
   "runInBackground": true,
+  "searchForUpdates": true,
   "showQuotaMenu": true,
   "sidebarOpacity": 0.7,
   "sidebarTransparent": true,
   "theme": "mono",
   "themeMode": "dark",
+  "updateChannel": "stable",
   "useTitlebar": true,
   "version": 1
 }

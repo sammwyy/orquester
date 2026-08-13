@@ -11,6 +11,11 @@ export interface WorkerVersions {
   unstable: string | null;
 }
 
+export interface ReleaseVersions {
+  client: WorkerVersions;
+  worker: WorkerVersions;
+}
+
 export interface WorkerRelease {
   version: string;
   channel: WorkerReleaseChannel;
@@ -39,6 +44,18 @@ function normalizeVersions(value: unknown): WorkerVersions {
   };
 }
 
+function normalizeReleaseVersions(value: unknown): ReleaseVersions {
+  if (!value || typeof value !== "object") {
+    return { client: normalizeVersions(null), worker: normalizeVersions(null) };
+  }
+
+  const versions = value as Record<string, unknown>;
+  return {
+    client: normalizeVersions(versions.client),
+    worker: normalizeVersions(versions.worker)
+  };
+}
+
 function compareVersions(left: string, right: string): number {
   const [leftCore, leftPrerelease] = left.split("-", 2);
   const [rightCore, rightPrerelease] = right.split("-", 2);
@@ -62,7 +79,7 @@ export function workerVersionsUrl(branch = "main"): string {
 }
 
 /** Reads the release manifest maintained by the tag publishing workflow. */
-export async function getWorkerVersions(fetcher: typeof fetch = fetch): Promise<WorkerVersions> {
+export async function getReleaseVersions(fetcher: typeof fetch = fetch): Promise<ReleaseVersions> {
   const response = await fetcher(workerVersionsUrl(), {
     headers: { Accept: "application/json" }
   });
@@ -70,7 +87,15 @@ export async function getWorkerVersions(fetcher: typeof fetch = fetch): Promise<
     throw new Error(`Could not load worker versions (${response.status}).`);
   }
 
-  return normalizeVersions(await response.json());
+  return normalizeReleaseVersions(await response.json());
+}
+
+export async function getWorkerVersions(fetcher: typeof fetch = fetch): Promise<WorkerVersions> {
+  return (await getReleaseVersions(fetcher)).worker;
+}
+
+export async function getClientVersions(fetcher: typeof fetch = fetch): Promise<WorkerVersions> {
+  return (await getReleaseVersions(fetcher)).client;
 }
 
 export async function getLatestWorkerRelease(
@@ -93,6 +118,29 @@ export async function getWorkerUpdate(
     latest,
     updateAvailable: Boolean(latest && current && compareVersions(latest.version, current) > 0)
   };
+}
+
+export async function getClientUpdate(
+  currentVersion: string,
+  channel: WorkerReleaseChannel = "stable",
+  fetcher: typeof fetch = fetch
+): Promise<WorkerUpdate> {
+  const versions = await getClientVersions(fetcher);
+  const version = versions[channel];
+  const latest = version ? { version, channel } : null;
+  const current = normalizeVersion(currentVersion);
+  return {
+    latest,
+    updateAvailable: Boolean(latest && current && compareVersions(latest.version, current) > 0)
+  };
+}
+
+export function workerReleasePage(version: string): string {
+  const normalizedVersion = normalizeVersion(version);
+  if (!normalizedVersion) {
+    throw new Error("A worker version is required.");
+  }
+  return `https://github.com/${ORQUESTER_GITHUB_REPOSITORY}/releases/tag/v${encodeURIComponent(normalizedVersion)}`;
 }
 
 export function workerPlatformForRuntime(

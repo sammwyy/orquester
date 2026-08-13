@@ -66,9 +66,11 @@ jobs:
           $version = $env:TAG -replace '^v', ''
           $manifest = Get-Content version.json -Raw | ConvertFrom-Json
           if ($env:TAG.Contains('-')) {
-            $manifest.unstable = $version
+            $manifest.client.unstable = $version
+            $manifest.worker.unstable = $version
           } else {
-            $manifest.stable = $version
+            $manifest.client.stable = $version
+            $manifest.worker.stable = $version
           }
           $manifest | ConvertTo-Json | Set-Content version.json
       - name: Commit release manifest

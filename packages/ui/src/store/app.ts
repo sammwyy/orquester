@@ -123,6 +123,8 @@ export interface UiAppConfig {
   themeMode: ThemeMode;
   quotaResetFormat: "relative" | "absolute" | "both";
   showQuotaMenu: boolean;
+  searchForUpdates: boolean;
+  updateChannel: "stable" | "nightly";
 }
 
 const DEFAULT_APP_CONFIG: UiAppConfig = {
@@ -135,7 +137,9 @@ const DEFAULT_APP_CONFIG: UiAppConfig = {
   theme: "mono",
   themeMode: "dark",
   quotaResetFormat: "relative",
-  showQuotaMenu: false
+  showQuotaMenu: false,
+  searchForUpdates: true,
+  updateChannel: "stable"
 };
 
 /** Persist the remote-server list to the home daemon (shared across clients). */
@@ -499,7 +503,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             theme: config.theme ?? state.appConfig.theme,
             themeMode: config.themeMode ?? state.appConfig.themeMode,
             quotaResetFormat: config.quotaResetFormat ?? state.appConfig.quotaResetFormat,
-            showQuotaMenu: config.showQuotaMenu ?? state.appConfig.showQuotaMenu
+            showQuotaMenu: config.showQuotaMenu ?? state.appConfig.showQuotaMenu,
+            searchForUpdates: config.searchForUpdates ?? state.appConfig.searchForUpdates,
+            updateChannel: config.updateChannel ?? state.appConfig.updateChannel
           }
         }));
       }

@@ -248,7 +248,11 @@ export const appConfigSchema = z.object({
   themeMode: z.enum(["system", "light", "dark", "dynamic"]).default("dark"),
   /** How quota reset timestamps are rendered in the client. */
   quotaResetFormat: z.enum(["relative", "absolute", "both"]).default("relative"),
-  showQuotaMenu: z.boolean().default(false)
+  showQuotaMenu: z.boolean().default(false),
+  /** Check GitHub releases when the app starts. */
+  searchForUpdates: z.boolean().default(true),
+  /** Stable releases or prerelease/nightly builds. */
+  updateChannel: z.enum(["stable", "nightly"]).default("stable")
 })
   // Clients own this file; a daemon that predates a field must hand it back
   // untouched instead of silently dropping the client's setting.

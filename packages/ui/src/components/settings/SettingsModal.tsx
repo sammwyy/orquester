@@ -9,7 +9,8 @@ import {
   HardDrive,
   PlugZap,
   Palette,
-  Server
+  Server,
+  RefreshCw
 } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Modal, ModalCloseButton } from "../ui";
@@ -24,11 +25,13 @@ import {
   QuotaSettings,
   RemoteWorkersSettings,
   StorageSettings,
-  IntegrationsSettings
+  IntegrationsSettings,
+  UpdatesSettings
 } from "./tabs";
 
 type Section =
   | "app"
+  | "updates"
   | "appearance"
   | "local-access"
   | "workers"
@@ -58,6 +61,13 @@ const SECTIONS: {
       label: "App",
       icon: <AppWindow size={16} />,
       desc: "Window behaviour, runtime, active server"
+    },
+    {
+      id: "updates",
+      group: "client",
+      label: "Updates",
+      icon: <RefreshCw size={16} />,
+      desc: "Versions, channels and application updates"
     },
     {
       id: "appearance",
@@ -122,6 +132,8 @@ const sectionsOf = (group: SectionGroup) => SECTIONS.filter((s) => s.group === g
 const renderSection = (id: Section, onGoToLocalAccess?: () => void) =>
   id === "app" ? (
     <AppSettings />
+  ) : id === "updates" ? (
+    <UpdatesSettings />
   ) : id === "appearance" ? (
     <AppearanceSettings />
   ) : id === "local-access" ? (

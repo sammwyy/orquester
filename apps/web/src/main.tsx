@@ -12,6 +12,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <OrquesterApp
       runtime="web"
+      clientVersion={import.meta.env.VITE_ORQUESTER_CLIENT_VERSION}
       appConfigAdapter={createLocalStorageAppConfigAdapter()}
       initialConnection={{
         id: "remote",
