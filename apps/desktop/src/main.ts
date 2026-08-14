@@ -56,26 +56,6 @@ function checkExistingDaemon(socketPath: string): Promise<boolean> {
   });
 }
 
-function listenForDaemonShutdown(): void {
-  if (!daemonSocketPath) return;
-  const req = http.request({ socketPath: daemonSocketPath, path: "/events", method: "GET" }, (res) => {
-    res.setEncoding("utf8");
-    res.on("data", (chunk: string) => {
-      if (chunk.includes('"daemon.shutdown"')) {
-        quitting = true;
-        app.quit();
-      }
-    });
-    res.on("end", () => {
-      if (!quitting && !isDaemonOwner) app.quit();
-    });
-  });
-  req.on("error", () => {
-    if (!quitting && !isDaemonOwner) app.quit();
-  });
-  req.end();
-}
-
 const desktopRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(desktopRoot, "../..");
 
@@ -967,7 +947,6 @@ app.whenReady().then(async () => {
     writeAppConfig({ localWorkerInstalled: false });
   }
 
-  listenForDaemonShutdown();
   registerIpc();
   if (isDaemonOwner) {
     createTray();

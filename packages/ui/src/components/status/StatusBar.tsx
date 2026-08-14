@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { cn } from "../../lib/cn";
-import { useAppStore } from "../../store/app";
+import { useActiveTabId, useAppStore, useProjectTabs } from "../../store/app";
 import { useStatusModules, type StatusModuleDefinition } from "./registry";
 import "./modules";
+import { useIsDesktop } from "../../hooks";
 
 interface StatusModuleProps {
   definition: StatusModuleDefinition;
@@ -10,11 +11,13 @@ interface StatusModuleProps {
 
 const StatusModule: React.FC<StatusModuleProps> = ({ definition }) => {
   const [open, setOpen] = useState(false);
-  const { label, side, icon, content: Content } = definition;
+  const isDesktop = useIsDesktop();
+  const { label, mobileLabel, side, icon, content: Content } = definition;
+  const visibleLabel = isDesktop || mobileLabel === undefined ? label : mobileLabel;
   const triggerContent = (
     <>
       {icon}
-      <span className="flex min-w-0 items-center">{label}</span>
+      <span className="flex min-w-0 items-center">{visibleLabel}</span>
     </>
   );
 
@@ -63,6 +66,9 @@ const StatusModule: React.FC<StatusModuleProps> = ({ definition }) => {
 
 export const StatusBar: React.FC = () => {
   const modules = useStatusModules();
+  const isDesktop = useIsDesktop();
+  const activeTabId = useActiveTabId();
+  const tabs = useProjectTabs();
   const currentProject = useAppStore((state) => state.currentProject);
   const integrations = useAppStore((state) => state.integrations);
   const view = currentProject ? "project" : "empty";
@@ -75,14 +81,20 @@ export const StatusBar: React.FC = () => {
   });
   const left = visible.filter((module) => module.side === "left");
   const right = visible.filter((module) => module.side === "right");
+  const mobileKeyBarVisible = !isDesktop && tabs.some((tab) => tab.id === activeTabId && tab.type === "session");
 
   return (
-    <footer className="relative z-20 flex h-7 shrink-0 items-stretch justify-between px-1">
-      <div className="flex items-center">
+    <footer className={cn(
+      "relative z-20 flex min-h-7 shrink-0 items-stretch overflow-hidden px-1",
+      !mobileKeyBarVisible && "pb-[max(0px,env(safe-area-inset-bottom))]"
+    )}>
+      <div className="status-bar-scroll flex min-w-0 flex-1 items-center overflow-x-auto">
+        <div className="flex min-w-max items-center">
         {left.map((definition) => <StatusModule key={definition.id} definition={definition} />)}
-      </div>
-      <div className="flex items-center">
+        </div>
+        <div className="ml-auto flex min-w-max items-center">
         {right.map((definition) => <StatusModule key={definition.id} definition={definition} />)}
+        </div>
       </div>
     </footer>
   );

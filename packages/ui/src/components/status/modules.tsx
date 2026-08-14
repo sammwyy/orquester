@@ -18,6 +18,11 @@ const GitLabel: React.FC = () => {
   );
 };
 
+const GitMobileLabel: React.FC = () => {
+  const branch = useAppStore((state) => state.gitStatus?.branch);
+  return <span className="max-w-20 truncate">{branch ?? "Git"}</span>;
+};
+
 const GitContent: React.FC = () => {
   const status = useAppStore((state) => state.gitStatus);
   const loading = useAppStore((state) => state.gitStatusLoading);
@@ -74,6 +79,17 @@ const BatteryLabel: React.FC = () => {
     <span className={`flex items-center gap-1 ${tone}`}>
       {status.pluggedIn ? <BatteryCharging size={13} /> : <Battery size={13} />}
       <span>{percentage}%</span>
+    </span>
+  );
+};
+
+const BatteryMobileLabel: React.FC = () => {
+  const status = useAppStore((state) => state.batteryStatus);
+  if (!status) return <span>—</span>;
+  return (
+    <span className="flex items-center gap-1">
+      {status.hasBattery ? (status.pluggedIn ? <BatteryCharging size={11} /> : <Battery size={11} />) : <Plug size={11} />}
+      {status.hasBattery ? `${status.percentage ?? 0}%` : "AC"}
     </span>
   );
 };
@@ -137,6 +153,17 @@ const ResourcesLabel: React.FC = () => {
       <span className="flex items-center gap-0.5"><Cpu size={11} />{formatPercentage(resources.cpu.percentage)}</span>
       <span className="flex items-center gap-0.5"><MemoryStick size={11} />{formatPercentage(resources.memory.percentage)}</span>
       <span className="flex items-center gap-0.5"><HardDrive size={11} />{formatPercentage(resources.disk.percentage)}</span>
+    </span>
+  );
+};
+
+const ResourcesMobileLabel: React.FC = () => {
+  const resources = useAppStore((state) => state.systemResources);
+  if (!resources) return <span>—</span>;
+  return (
+    <span className="flex items-center gap-1 tabular-nums">
+      <Cpu size={11} />
+      {formatPercentage(resources.cpu.percentage)} · {formatPercentage(resources.memory.percentage)} · {formatPercentage(resources.disk.percentage)}
     </span>
   );
 };
@@ -380,6 +407,16 @@ const MediaLabel: React.FC = () => {
   );
 };
 
+const MediaMobileLabel: React.FC = () => {
+  const media = useAppStore((state) => state.mediaStatus);
+  return (
+    <span className="flex max-w-16 items-center gap-1 truncate">
+      <Music2 size={11} className="shrink-0" />
+      <span className="truncate">{media?.available ? media.title || "Media" : "Media"}</span>
+    </span>
+  );
+};
+
 const MediaContent: React.FC = () => {
   const api = useApi();
   const media = useAppStore((state) => state.mediaStatus);
@@ -464,6 +501,7 @@ const MediaContent: React.FC = () => {
 registerStatusModule({
   id: "project.git",
   label: <GitLabel />,
+  mobileLabel: <GitMobileLabel />,
   side: "left",
   integration: "git",
   icon: <GitBranch size={12} />,
@@ -474,6 +512,7 @@ registerStatusModule({
 registerStatusModule({
   id: "system.battery",
   label: <BatteryLabel />,
+  mobileLabel: <BatteryMobileLabel />,
   side: "right",
   integration: "battery",
   content: BatteryContent
@@ -482,6 +521,7 @@ registerStatusModule({
 registerStatusModule({
   id: "system.resources",
   label: <ResourcesLabel />,
+  mobileLabel: <ResourcesMobileLabel />,
   side: "right",
   integration: "system-resources",
   content: ResourcesContent
@@ -490,6 +530,7 @@ registerStatusModule({
 registerStatusModule({
   id: "system.networking",
   label: <NetworkingLabel />,
+  mobileLabel: <NetworkingLabel />,
   side: "left",
   integration: "networking",
   content: NetworkingContent
@@ -498,6 +539,7 @@ registerStatusModule({
 registerStatusModule({
   id: "system.processManager",
   label: <ProcessManagerLabel />,
+  mobileLabel: <ProcessManagerLabel />,
   side: "left",
   integration: "process-manager",
   content: ProcessManagerContent
@@ -508,6 +550,7 @@ registerStatusModule({
 registerStatusModule({
   id: "system.agents",
   label: <AgentsLabel />,
+  mobileLabel: <AgentsLabel />,
   side: "left",
   content: AgentsContent
 });
@@ -515,6 +558,7 @@ registerStatusModule({
 registerStatusModule({
   id: "system.media",
   label: <MediaLabel />,
+  mobileLabel: <MediaMobileLabel />,
   side: "right",
   integration: "media",
   content: MediaContent

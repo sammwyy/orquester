@@ -482,6 +482,32 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
+    // A stored hash can become stale when the daemon password changes. Verify
+    // the credential before marking the connection as live; otherwise the
+    // event stream receives a 401 and its reconnect loop repeats forever.
+    try {
+      await active.info();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearStoredHash(active.connection.endpoint);
+        const unauthenticated = { ...active.connection, password: undefined };
+        const unauthenticatedApi = new ApiClient(unauthenticated, buildTransporter(unauthenticated));
+        closeEvents();
+        stopHealthProbe();
+        set({
+          api: unauthenticatedApi,
+          connections: get().connections.map((connection) => connection.id === unauthenticated.id ? unauthenticated : connection),
+          connectionStatus: "error",
+          reconnectAttempt: 0,
+          authPrompt: { connectionId: unauthenticated.id }
+        });
+        return;
+      }
+      set({ connectionStatus: "error", reconnectAttempt: 0 });
+      console.error("[orquester] failed to authenticate daemon", error);
+      return;
+    }
+
     set({ connectionStatus: "connected", reconnectAttempt: 0, authPrompt: null });
     await Promise.all([get().loadWorkspaces(), get().loadSessions(), get().loadRegistry(), get().loadRecentProjects(), get().loadBatteryStatus(), get().loadSystemResources(), get().loadMediaStatus(), get().loadNetworkingStatus(), get().loadProcessManagerStatus(), get().loadIntegrations()]);
     if (!get().currentWorkspace && get().clientUiState.lastWorkspace) {

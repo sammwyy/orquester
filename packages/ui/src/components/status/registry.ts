@@ -6,6 +6,8 @@ export type StatusView = "project" | "empty";
 export interface StatusModuleDefinition {
   id: string;
   label: React.ReactNode;
+  /** Short value shown in the horizontally scrollable mobile status bar. */
+  mobileLabel?: React.ReactNode;
   side: StatusModuleSide;
   icon?: React.ReactNode;
   enabledOn?: readonly StatusView[];

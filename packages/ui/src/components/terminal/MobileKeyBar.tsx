@@ -37,7 +37,7 @@ export const MobileKeyBar: React.FC = () => {
   const sessionId = active.session.id;
 
   return (
-    <div className="flex shrink-0 items-stretch gap-1 overflow-x-auto border-t border-neutral-800 bg-neutral-900 px-2 py-1.5">
+    <div className="flex shrink-0 items-stretch gap-1 overflow-x-auto border-t border-neutral-800 bg-neutral-900 px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]">
       {KEYS.map((key) => (
         <button
           key={key.label}

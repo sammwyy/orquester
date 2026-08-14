@@ -385,6 +385,15 @@ body {
   .animate-status-marquee {
     animation: status-marquee 8s ease-in-out infinite alternate;
   }
+
+  .status-bar-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .status-bar-scroll::-webkit-scrollbar {
+    display: none;
+  }
   .animate-overlay-out {
     animation: overlay-out 150ms ease-in forwards;
   }
