@@ -1,0 +1,82 @@
+name: Release worker
+
+on:
+  push:
+    tags:
+      - "worker-v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-worker-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }} worker
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            extension: ""
+          - os: windows-latest
+            platform: windows
+            extension: ".exe"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Validate release tag
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' worker/Cargo.toml | head -n 1)
+          test -n "$version" || { echo "Could not read the worker version from worker/Cargo.toml."; exit 1; }
+          test "$TAG" = "worker-v$version" || { echo "Tag $TAG must match worker/Cargo.toml version $version."; exit 1; }
+      - name: Build release binary
+        run: cargo build --locked --release --manifest-path worker/Cargo.toml
+      - name: Stage asset
+        shell: pwsh
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          EXTENSION: ${{ matrix.extension }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:TAG -replace '^worker-v', ''
+          $name = "orquester-worker-$version-$($env:PLATFORM)-x86_64$($env:EXTENSION)"
+          Copy-Item "worker/target/release/orquester-worker$($env:EXTENSION)" $name
+          $hash = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+          Set-Content "$name.sha256" "$hash  $name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: worker-${{ matrix.platform }}
+          path: orquester-worker-*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - id: release
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=${TAG#worker-v}
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Orquester Worker v${{ steps.release.outputs.version }}
+          files: release-assets/*
+          generate_release_notes: true
+          prerelease: ${{ steps.release.outputs.prerelease }}

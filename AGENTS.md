@@ -16,7 +16,7 @@ second device, it belongs to the daemon.
 
 ## Domains
 
-**apps/worker** — the server. A Rust (axum/tokio) binary, not TypeScript — the
+**worker** — the server. A Rust (axum/tokio) binary, not TypeScript — the
 "Writing code" conventions below apply to every other domain, not this one.
 Owns PTY sessions, the tool registry, filesystem access, configuration and the
 event bus, organized as `agents/` (one file per provider's launch def and

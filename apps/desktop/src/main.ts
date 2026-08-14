@@ -159,16 +159,23 @@ function workerAssetName(version: string): string {
 }
 
 async function installLatestWorker(): Promise<InstalledWorker> {
-  const manifestUrl = "https://raw.githubusercontent.com/sammwyy/orquester/main/version.json";
-  const manifest = await fetch(manifestUrl).then(async (response) => {
-    if (!response.ok) throw new Error(`Could not load worker release manifest (${response.status}).`);
-    return response.json() as Promise<{ worker?: { stable?: string | null } }>;
+  const response = await fetch("https://api.github.com/repos/sammwyy/orquester/releases?per_page=100", {
+    headers: { Accept: "application/vnd.github+json" }
   });
-  const version = manifest.worker?.stable;
+  if (!response.ok) throw new Error(`Could not load worker releases (${response.status}).`);
+  const releases = await response.json() as unknown;
+  const release = Array.isArray(releases)
+    ? releases.find((entry) => {
+      if (!entry || typeof entry !== "object") return false;
+      const candidate = entry as { tag_name?: unknown; prerelease?: unknown };
+      return candidate.prerelease !== true && typeof candidate.tag_name === "string" && candidate.tag_name.startsWith("worker-v");
+    }) as { tag_name?: unknown } | undefined
+    : undefined;
+  const version = typeof release?.tag_name === "string" ? release.tag_name.slice("worker-v".length) : undefined;
   if (!version) throw new Error("No stable worker release is available yet.");
 
   const asset = workerAssetName(version);
-  const baseUrl = `https://github.com/sammwyy/orquester/releases/download/v${encodeURIComponent(version)}/${asset}`;
+  const baseUrl = `https://github.com/sammwyy/orquester/releases/download/worker-v${encodeURIComponent(version)}/${asset}`;
   const [binaryResponse, checksumResponse] = await Promise.all([fetch(baseUrl), fetch(`${baseUrl}.sha256`)]);
   if (!binaryResponse.ok || !checksumResponse.ok) throw new Error("Could not download the worker release or its checksum.");
   const binary = Buffer.from(await binaryResponse.arrayBuffer());
@@ -425,7 +432,7 @@ function workerBinaryPath(): string | null {
   }
   const profile = process.env.ORQUESTER_WORKER_PROFILE === "release" ? "release" : "debug";
   const exe = process.platform === "win32" ? "orquester-worker.exe" : "orquester-worker";
-  return path.join(repoRoot, "apps", "worker", "target", profile, exe);
+  return path.join(repoRoot, "worker", "target", profile, exe);
 }
 
 function setWorkerServiceEnabled(enabled: boolean): void {
@@ -475,7 +482,7 @@ async function startIntegratedDaemon(): Promise<void> {
   const binary = workerBinaryPath();
   if (!binary || !fs.existsSync(binary)) {
     throw new Error(repoWorkerMode()
-      ? "Orquester worker binary not found. Run \"cargo build\" in apps/worker first."
+      ? "Orquester worker binary not found. Run \"cargo build\" in worker first."
       : "No local worker is installed. Complete local worker setup first.");
   }
 

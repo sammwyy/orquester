@@ -1,0 +1,76 @@
+name: Release desktop
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }} desktop
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Validate release tag
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          test "$TAG" = "desktop-v$version" || { echo "Tag $TAG must match apps/desktop/package.json version $version."; exit 1; }
+      - run: pnpm install --frozen-lockfile
+      - name: Build desktop packages
+        run: pnpm --filter @orquester/desktop build:main && pnpm --filter @orquester/desktop build:ui
+      - name: Package desktop
+        run: pnpm --filter @orquester/desktop exec electron-builder
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: apps/desktop/release/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - id: release
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=${TAG#desktop-v}
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Orquester Desktop v${{ steps.release.outputs.version }}
+          files: release-assets/*
+          generate_release_notes: true
+          prerelease: ${{ steps.release.outputs.prerelease }}

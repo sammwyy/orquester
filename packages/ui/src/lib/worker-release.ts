@@ -1,6 +1,6 @@
 export const ORQUESTER_GITHUB_REPOSITORY = "sammwyy/orquester";
 
-const GITHUB_RAW_BASE_URL = `https://raw.githubusercontent.com/${ORQUESTER_GITHUB_REPOSITORY}`;
+const GITHUB_API_BASE_URL = `https://api.github.com/repos/${ORQUESTER_GITHUB_REPOSITORY}`;
 const GITHUB_RELEASES_BASE_URL = `https://github.com/${ORQUESTER_GITHUB_REPOSITORY}/releases/download`;
 
 export type WorkerReleaseChannel = "stable" | "unstable";
@@ -26,34 +26,15 @@ export interface WorkerUpdate {
   updateAvailable: boolean;
 }
 
+interface GitHubRelease {
+  prerelease?: unknown;
+  tag_name?: unknown;
+}
+
 function normalizeVersion(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const version = value.trim().replace(/^v/, "");
   return version.length > 0 ? version : null;
-}
-
-function normalizeVersions(value: unknown): WorkerVersions {
-  if (!value || typeof value !== "object") {
-    return { stable: null, unstable: null };
-  }
-
-  const versions = value as Record<string, unknown>;
-  return {
-    stable: normalizeVersion(versions.stable),
-    unstable: normalizeVersion(versions.unstable)
-  };
-}
-
-function normalizeReleaseVersions(value: unknown): ReleaseVersions {
-  if (!value || typeof value !== "object") {
-    return { client: normalizeVersions(null), worker: normalizeVersions(null) };
-  }
-
-  const versions = value as Record<string, unknown>;
-  return {
-    client: normalizeVersions(versions.client),
-    worker: normalizeVersions(versions.worker)
-  };
 }
 
 function compareVersions(left: string, right: string): number {
@@ -74,101 +55,110 @@ function compareVersions(left: string, right: string): number {
   return leftPrerelease.localeCompare(rightPrerelease, undefined, { numeric: true });
 }
 
-export function workerVersionsUrl(branch = "main"): string {
-  return `${GITHUB_RAW_BASE_URL}/${encodeURIComponent(branch)}/version.json`;
+function releaseVersion(release: GitHubRelease, component: "desktop" | "worker"): string | null {
+  if (typeof release.tag_name !== "string") return null;
+  const prefix = `${component}-v`;
+  return release.tag_name.startsWith(prefix) ? normalizeVersion(release.tag_name.slice(component.length + 1)) : null;
 }
 
-/** Reads the release manifest maintained by the tag publishing workflow. */
-export async function getReleaseVersions(fetcher: typeof fetch = fetch): Promise<ReleaseVersions> {
-  const response = await fetcher(workerVersionsUrl(), {
-    headers: { Accept: "application/json" }
-  });
-  if (!response.ok) {
-    throw new Error(`Could not load worker versions (${response.status}).`);
-  }
-
-  return normalizeReleaseVersions(await response.json());
-}
-
-export async function getWorkerVersions(fetcher: typeof fetch = fetch): Promise<WorkerVersions> {
-  return (await getReleaseVersions(fetcher)).worker;
-}
-
-export async function getClientVersions(fetcher: typeof fetch = fetch): Promise<WorkerVersions> {
-  return (await getReleaseVersions(fetcher)).client;
-}
-
-export async function getLatestWorkerRelease(
-  channel: WorkerReleaseChannel = "stable",
-  fetcher: typeof fetch = fetch
+async function getLatestRelease(
+  component: "desktop" | "worker",
+  channel: WorkerReleaseChannel,
+  fetcher: typeof fetch
 ): Promise<WorkerRelease | null> {
-  const versions = await getWorkerVersions(fetcher);
-  const version = versions[channel];
+  const response = await fetcher(`${GITHUB_API_BASE_URL}/releases?per_page=100`, {
+    headers: { Accept: "application/vnd.github+json" }
+  });
+  if (!response.ok) throw new Error(`Could not load ${component} releases (${response.status}).`);
+
+  const releases = await response.json() as unknown;
+  if (!Array.isArray(releases)) return null;
+  const candidates = releases
+    .filter((release): release is GitHubRelease => Boolean(release) && typeof release === "object")
+    .filter((release) => channel === "unstable" ? release.prerelease === true : release.prerelease !== true)
+    .map((release) => releaseVersion(release, component))
+    .filter((version): version is string => version !== null);
+
+  const version = candidates.sort(compareVersions).at(-1);
   return version ? { version, channel } : null;
 }
 
-export async function getWorkerUpdate(
-  currentVersion: string,
-  channel: WorkerReleaseChannel = "stable",
-  fetcher: typeof fetch = fetch
-): Promise<WorkerUpdate> {
-  const latest = await getLatestWorkerRelease(channel, fetcher);
-  const current = normalizeVersion(currentVersion);
+export async function getReleaseVersions(fetcher: typeof fetch = fetch): Promise<ReleaseVersions> {
+  const [clientStable, clientUnstable, workerStable, workerUnstable] = await Promise.all([
+    getLatestRelease("desktop", "stable", fetcher),
+    getLatestRelease("desktop", "unstable", fetcher),
+    getLatestRelease("worker", "stable", fetcher),
+    getLatestRelease("worker", "unstable", fetcher)
+  ]);
   return {
-    latest,
-    updateAvailable: Boolean(latest && current && compareVersions(latest.version, current) > 0)
+    client: { stable: clientStable?.version ?? null, unstable: clientUnstable?.version ?? null },
+    worker: { stable: workerStable?.version ?? null, unstable: workerUnstable?.version ?? null }
   };
 }
 
-export async function getClientUpdate(
-  currentVersion: string,
-  channel: WorkerReleaseChannel = "stable",
-  fetcher: typeof fetch = fetch
-): Promise<WorkerUpdate> {
-  const versions = await getClientVersions(fetcher);
-  const version = versions[channel];
-  const latest = version ? { version, channel } : null;
+export async function getWorkerVersions(fetcher: typeof fetch = fetch): Promise<WorkerVersions> {
+  const [stable, unstable] = await Promise.all([
+    getLatestWorkerRelease("stable", fetcher),
+    getLatestWorkerRelease("unstable", fetcher)
+  ]);
+  return { stable: stable?.version ?? null, unstable: unstable?.version ?? null };
+}
+
+export async function getClientVersions(fetcher: typeof fetch = fetch): Promise<WorkerVersions> {
+  const [stable, unstable] = await Promise.all([
+    getLatestDesktopRelease("stable", fetcher),
+    getLatestDesktopRelease("unstable", fetcher)
+  ]);
+  return { stable: stable?.version ?? null, unstable: unstable?.version ?? null };
+}
+
+export function getLatestWorkerRelease(channel: WorkerReleaseChannel = "stable", fetcher: typeof fetch = fetch): Promise<WorkerRelease | null> {
+  return getLatestRelease("worker", channel, fetcher);
+}
+
+export function getLatestDesktopRelease(channel: WorkerReleaseChannel = "stable", fetcher: typeof fetch = fetch): Promise<WorkerRelease | null> {
+  return getLatestRelease("desktop", channel, fetcher);
+}
+
+export async function getWorkerUpdate(currentVersion: string, channel: WorkerReleaseChannel = "stable", fetcher: typeof fetch = fetch): Promise<WorkerUpdate> {
+  const latest = await getLatestWorkerRelease(channel, fetcher);
   const current = normalizeVersion(currentVersion);
-  return {
-    latest,
-    updateAvailable: Boolean(latest && current && compareVersions(latest.version, current) > 0)
-  };
+  return { latest, updateAvailable: Boolean(latest && current && compareVersions(latest.version, current) > 0) };
+}
+
+export async function getClientUpdate(currentVersion: string, channel: WorkerReleaseChannel = "stable", fetcher: typeof fetch = fetch): Promise<WorkerUpdate> {
+  const latest = await getLatestDesktopRelease(channel, fetcher);
+  const current = normalizeVersion(currentVersion);
+  return { latest, updateAvailable: Boolean(latest && current && compareVersions(latest.version, current) > 0) };
 }
 
 export function workerReleasePage(version: string): string {
   const normalizedVersion = normalizeVersion(version);
-  if (!normalizedVersion) {
-    throw new Error("A worker version is required.");
-  }
-  return `https://github.com/${ORQUESTER_GITHUB_REPOSITORY}/releases/tag/v${encodeURIComponent(normalizedVersion)}`;
+  if (!normalizedVersion) throw new Error("A worker version is required.");
+  return `https://github.com/${ORQUESTER_GITHUB_REPOSITORY}/releases/tag/worker-v${encodeURIComponent(normalizedVersion)}`;
 }
 
-export function workerPlatformForRuntime(
-  platform: string | undefined = typeof navigator === "undefined" ? undefined : navigator.userAgent
-): WorkerPlatform | null {
+export function desktopReleasePage(version: string): string {
+  const normalizedVersion = normalizeVersion(version);
+  if (!normalizedVersion) throw new Error("A desktop version is required.");
+  return `https://github.com/${ORQUESTER_GITHUB_REPOSITORY}/releases/tag/desktop-v${encodeURIComponent(normalizedVersion)}`;
+}
+
+export function workerPlatformForRuntime(platform: string | undefined = typeof navigator === "undefined" ? undefined : navigator.userAgent): WorkerPlatform | null {
   if (platform === "win32" || platform === "windows" || /windows/i.test(platform ?? "")) return "windows";
   if (platform === "linux" || /linux/i.test(platform ?? "")) return "linux";
   return null;
 }
 
-/** Resolves the release asset for an explicit worker version and platform. */
 export function resolveWorkerArtifact(version: string, platform: WorkerPlatform): string {
   const normalizedVersion = normalizeVersion(version);
-  if (!normalizedVersion) {
-    throw new Error("A worker version is required.");
-  }
-
+  if (!normalizedVersion) throw new Error("A worker version is required.");
   const extension = platform === "windows" ? ".exe" : "";
   const asset = `orquester-worker-${normalizedVersion}-${platform}-x86_64${extension}`;
-  return `${GITHUB_RELEASES_BASE_URL}/v${encodeURIComponent(normalizedVersion)}/${asset}`;
+  return `${GITHUB_RELEASES_BASE_URL}/worker-v${encodeURIComponent(normalizedVersion)}/${asset}`;
 }
 
-/** Resolves the newest artifact in a channel for the supplied runtime platform. */
-export async function resolveLatestWorkerArtifact(
-  channel: WorkerReleaseChannel = "stable",
-  platform = workerPlatformForRuntime(),
-  fetcher: typeof fetch = fetch
-): Promise<string | null> {
+export async function resolveLatestWorkerArtifact(channel: WorkerReleaseChannel = "stable", platform = workerPlatformForRuntime(), fetcher: typeof fetch = fetch): Promise<string | null> {
   if (!platform) return null;
   const release = await getLatestWorkerRelease(channel, fetcher);
   return release ? resolveWorkerArtifact(release.version, platform) : null;

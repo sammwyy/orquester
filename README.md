@@ -2,104 +2,112 @@
 
 # Orquester
 
-**One place to run every coding agent you use — on your machine, from any device.**
+### Your development machine, orchestrated.
 
-Orquester gives Claude Code, Codex, Gemini CLI, OpenCode and your plain old
-shell a proper home: real terminals that keep running when you close the
-window, organized by workspace and project, reachable from your desktop app or
-your phone's browser.
+**A calm home for coding agents, terminals and projects — local-first, persistent, and reachable from any device you trust.**
 
-`local-first` · `desktop + web` · `no cloud, no account, no database`
-
-<!-- Screenshot: the desktop app with an agent running in a project tab. -->
-![Orquester desktop](docs/screenshots/hero.png)
+`Rust worker` · `Electron desktop` · `web client` · `your files stay yours`
 
 </div>
 
----
+## The idea
 
-## Why
+Coding work does not fit neatly in a terminal tab. An agent may be planning for
+twenty minutes, a dev server may be exposing a useful port, and a project may
+need a quick edit, a Git action, or a request against an API. Closing a window
+should not erase that context.
 
-Coding agents live in terminals, and terminals are awkward to manage. You end up
-with a dozen tabs across a dozen projects, no idea which agent is still working,
-and nothing survives a closed window or a walk to the kitchen.
+Orquester runs a small Worker on the machine that owns the work. It keeps PTY
+sessions, workspace state, configuration and host integrations alive. The
+Desktop app and browser client are two views of that same Worker.
 
-Orquester runs a small **daemon** on your machine that owns those terminals. The
-apps are just windows onto it:
+> Close the app. Keep the work. Open another device. See the same project.
 
-- **Close the window, keep the work.** Sessions live in the daemon, not the UI.
-- **Same state everywhere.** Open the desktop app and a browser tab side by
-  side — same sessions, same output, live.
-- **Check in from your phone.** Enable the HTTP transport and your agents are a
-  URL away on your LAN, password protected.
-- **Your files stay yours.** Everything is plain directories and JSON under
-  `~/.orquester`. No database, no telemetry, no sign-in.
-
-## Features
-
-**Agents & shells**
-Auto-detects installed agents and shells and gives each one a tab. Install or
-update supported agents from Settings without touching a terminal. Supported
-today: Claude Code, Codex, Gemini CLI, OpenCode, DeepSeek — plus Bash, Zsh,
-Fish, Nushell, PowerShell, cmd and sh.
-
-**Workspaces & projects**
-Your work is a two-level folder tree — `workspaces/<workspace>/<project>` — so
-the sidebar mirrors how your disk is already organized. Create either one from
-the UI.
-
-**Real terminals**
-GPU-accelerated xterm.js with a proper 256-color palette, full control-key
-support, and reconnect-safe output replay. TUIs behave.
-
-**Built-in file browser & editor**
-Browse a project, open a file, edit it with syntax highlighting (CodeMirror 6),
-save. Handy when the agent's diff needs a human touch.
-
-**Open on ▾**
-Launch the current project in VS Code, Cursor, Zed, Windsurf, Antigravity, any
-JetBrains IDE, Sublime, your file manager or a browser — whatever Orquester
-finds installed.
-
-**Remote access, on your terms**
-The HTTP transport is off by default. Turn it on, set a password, and the daemon
-serves the same UI to any device on your network.
-
-**Multi-window & tray**
-Open several windows against one daemon. Enable *run in background* and the tray
-keeps your agents alive with no window at all.
-
-**Mobile-ready**
-Not a shrunken desktop UI: a real off-canvas sidebar, bottom-sheet menus, and a
-control-key bar that sits above the on-screen keyboard so you can send `Ctrl-C`
-from a phone.
-
-## Screenshots
-
-<!--
-Drop the captures into docs/screenshots/ with these filenames:
-  workspaces.png  — sidebar with a few workspaces/projects, one project open
-  files.png       — the file browser with a file open in the editor
-  settings.png    — Settings → Agents, showing install/update state
-  mobile.png      — narrow viewport: drawer sidebar + terminal + key bar
--->
-
-| Workspaces & tabs | Files & editor |
+| What matters | How Orquester handles it |
 | --- | --- |
-| ![Workspaces](docs/screenshots/workspaces.png) | ![File browser](docs/screenshots/files.png) |
-| **Agent management** | **On your phone** |
-| ![Settings](docs/screenshots/settings.png) | ![Mobile](docs/screenshots/mobile.png) |
+| **Long-running work** | Terminals and agent sessions belong to the Worker, not a window. |
+| **Many projects** | Workspaces and projects keep the sidebar aligned with real folders. |
+| **Local control** | No account, cloud service, telemetry or database is required. |
+| **Flexible access** | Use the native Desktop app locally or the browser UI from a trusted network. |
 
-## Status
+## What you can do
 
-Early days — version `0.0.0`. It works and it's used daily, but interfaces move
-and there are no packaged releases yet. Build from source, and expect the
-occasional rough edge.
+### Give every tool its own place
 
-## Getting started
+Open shells and installed coding agents as persistent project tabs. Orquester
+detects the tools already available on the host, shows their installed version,
+and can install or update supported agent harnesses from Settings.
 
-**Requirements:** Node.js 20+ and [pnpm](https://pnpm.io) 10+. Linux, macOS or
-Windows.
+- **Agents:** Antigravity, Claude Code, Cline, Codex, Deep Code, Grok Build,
+  Kimi Code and OpenCode.
+- **Shells:** Bash, Zsh, Fish, Nushell, PowerShell, Command Prompt and sh,
+  according to the host platform.
+- **Resume where you left off:** supported agents expose prior project
+  conversations directly from the new-tab menu.
+- **Keep an eye on limits:** Claude, Codex, Antigravity and Grok usage/auth
+  information is surfaced in the quota view when their CLIs support it.
+
+### Work with projects, not disconnected tabs
+
+Projects live beneath workspaces on disk, and the sidebar mirrors that shape.
+Create workspaces or projects from the app, move between active projects, and
+keep terminal, file, Git and REST tabs together under the project they belong
+to. The Attention Center highlights agent sessions that are active, finished,
+or waiting for input.
+
+### Edit, inspect and ship without leaving the app
+
+Orquester includes the small pieces that are usually spread across several
+windows:
+
+- **Terminal:** full interactive PTY sessions with reconnect-safe output replay
+  and mobile-friendly control keys.
+- **Files:** a project-scoped browser and editor with syntax highlighting,
+  search and save.
+- **Git:** inspect branches, commits, stashes, diffs and working changes;
+  initialize repositories, stage/unstage/discard files, commit, fetch, pull,
+  check out branches and manage stashes.
+- **REST Client:** keep `.http` and `.rest` requests with the repository, edit
+  headers/body/variables, use `.env` values, send requests, and inspect
+  formatted responses without moving secrets into a separate SaaS tool.
+- **Open in:** launch the current project in a detected editor, file manager or
+  browser. The catalog includes VS Code, Cursor, Windsurf, Zed, Sublime and
+  JetBrains IDEs, plus common host browsers and file explorers.
+
+### Know what the machine is doing
+
+The status bar is more than decoration. Optional Worker integrations expose
+Git state, CPU and memory, workspace disk usage, battery/power state, media
+controls, keep-awake state, ports opened by child processes, and a process tree
+for sessions started by the Worker. Integrations can be enabled or disabled
+locally, per Worker.
+
+### Reach the Worker from another device
+
+The Desktop client can start a local Worker or connect to a saved remote one.
+When HTTP access is enabled, the Worker can serve the browser UI on your LAN;
+the responsive interface provides a drawer sidebar, adaptive menus and a
+mobile control-key bar for terminal work from a phone.
+
+Remote access is deliberately opt-in. It is useful for a trusted LAN, VPN, or
+SSH tunnel — not for exposing directly to the public internet.
+
+## A day with Orquester
+
+1. Create a workspace and a project, or point the Worker at the workspace
+   directory you already use.
+2. Open a shell, agent, Git, files or REST Client tab with the **+** menu.
+3. Let an agent work while you inspect its diff, test an endpoint, or open the
+   project in your editor.
+4. Close the window when you need to. The Worker and its sessions keep going.
+5. Later, reopen Desktop or visit the Worker from another trusted device and
+   continue from the same project.
+
+## Get started
+
+### Develop Orquester locally
+
+Requirements: Node.js 20+, [pnpm](https://pnpm.io) 10+, and a Rust toolchain.
 
 ```sh
 git clone https://github.com/sammwyy/orquester.git
@@ -108,86 +116,72 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` opens the desktop app against your normal per-user Orquester config.
-Use the explicit sandbox command when you need isolated development state:
+`pnpm dev` builds the repository Worker at `worker/target` and starts the
+Desktop app against it. It never downloads a release Worker during normal
+development.
+
+Use a disposable configuration directory when you want isolated development
+state:
 
 ```sh
 pnpm dev:stage
 ```
 
-`pnpm dev` uses the worker already compiled in `apps/worker/target`; it never
-downloads a release worker unless `ORQUESTER_USE_RELEASE_WORKER=1` is set. Use
-`pnpm dev:remoteworker` to run the desktop client without a local worker and
-exercise the remote-worker onboarding flow.
-
-### Building the desktop app
+Useful focused commands:
 
 ```sh
-pnpm build
+pnpm dev:worker       # Run only the Worker from source
+pnpm dev:web          # Run the web client against http://127.0.0.1:47831
+pnpm check            # Typecheck every JS/TS workspace package
+cargo check --manifest-path worker/Cargo.toml
 ```
 
-Installers land in `apps/desktop/release` — AppImage on Linux, NSIS on Windows,
-DMG on macOS.
+`pnpm dev:remoteworker` starts Desktop without a local Worker so the remote
+Worker onboarding flow can be exercised.
 
-### Running the worker on its own
-
-Useful on a headless machine you want to reach from a laptop or phone:
+### Run a Worker on a machine you want to reach
 
 ```sh
 ORQUESTER_HTTP_ENABLED=true \
-ORQUESTER_HTTP_PASSWORD='a-good-password' \
-cargo run --manifest-path apps/worker/Cargo.toml
+ORQUESTER_HTTP_PASSWORD='a-long-unique-password' \
+cargo run --manifest-path worker/Cargo.toml
 ```
 
-Then point a browser at `http://<host>:47831`.
+Open `http://<worker-host>:47831` from a trusted device, or add that Worker in
+**Settings → Remote Workers** from Desktop.
 
-## Using it
+## Security and privacy
 
-1. **Create a workspace** in the sidebar — it's a folder under your workspaces
-   directory (`~/workspaces` by default).
-2. **Create a project** inside it, then open it.
-3. **Press `+`** in the top bar and pick a shell, an agent, or the file browser.
-4. Work. Close the window whenever — the session is still there when you come
-   back, from any client.
+The Worker is designed as a local authority, and remote clients have a narrower
+role.
 
-Missing an agent? **Settings → Agents** lists everything Orquester knows about
-and installs it for you.
+- Configuration changes, host-tool launching, agent installation and worker
+  management are available only through the local transport.
+- Remote HTTP clients authenticate with a bcrypt-derived bearer value; plaintext
+  passwords are not stored by Orquester or sent over the wire.
+- Filesystem APIs are confined to the configured workspaces directory.
+- State is stored as directories and JSON under `~/.orquester` by default — no
+  database or cloud account is involved.
 
-## Remote access & security
-
-Remote access is opt-in and password protected. Enable it in
-**Settings → Daemon**, or set `ORQUESTER_HTTP_ENABLED=true` with
-`ORQUESTER_HTTP_PASSWORD`.
-
-How it's protected:
-
-- The daemon stores a **bcrypt hash** of your password, never the password.
-- Clients derive the same hash locally and send it as a bearer token, so your
-  plaintext password never crosses the network and never hits local storage.
-- Daemon configuration and shutdown are reachable **only over the local socket**
-  — a remote client can read the config, never change it.
-- The local socket transport is unauthenticated by design and protected by
-  filesystem permissions, exactly like a Docker socket.
-
-A frank caveat: this is plain HTTP with no TLS. It is built for a trusted LAN.
-Don't expose the port to the internet — put it behind a VPN, an SSH tunnel, or
-a reverse proxy that terminates TLS.
+The HTTP transport is plain HTTP, not TLS. Keep it on a trusted LAN or put it
+behind a VPN, SSH tunnel or TLS-terminating reverse proxy.
 
 ## Configuration
 
-Everything lives under `~/.orquester` (override with `ORQUESTER_APPDIR`):
+By default, Orquester keeps its state here (override with `ORQUESTER_APPDIR`):
 
-```
+```text
 ~/.orquester/
 ├── app/
-│   ├── app.json       # UI preferences
-│   └── remotes.json   # saved remote servers
+│   ├── app.json       # Appearance, update channel and client preferences
+│   └── remotes.json   # Saved remote Workers
 └── daemon/
-    ├── daemon.json    # workspaces dir, logs, HTTP transport
+    ├── daemon.json    # Workspaces, logs, HTTP and integration settings
     └── logs/
 ```
 
-`daemon.json` in full:
+The main server settings are intentionally plain JSON. Paths accept
+`$userhome`, `$user`, `$cwd` and `$appdir`:
 
 ```jsonc
 {
@@ -200,46 +194,49 @@ Everything lives under `~/.orquester` (override with `ORQUESTER_APPDIR`):
 }
 ```
 
-Paths accept `$userhome`, `$user`, `$cwd` and `$appdir`.
+## Architecture
 
-**Teaching it about a tool it doesn't know.** Drop a JSON file next to
-`daemon.json` — `agents.json`, `shells.json`, `ides.json`, `browsers.json` or
-`file-explorers.json`:
-
-```json
-[{ "id": "aider", "name": "Aider", "bin": ["aider"], "versionFlag": "--version" }]
+```text
+Desktop app ─┐
+             ├── Worker ── PTYs, files, projects, tool registry and integrations
+Web client ──┘
 ```
 
-It shows up in the menus on the next daemon start.
-
-## How it's built
-
-| Piece | What it is |
+| Piece | Responsibility |
 | --- | --- |
-| `apps/worker` | Rust server owning PTYs, the filesystem and the tool catalog |
-| `apps/desktop` | Electron shell that starts and connects to a local worker, plus tray |
-| `apps/web` | Vite SPA for remote access |
-| `packages/ui` | The React app both clients render (Tailwind, zustand, xterm.js) |
-| `packages/api` | Shared wire types |
-| `packages/config` | Zod schemas and the on-disk layout |
-| `packages/registry` | The static catalog of known agents, shells, IDEs, browsers |
+| `worker/` | Rust Worker: the persistent runtime, local/HTTP transports, sessions and host integrations. |
+| `apps/desktop/` | Electron client, tray, native window behavior and local-socket transport. |
+| `apps/web/` | Vite browser client for connecting to a Worker remotely. |
+| `packages/ui/` | Shared React interface rendered by Desktop and Web. |
+| `packages/api/` | Shared wire contracts mirrored by the Rust Worker. |
+| `packages/config/` | Configuration schemas, defaults and on-disk layout. |
+| `packages/registry/` | Static definitions for known tools and templates. |
 
-TypeScript end to end, pnpm workspaces, no build step for the shared packages.
+## Releases
+
+Desktop and Worker are released independently.
+
+- `desktop-vX.Y.Z` creates a Desktop release with installers only.
+- `worker-vX.Y.Z` creates a Worker release with platform binaries and checksums
+  only.
+
+Desktop is not packaged with a Worker binary. In local Worker mode, a packaged
+Desktop app finds the matching platform asset from a `worker-v*` GitHub release,
+verifies its checksum, installs it locally and starts it. Development remains
+different by design: `pnpm dev` always uses the Worker in this repository.
 
 ## Contributing
 
-Contributions are welcome. **[AGENTS.md](./AGENTS.md)** is the guide: it maps
-the codebase, explains where each kind of change belongs, and walks through the
-common feature recipes. It's written for both human contributors and AI coding
-agents — [CLAUDE.md](./CLAUDE.md) simply points at it.
-
-Before opening a PR:
+The project is a pnpm monorepo with a Rust runtime. Read
+[AGENTS.md](./AGENTS.md) before changing architecture or threading a feature
+through the Worker and UI.
 
 ```sh
 pnpm check
 ```
 
-Commits follow `type(scope): summary` — `feat(ui): …`, `fix(daemon): …`.
+Commits use `type(scope): summary`, such as `feat(ui): …` or
+`fix(worker): …`.
 
 ## License
 

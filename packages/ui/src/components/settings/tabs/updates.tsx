@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { getClientUpdate, getWorkerUpdate, workerReleasePage, type WorkerReleaseChannel, type WorkerUpdate } from "../../../lib/worker-release";
+import { desktopReleasePage, getClientUpdate, getWorkerUpdate, workerReleasePage, type WorkerReleaseChannel, type WorkerUpdate } from "../../../lib/worker-release";
 import { useOrquester } from "../../../context/orquester-context";
 import { useAppStore } from "../../../store/app";
 import { Button, Switch } from "../../ui";
@@ -53,11 +53,12 @@ export const UpdatesSettings: React.FC = () => {
   }, [appConfig.searchForUpdates, check]);
 
   const update = async () => {
-    const latest = clientUpdate?.latest ?? workerUpdate?.latest;
+    const clientLatest = clientUpdate?.latest;
+    const latest = clientLatest ?? workerUpdate?.latest;
     if (!latest) return;
-    const url = workerReleasePage(latest.version);
+    const url = clientLatest ? desktopReleasePage(latest.version) : workerReleasePage(latest.version);
     const opened = openExternal ? await openExternal(url) : window.open(url, "_blank") !== null;
-    setMessage(opened ? "Opening the release with the client and worker update." : "Could not open the release page.");
+    setMessage(opened ? `Opening the ${clientLatest ? "desktop" : "worker"} release.` : "Could not open the release page.");
   };
 
   const available = Boolean(clientUpdate?.updateAvailable || workerUpdate?.updateAvailable);

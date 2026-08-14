@@ -43,6 +43,7 @@ export { toUiConnection, toRemoteConfig } from "./lib/connections";
 export {
   ORQUESTER_GITHUB_REPOSITORY,
   getClientUpdate,
+  desktopReleasePage,
   getClientVersions,
   getReleaseVersions,
   getWorkerUpdate,
@@ -52,7 +53,6 @@ export {
   resolveLatestWorkerArtifact,
   workerPlatformForRuntime,
   workerReleasePage,
-  workerVersionsUrl,
   type WorkerPlatform,
   type ReleaseVersions,
   type WorkerRelease,
