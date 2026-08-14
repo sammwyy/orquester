@@ -34,11 +34,12 @@ export interface WorkerManager {
   install(): Promise<void>;
   configure(input: LocalWorkerSetup): Promise<void>;
   start(): Promise<void>;
+  setServiceEnabled(enabled: boolean): Promise<void>;
   chooseWorkspacesDirectory(): Promise<string | undefined>;
 }
 
 export interface LocalWorkerSetup {
-  runInBackground: boolean;
+  startWorkerOnLogin: boolean;
   remoteAccess: boolean;
   port: number;
   username?: string;

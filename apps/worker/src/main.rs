@@ -9,6 +9,7 @@ mod paths;
 mod registry;
 mod routes;
 mod sessions;
+mod service_management;
 mod state;
 mod transports;
 
@@ -34,6 +35,9 @@ async fn main() {
     // ORQUESTER_APPDIR); either way the chosen value is resolved against cwd.
     let appdir_raw = paths::parse_appdir_arg(&args).or_else(|| env.get("ORQUESTER_APPDIR").cloned());
     let appdir = paths::resolve_appdir(appdir_raw.as_deref(), &cwd);
+    if let Some(exit_code) = service_management::handle(&args, appdir.as_deref()) {
+        std::process::exit(exit_code);
+    }
     let home_dir = dirs_home().expect("cannot resolve home directory");
     let platform = if cfg!(windows) { "win32" } else if cfg!(target_os = "macos") { "darwin" } else { "linux" };
 

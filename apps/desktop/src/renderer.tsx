@@ -8,13 +8,15 @@ const desktopBridge = window.orquesterDesktop;
 const transporter = new UnixSocketTransporter(desktopBridge);
 const workerManager = typeof desktopBridge.installWorker === "function"
   && typeof desktopBridge.configureWorker === "function"
+  && typeof desktopBridge.setWorkerServiceEnabled === "function"
   && typeof desktopBridge.startWorker === "function"
   && typeof desktopBridge.chooseWorkerWorkspaces === "function"
   ? {
       install: () => desktopBridge.installWorker().then(() => undefined),
       status: () => desktopBridge.workerStatus(),
-      configure: (input: { runInBackground: boolean; remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string }) => desktopBridge.configureWorker(input),
+      configure: (input: { startWorkerOnLogin: boolean; remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string }) => desktopBridge.configureWorker(input),
       start: () => desktopBridge.startWorker().then(() => undefined),
+      setServiceEnabled: (enabled: boolean) => desktopBridge.setWorkerServiceEnabled(enabled),
       chooseWorkspacesDirectory: () => desktopBridge.chooseWorkerWorkspaces()
     }
   : undefined;

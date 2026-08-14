@@ -241,6 +241,8 @@ export const appConfigSchema = z.object({
   useTitlebar: z.boolean().default(true),
   /** Desktop: keep the daemon running in a tray when the window is closed. */
   runInBackground: z.boolean().default(false),
+  /** Start the local worker when the user signs in. */
+  startWorkerOnLogin: z.boolean().default(false),
   /** Sidebar opacity; 1 keeps the surface opaque. */
   sidebarOpacity: z.coerce.number().min(0.3).max(1).default(0.85),
   /** Ask the compositor to blur behind the transparent sidebar. */

@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("orquesterDesktop", {
   workerStatus: () => ipcRenderer.invoke("orquester:worker:status"),
   installWorker: () => ipcRenderer.invoke("orquester:worker:install"),
   configureWorker: (input) => ipcRenderer.invoke("orquester:worker:configure", input),
+  setWorkerServiceEnabled: (enabled) => ipcRenderer.invoke("orquester:worker:set-service-enabled", enabled),
   chooseWorkerWorkspaces: () => ipcRenderer.invoke("orquester:worker:choose-workspaces"),
   startWorker: () => ipcRenderer.invoke("orquester:worker:start"),
   loadAppConfig: () => ipcRenderer.invoke("orquester:config:load"),

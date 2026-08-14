@@ -114,6 +114,7 @@ let homeApi: ApiClient | null = null;
 export interface UiAppConfig {
   useTitlebar: boolean;
   runInBackground: boolean;
+  startWorkerOnLogin: boolean;
   /** Sidebar alpha while transparent (0.3–1). */
   sidebarOpacity: number;
   glassSidebar: boolean;
@@ -135,6 +136,7 @@ export interface UiAppConfig {
 const DEFAULT_APP_CONFIG: UiAppConfig = {
   useTitlebar: false,
   runInBackground: false,
+  startWorkerOnLogin: false,
   sidebarOpacity: 0.85,
   glassSidebar: false,
   titlebarOpacity: 0.85,
@@ -545,6 +547,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           appConfig: {
             useTitlebar: config.useTitlebar ?? state.appConfig.useTitlebar,
             runInBackground: config.runInBackground ?? state.appConfig.runInBackground,
+            startWorkerOnLogin: config.startWorkerOnLogin ?? state.appConfig.startWorkerOnLogin,
             sidebarOpacity: config.sidebarOpacity ?? state.appConfig.sidebarOpacity,
             glassSidebar: config.glassSidebar ?? state.appConfig.glassSidebar,
             titlebarOpacity: config.titlebarOpacity ?? state.appConfig.titlebarOpacity,

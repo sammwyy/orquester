@@ -6,12 +6,24 @@ import { useOrquester } from "../../../context/orquester-context";
 import { useAppStore } from "../../../store/app";
 import { Group, Field } from "./shared";
 export const AppSettings: React.FC = () => {
-  const { runtime } = useOrquester();
+  const { runtime, workerManager } = useOrquester();
   const appConfig = useAppStore((s) => s.appConfig);
   const updateAppConfig = useAppStore((s) => s.updateAppConfig);
   const connections = useAppStore((s) => s.connections);
   const activeId = useAppStore((s) => s.activeConnectionId);
   const active = connections.find((c) => c.id === activeId);
+  const [serviceError, setServiceError] = useState<string | null>(null);
+
+  const setStartWorkerOnLogin = async (enabled: boolean) => {
+    if (!workerManager) return;
+    setServiceError(null);
+    try {
+      await workerManager.setServiceEnabled(enabled);
+      await updateAppConfig({ startWorkerOnLogin: enabled });
+    } catch (cause) {
+      setServiceError(cause instanceof Error ? cause.message : "Could not update worker sign-in startup.");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -26,6 +38,10 @@ export const AppSettings: React.FC = () => {
               onChange={(checked) => void updateAppConfig({ runInBackground: checked })}
             />
           </Field>
+          {appConfig.localWorkerInstalled && workerManager && <Field label="Start worker when I sign in" hint="The worker starts without opening the desktop app.">
+            <Switch checked={appConfig.startWorkerOnLogin} onChange={(checked) => void setStartWorkerOnLogin(checked)} />
+          </Field>}
+          {serviceError && <p className="text-xs text-red-300">{serviceError}</p>}
         </Group>
       )}
 

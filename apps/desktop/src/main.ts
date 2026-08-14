@@ -38,7 +38,7 @@ let tray: Tray | undefined;
 let daemonSocketPath: string | undefined;
 let isDaemonOwner = false;
 let quitting = false;
-let pendingWorkerSetup: { runInBackground: boolean; remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string } | undefined;
+let pendingWorkerSetup: { startWorkerOnLogin: boolean; remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string } | undefined;
 
 function checkExistingDaemon(socketPath: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -403,7 +403,7 @@ function ensureAppFiles(): void {
   fs.mkdirSync(logsDir, { recursive: true });
   const appConfigPath = path.join(dir, "app.json");
   if (!fs.existsSync(appConfigPath)) {
-    const defaults = { version: 1, activeConnectionId: "local", useTitlebar: true, runInBackground: false, setupComplete: false, localWorkerInstalled: false };
+    const defaults = { version: 1, activeConnectionId: "local", useTitlebar: true, runInBackground: false, startWorkerOnLogin: false, setupComplete: false, localWorkerInstalled: false };
     fs.writeFileSync(appConfigPath, `${JSON.stringify(defaults, null, 2)}\n`);
   }
   const remotesPath = path.join(dir, "remotes.json");
@@ -423,21 +423,12 @@ function workerBinaryPath(): string | null {
   return path.join(repoRoot, "apps", "worker", "target", profile, exe);
 }
 
-function registerBackgroundWorker(): void {
+function setWorkerServiceEnabled(enabled: boolean): void {
   const binary = workerBinaryPath();
-  if (!binary || repoWorkerMode()) return;
-  const workerArgs = `"${binary}" --appdir "${baseDir()}"`;
-  if (process.platform === "win32") {
-    const result = spawnSync("schtasks", ["/Create", "/TN", "Orquester Worker", "/SC", "ONLOGON", "/TR", workerArgs, "/F"], { windowsHide: true });
-    if (result.status !== 0) throw new Error("Could not register the background worker task.");
-    return;
-  }
-  if (process.platform === "linux") {
-    const unitDir = path.join(app.getPath("home"), ".config", "systemd", "user");
-    fs.mkdirSync(unitDir, { recursive: true });
-    fs.writeFileSync(path.join(unitDir, "orquester-worker.service"), `[Unit]\nDescription=Orquester Worker\n\n[Service]\nExecStart=${workerArgs}\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n`);
-    const result = spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore" });
-    if (result.status === 0) spawnSync("systemctl", ["--user", "enable", "orquester-worker.service"], { stdio: "ignore" });
+  if (!binary || !fs.existsSync(binary)) throw new Error("The local worker is not installed.");
+  const result = spawnSync(binary, ["service", enabled ? "install" : "uninstall", "--appdir", baseDir()], { encoding: "utf8", windowsHide: true });
+  if (result.error || result.status !== 0) {
+    throw new Error(result.stderr?.trim() || result.error?.message || "Could not update worker sign-in startup.");
   }
 }
 
@@ -622,14 +613,14 @@ function registerIpc(): void {
       return { source: "repository" };
     }
     const installed = await installLatestWorker();
+    if (readAppConfig().startWorkerOnLogin === true) setWorkerServiceEnabled(true);
     return { source: "release", version: installed.version };
   });
-  ipcMain.handle("orquester:worker:configure", async (_event, input: { runInBackground: boolean; remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string }) => {
+  ipcMain.handle("orquester:worker:configure", async (_event, input: { startWorkerOnLogin: boolean; remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string }) => {
     if (input.remoteAccess && (!input.username?.trim() || !input.password || input.password.length < 8)) {
       throw new Error("Remote access requires a username and a password with at least 8 characters.");
     }
     pendingWorkerSetup = { ...input, port: Number.isInteger(input.port) && input.port > 0 && input.port < 65536 ? input.port : 47831, username: input.username?.trim() };
-    writeAppConfig({ runInBackground: input.runInBackground });
     await applyWorkerSetup(pendingWorkerSetup);
   });
   ipcMain.handle("orquester:worker:choose-workspaces", async () => {
@@ -649,10 +640,12 @@ function registerIpc(): void {
       isDaemonOwner = true;
       createTray();
     }
-    if (pendingWorkerSetup?.runInBackground) registerBackgroundWorker();
+    if (pendingWorkerSetup) await applyWorkerSetup(pendingWorkerSetup);
+    if (pendingWorkerSetup?.startWorkerOnLogin) setWorkerServiceEnabled(true);
     pendingWorkerSetup = undefined;
     return { socketPath: daemonSocketPath };
   });
+  ipcMain.handle("orquester:worker:set-service-enabled", (_event, enabled: boolean) => setWorkerServiceEnabled(enabled === true));
   ipcMain.handle("orquester:config:load", () => readAppConfig());
   ipcMain.handle("orquester:config:save", (_event, patch: Record<string, unknown>) => writeAppConfig(patch));
   ipcMain.handle("orquester:remotes:load", () => {
