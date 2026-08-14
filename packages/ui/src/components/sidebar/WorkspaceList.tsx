@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { Folder, FolderPlus } from "lucide-react";
-import { IconButton } from "../ui";
+import React, { useEffect, useRef, useState } from "react";
+import { Folder, FolderPlus, Search } from "lucide-react";
+import { IconButton, Input } from "../ui";
 import { NewItemInput } from "./NewItemInput";
 import { SidebarHeader } from "./SidebarHeader";
 import { useAppStore } from "../../store/app";
@@ -11,7 +11,16 @@ export const WorkspaceList: React.FC = () => {
   const loading = useAppStore((s) => s.workspacesLoading);
   const openWorkspace = useAppStore((s) => s.openWorkspace);
   const createWorkspace = useAppStore((s) => s.createWorkspace);
+  const scrollTop = useAppStore((s) => s.clientUiState.sidebarScrollByKey.workspaces ?? 0);
+  const setSidebarScroll = useAppStore((s) => s.setSidebarScroll);
+  const navRef = useRef<HTMLElement>(null);
+  const filter = useAppStore((s) => s.clientUiState.sidebarFilterByKey.workspaces ?? "");
+  const setSidebarFilter = useAppStore((s) => s.setSidebarFilter);
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (navRef.current) navRef.current.scrollTop = scrollTop;
+  }, [scrollTop]);
 
   return (
     <>
@@ -23,7 +32,8 @@ export const WorkspaceList: React.FC = () => {
         }
       />
 
-      <nav className="flex-1 space-y-px overflow-y-auto p-2">
+      <nav ref={navRef} onScroll={(event) => setSidebarScroll("workspaces", event.currentTarget.scrollTop)} className="flex-1 space-y-px overflow-y-auto p-2">
+        <div className="relative mb-2"><Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-neutral-600" /><Input value={filter} onChange={(event) => setSidebarFilter("workspaces", event.target.value)} placeholder="Filter workspaces" className="h-7 pl-7 text-xs" /></div>
         {creating && (
           <NewItemInput
             placeholder="workspace-name"
@@ -41,7 +51,7 @@ export const WorkspaceList: React.FC = () => {
         {!loading && workspaces.length === 0 && !creating && (
           <p className="px-2 py-2 text-xs text-neutral-600">No workspaces yet</p>
         )}
-        {workspaces.map((workspace) => (
+        {workspaces.filter((workspace) => workspace.name.toLowerCase().includes(filter.trim().toLowerCase())).map((workspace) => (
           <button
             key={workspace.path}
             type="button"

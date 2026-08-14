@@ -1,5 +1,6 @@
-import React from "react";
-import { Folder, FolderTree } from "lucide-react";
+import React, { useEffect, useRef } from "react";
+import { Folder, FolderTree, Search } from "lucide-react";
+import { Input } from "../ui";
 import { cn } from "../../lib/cn";
 import { getRegistryIcon } from "../../icons";
 import { SidebarHeader } from "./SidebarHeader";
@@ -43,12 +44,22 @@ export const ActiveList: React.FC = () => {
   const groups = useActiveWorkspaces();
   const currentProject = useAppStore((s) => s.currentProject);
   const openProject = useAppStore((s) => s.openProject);
+  const scrollTop = useAppStore((s) => s.clientUiState.sidebarScrollByKey.active ?? 0);
+  const setSidebarScroll = useAppStore((s) => s.setSidebarScroll);
+  const navRef = useRef<HTMLElement>(null);
+  const filter = useAppStore((s) => s.clientUiState.sidebarFilterByKey.active ?? "");
+  const setSidebarFilter = useAppStore((s) => s.setSidebarFilter);
+
+  useEffect(() => {
+    if (navRef.current) navRef.current.scrollTop = scrollTop;
+  }, [scrollTop]);
 
   return (
     <>
       <SidebarHeader />
 
-      <nav className="flex-1 overflow-y-auto p-2">
+      <nav ref={navRef} onScroll={(event) => setSidebarScroll("active", event.currentTarget.scrollTop)} className="flex-1 overflow-y-auto p-2">
+        <div className="relative mb-2"><Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-neutral-600" /><Input value={filter} onChange={(event) => setSidebarFilter("active", event.target.value)} placeholder="Filter projects" className="h-7 pl-7 text-xs" /></div>
         {groups.length === 0 && (
           <div className="px-2 py-6 text-center">
             <p className="text-xs text-neutral-500">Nothing running</p>
@@ -58,7 +69,7 @@ export const ActiveList: React.FC = () => {
           </div>
         )}
 
-        {groups.map((group) => (
+        {groups.map((group) => ({ ...group, projects: group.projects.filter(({ project }) => project.name.toLowerCase().includes(filter.trim().toLowerCase())) })).filter((group) => group.projects.length > 0).map((group) => (
           <div key={group.name} className="mb-2 last:mb-0">
             <div className="flex h-6 items-center gap-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-neutral-500">
               <Folder size={11} className="shrink-0 text-neutral-600" />

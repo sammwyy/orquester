@@ -9,6 +9,7 @@ use crate::integrations::process_manager::{ProcessManagerService, ProcessManager
 use crate::integrations::system_resources::{SystemResourcesService, SystemResourcesWatcher};
 use crate::paths::ResolvedPaths;
 use crate::registry::RegistryService;
+use crate::recent_projects::RecentProjectsService;
 use crate::sessions::SessionManager;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -29,6 +30,7 @@ pub struct Services {
     pub broadcaster: Arc<Broadcaster>,
     pub registry: Arc<RegistryService>,
     pub sessions: Arc<SessionManager>,
+    pub recent_projects: Arc<RecentProjectsService>,
     pub git_watcher: GitProjectWatcher,
     pub battery_watcher: BatteryWatcher,
     pub media_watcher: MediaWatcher,

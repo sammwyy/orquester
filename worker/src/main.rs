@@ -7,6 +7,7 @@ mod integrations;
 mod middlewares;
 mod paths;
 mod registry;
+mod recent_projects;
 mod routes;
 mod sessions;
 mod service_management;
@@ -16,6 +17,7 @@ mod transports;
 use broadcaster::Broadcaster;
 use registry::RegistryService;
 use sessions::SessionManager;
+use recent_projects::RecentProjectsService;
 use state::{AppState, RouterOptions, Services, SharedConfig, TransportMode};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -64,6 +66,7 @@ async fn main() {
     let daemon_id = uuid::Uuid::new_v4().to_string();
     let socket_path = daemon_paths.socket_path.clone();
     let client_config = config::create_default_client_config(&socket_path);
+    let recent_projects = RecentProjectsService::load(std::path::Path::new(&resolved.daemon_dir).join("recent-projects.json")).await;
 
     let broadcaster = Arc::new(Broadcaster::new());
     let registry = Arc::new(RegistryService::new(broadcaster.clone()));
@@ -123,6 +126,7 @@ async fn main() {
         broadcaster,
         registry,
         sessions,
+        recent_projects,
         git_watcher,
         battery_watcher,
         media_watcher,

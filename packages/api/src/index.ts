@@ -40,6 +40,11 @@ export interface ProjectSummary {
   path: string;
 }
 
+export interface RecentProjectSummary extends ProjectSummary {
+  lastInteractedAt: string;
+  interactionCount: number;
+}
+
 export interface GitStatusResponse {
   projectPath: string;
   branch: string;
@@ -626,4 +631,3 @@ export interface EventMessage<TPayload = unknown> {
   createdAt: string;
   payload: TPayload;
 }
-

@@ -34,6 +34,7 @@ pub fn build_router(state: AppState) -> Router {
             "/api/workspaces/:workspace/projects",
             get(routes::workspaces::list_projects).post(routes::workspaces::create_project),
         )
+        .route("/api/projects/recent", get(routes::recent_projects::list).post(routes::recent_projects::mark))
         .route("/api/fs", get(routes::fs::list).delete(routes::fs::delete))
         .route("/api/fs/read", get(routes::fs::read))
         .route("/api/fs/search", get(routes::fs::search))

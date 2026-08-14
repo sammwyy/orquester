@@ -1,7 +1,7 @@
-import React, { useState } from "react";
-import { Box, ChevronLeft, FolderPlus, Plus } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Box, ChevronLeft, FolderPlus, Plus, Search } from "lucide-react";
 import { cn } from "../../lib/cn";
-import { Dropdown, DropdownItem, IconButton } from "../ui";
+import { Dropdown, DropdownItem, IconButton, Input } from "../ui";
 import { NewItemInput } from "./NewItemInput";
 import { NewProjectModal } from "./NewProjectModal";
 import { SidebarHeader } from "./SidebarHeader";
@@ -16,8 +16,18 @@ export const ProjectList: React.FC = () => {
   const closeWorkspace = useAppStore((s) => s.closeWorkspace);
   const openProject = useAppStore((s) => s.openProject);
   const createProject = useAppStore((s) => s.createProject);
+  const scrollKey = `workspace:${currentWorkspace ?? ""}`;
+  const scrollTop = useAppStore((s) => s.clientUiState.sidebarScrollByKey[scrollKey] ?? 0);
+  const filter = useAppStore((s) => s.clientUiState.sidebarFilterByKey[scrollKey] ?? "");
+  const setSidebarScroll = useAppStore((s) => s.setSidebarScroll);
+  const setSidebarFilter = useAppStore((s) => s.setSidebarFilter);
+  const navRef = useRef<HTMLElement>(null);
   const [creating, setCreating] = useState<null | "folder">(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+
+  useEffect(() => {
+    if (navRef.current) navRef.current.scrollTop = scrollTop;
+  }, [scrollTop, scrollKey]);
 
   return (
     <>
@@ -56,7 +66,8 @@ export const ProjectList: React.FC = () => {
         </button>
       </div>
 
-      <nav className="flex-1 space-y-px overflow-y-auto px-2 pb-2">
+      <nav ref={navRef} onScroll={(event) => setSidebarScroll(scrollKey, event.currentTarget.scrollTop)} className="flex-1 space-y-px overflow-y-auto px-2 pb-2">
+        <div className="relative mb-2"><Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-neutral-600" /><Input value={filter} onChange={(event) => setSidebarFilter(scrollKey, event.target.value)} placeholder="Filter projects" className="h-7 pl-7 text-xs" /></div>
         {creating === "folder" && (
           <NewItemInput
             placeholder="folder-name"
@@ -74,7 +85,7 @@ export const ProjectList: React.FC = () => {
         {!loading && projects.length === 0 && !creating && (
           <p className="px-2 py-2 text-xs text-neutral-600">No projects yet</p>
         )}
-        {projects.map((project) => (
+        {projects.filter((project) => project.name.toLowerCase().includes(filter.trim().toLowerCase())).map((project) => (
           <button
             key={project.path}
             type="button"

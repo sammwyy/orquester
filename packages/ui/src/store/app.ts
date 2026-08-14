@@ -9,10 +9,12 @@ import type { AppConfigAdapter } from "../lib/app-config";
 import type { HttpClient } from "../lib/http-client";
 import type { Transporter } from "../lib/transporter";
 import { workspaceService } from "../services";
+import { clientStateKey, loadClientUiState, saveClientUiState, type ClientUiState } from "../lib/client-state";
 import type {
   ConnectionStatus,
   EventMessage,
   ProjectSummary,
+  RecentProjectSummary,
   ProjectTemplateSummary,
   RegistryEntry,
   RegistryKind,
@@ -249,6 +251,8 @@ export interface AppState {
   sidebarView: SidebarView;
   /** Mobile off-canvas sidebar drawer. */
   sidebarDrawerOpen: boolean;
+  /** Client-only navigation state, kept separately for each worker. */
+  clientUiState: ClientUiState;
   /** File-browser copy/cut clipboard; null when empty. */
   fsClipboard: FsClipboardEntry | null;
 
@@ -318,6 +322,9 @@ export interface AppState {
   toggleSidebar: () => void;
   setSidebarView: (view: SidebarView) => void;
   setSidebarDrawer: (open: boolean) => void;
+  setSidebarScroll: (key: string, scrollTop: number) => void;
+  setSidebarFilter: (key: string, value: string) => void;
+  setPanelSize: (key: string, size: number) => void;
   setFsClipboard: (entry: FsClipboardEntry | null) => void;
   updateAppConfig: (patch: Partial<UiAppConfig>) => Promise<void>;
   setQuota: (quota: RegistryQuota) => void;
@@ -330,6 +337,11 @@ export interface AppState {
   createWorkspace: (name: string) => Promise<void>;
   openWorkspace: (name: string) => Promise<void>;
   closeWorkspace: () => void;
+  restoreClientLocation: () => Promise<void>;
+  recentProjects: RecentProjectSummary[];
+  loadRecentProjects: () => Promise<void>;
+  markProjectInteracted: (project?: ProjectSummary) => void;
+  openRecentProject: (project: RecentProjectSummary) => Promise<void>;
 
   loadProjects: () => Promise<void>;
   createProject: (name: string) => Promise<void>;
@@ -390,6 +402,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarCollapsed: false,
   sidebarView: "workspaces",
   sidebarDrawerOpen: false,
+  clientUiState: loadClientUiState(""),
+  recentProjects: [],
   fsClipboard: null,
   authPrompt: null,
   authSalt: null,
@@ -469,7 +483,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({ connectionStatus: "connected", reconnectAttempt: 0, authPrompt: null });
-    await Promise.all([get().loadWorkspaces(), get().loadSessions(), get().loadRegistry(), get().loadBatteryStatus(), get().loadSystemResources(), get().loadMediaStatus(), get().loadNetworkingStatus(), get().loadProcessManagerStatus(), get().loadIntegrations()]);
+    await Promise.all([get().loadWorkspaces(), get().loadSessions(), get().loadRegistry(), get().loadRecentProjects(), get().loadBatteryStatus(), get().loadSystemResources(), get().loadMediaStatus(), get().loadNetworkingStatus(), get().loadProcessManagerStatus(), get().loadIntegrations()]);
+    if (!get().currentWorkspace && get().clientUiState.lastWorkspace) {
+      await get().restoreClientLocation();
+    }
 
     // Live event sync. Git events are scoped to the project this client is
     // viewing, so inactive projects never create a polling workload.
@@ -537,13 +554,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   initConnections: async (nextSetup) => {
     setup = nextSetup;
     homeApi = new ApiClient(nextSetup.localConnection, buildTransporter(nextSetup.localConnection));
+    const clientUiState = loadClientUiState(clientStateKey(nextSetup.localConnection.endpoint));
     set({
       connections: [nextSetup.localConnection],
       activeConnectionId: nextSetup.localConnection.id,
       appConfig: { ...DEFAULT_APP_CONFIG, useTitlebar: nextSetup.defaultUseTitlebar },
       appConfigLoaded: false,
       localApi: homeApi,
-      api: homeApi
+      api: homeApi,
+      clientUiState,
+      sidebarCollapsed: clientUiState.sidebarCollapsed,
+      sidebarView: clientUiState.sidebarView
     });
     const appConfig = get().loadAppConfig();
     await get().connect();
@@ -621,11 +642,37 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setWindowCapabilities: (capabilities) => set({ windowCapabilities: capabilities }),
 
-  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  toggleSidebar: () => set((state) => {
+    const clientUiState = { ...state.clientUiState, sidebarCollapsed: !state.sidebarCollapsed };
+    saveClientUiState(clientStateKey(state.api?.connection.endpoint ?? ""), clientUiState);
+    return { sidebarCollapsed: !state.sidebarCollapsed, clientUiState };
+  }),
 
-  setSidebarView: (view) => set({ sidebarView: view }),
+  setSidebarView: (view) => set((state) => {
+    const clientUiState = { ...state.clientUiState, sidebarView: view };
+    saveClientUiState(clientStateKey(state.api?.connection.endpoint ?? ""), clientUiState);
+    return { sidebarView: view, clientUiState };
+  }),
 
   setSidebarDrawer: (open) => set({ sidebarDrawerOpen: open }),
+  setSidebarScroll: (key, scrollTop) => set((state) => {
+    const clientUiState = {
+      ...state.clientUiState,
+      sidebarScrollByKey: { ...state.clientUiState.sidebarScrollByKey, [key]: Math.max(0, scrollTop) }
+    };
+    saveClientUiState(clientStateKey(state.api?.connection.endpoint ?? ""), clientUiState);
+    return { clientUiState };
+  }),
+  setSidebarFilter: (key, value) => set((state) => {
+    const clientUiState = { ...state.clientUiState, sidebarFilterByKey: { ...state.clientUiState.sidebarFilterByKey, [key]: value } };
+    saveClientUiState(clientStateKey(state.api?.connection.endpoint ?? ""), clientUiState);
+    return { clientUiState };
+  }),
+  setPanelSize: (key, size) => set((state) => {
+    const clientUiState = { ...state.clientUiState, panelSizes: { ...state.clientUiState.panelSizes, [key]: size } };
+    saveClientUiState(clientStateKey(state.api?.connection.endpoint ?? ""), clientUiState);
+    return { clientUiState };
+  }),
   setFsClipboard: (entry) => set({ fsClipboard: entry }),
 
   updateAppConfig: async (patch) => {
@@ -693,6 +740,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     reconnecting = false;
     closeEvents();
     // Reset all daemon-scoped state: a different server has its own data.
+    const clientUiState = loadClientUiState(clientStateKey(connection.endpoint));
     set({
       api: new ApiClient(connection, buildTransporter(connection)),
       activeConnectionId: id,
@@ -700,7 +748,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentProject: null,
       workspaces: [],
       projects: [],
-      sessions: []
+      sessions: [],
+      recentProjects: [],
+      clientUiState,
+      sidebarCollapsed: clientUiState.sidebarCollapsed,
+      sidebarView: clientUiState.sidebarView
     });
     await get().connect();
   },
@@ -764,6 +816,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  loadRecentProjects: async () => {
+    const api = get().api;
+    if (!api) return;
+    try {
+      set({ recentProjects: await api.listRecentProjects() });
+    } catch {
+      set({ recentProjects: [] });
+    }
+  },
+
+  markProjectInteracted: (project) => {
+    const api = get().api;
+    const target = project ?? get().currentProject;
+    if (!api || !target) return;
+    void api.markProjectInteracted(target).then((recent) => {
+      set((state) => ({ recentProjects: [recent, ...state.recentProjects.filter((item) => item.path !== recent.path)].slice(0, 30) }));
+    }).catch(() => undefined);
+  },
+
+  openRecentProject: async (recent) => {
+    await get().openWorkspace(recent.workspace);
+    const project = get().projects.find((item) => item.path === recent.path);
+    if (project) get().openProject(project);
+  },
+
   createWorkspace: async (name) => {
     const api = get().api;
     if (!api) {
@@ -774,11 +851,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openWorkspace: async (name) => {
-    set({ currentWorkspace: name, projects: [] });
+    set((state) => {
+      const clientUiState = { ...state.clientUiState, lastWorkspace: name };
+      saveClientUiState(clientStateKey(state.api?.connection.endpoint ?? ""), clientUiState);
+      return { currentWorkspace: name, projects: [], clientUiState };
+    });
     await get().loadProjects();
   },
 
   closeWorkspace: () => set({ currentWorkspace: null, projects: [] }),
+
+  restoreClientLocation: async () => {
+    const cached = get().clientUiState;
+    const workspace = get().workspaces.find((item) => item.name === cached.lastWorkspace);
+    if (!workspace) return;
+    await get().openWorkspace(workspace.name);
+    const project = get().projects.find((item) => item.path === cached.lastProjectPath);
+    if (project) get().openProject(project);
+  },
 
   loadProjects: async () => {
     const api = get().api;
@@ -856,13 +946,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => {
       const active = state.activeTabByProject[project.path];
       const fallback = firstTabId(state.sessions, state.toolTabsByProject, project.path);
+      const clientUiState = { ...state.clientUiState, lastWorkspace: project.workspace || state.currentWorkspace, lastProjectPath: project.path };
+      saveClientUiState(clientStateKey(state.api?.connection.endpoint ?? ""), clientUiState);
       return {
         currentProject: project,
+        clientUiState,
         // Opening a project reveals the main view — close the mobile drawer.
         sidebarDrawerOpen: false,
         activeTabByProject: {
           ...state.activeTabByProject,
-          [project.path]: active ?? fallback
+          [project.path]: active ?? state.clientUiState.activeTabByProject[project.path] ?? fallback
         }
       };
     });
@@ -1066,32 +1159,41 @@ export const useAppStore = create<AppState>((set, get) => ({
       cwd: project?.path,
       resumeConversationId: options?.resumeConversationId
     });
-    set((state) => ({
-      sessions: upsertSession(state.sessions, session),
-      activeTabByProject: project
-        ? { ...state.activeTabByProject, [project.path]: session.id }
-        : state.activeTabByProject
-    }));
+    set((state) => {
+      if (!project) return { sessions: upsertSession(state.sessions, session) };
+      const activeTabByProject = { ...state.activeTabByProject, [project.path]: session.id };
+      const clientUiState = { ...state.clientUiState, activeTabByProject: { ...state.clientUiState.activeTabByProject, [project.path]: session.id } };
+      saveClientUiState(clientStateKey(state.api?.connection.endpoint ?? ""), clientUiState);
+      return { sessions: upsertSession(state.sessions, session), activeTabByProject, clientUiState };
+    });
+    get().markProjectInteracted(project ?? undefined);
     if (options?.initialCommand) {
       await api.sendSessionInput(session.id, options.initialCommand).catch(() => undefined);
     }
   },
 
-  openTool: (kind) =>
+  openTool: (kind) => {
+    const project = get().currentProject;
     set((state) => {
       const project = state.currentProject;
       if (!project) {
         return state;
       }
       const tab: ToolTab = { id: crypto.randomUUID(), projectPath: project.path, kind, title: TOOL_TITLES[kind] };
+      const activeTabByProject = { ...state.activeTabByProject, [project.path]: tab.id };
+      const clientUiState = { ...state.clientUiState, activeTabByProject: { ...state.clientUiState.activeTabByProject, [project.path]: tab.id } };
+      saveClientUiState(clientStateKey(state.api?.connection.endpoint ?? ""), clientUiState);
       return {
         toolTabsByProject: {
           ...state.toolTabsByProject,
           [project.path]: [...(state.toolTabsByProject[project.path] ?? []), tab]
         },
-        activeTabByProject: { ...state.activeTabByProject, [project.path]: tab.id }
+        activeTabByProject,
+        clientUiState
       };
-    }),
+    });
+    get().markProjectInteracted(project ?? undefined);
+  },
 
   closeTab: async (id) => {
     const api = get().api;
@@ -1135,8 +1237,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (!project) {
         return state;
       }
-      return { activeTabByProject: { ...state.activeTabByProject, [project.path]: id } };
+      const activeTabByProject = { ...state.activeTabByProject, [project.path]: id };
+      const clientUiState = { ...state.clientUiState, activeTabByProject: { ...state.clientUiState.activeTabByProject, [project.path]: id } };
+      saveClientUiState(clientStateKey(state.api?.connection.endpoint ?? ""), clientUiState);
+      return { activeTabByProject, clientUiState };
     });
+    get().markProjectInteracted();
     // Focusing a session's tab is what "I've seen this" means, not just it
     // appearing in a list — clear needsAttention only here.
     const session = get().sessions.find((s) => s.id === id);

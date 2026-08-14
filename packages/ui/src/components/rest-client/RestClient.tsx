@@ -5,6 +5,7 @@ import { cn } from "../../lib/cn";
 import { Button, Input, Modal, ModalCloseButton, SegmentedControl } from "../ui";
 import { Editor } from "../files/Editor";
 import { useApi } from "../../context/orquester-context";
+import { useAppStore } from "../../store/app";
 
 const VARIABLE_RE = /\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g;
 const ENV_PREFIX = "env_";
@@ -111,7 +112,9 @@ export const RestClient: React.FC<{ rootPath: string }> = ({ rootPath }) => {
   const [sending, setSending] = useState(false);
   const [response, setResponse] = useState<HttpExecuteResponse | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(288);
+  const panelKey = `${rootPath}:rest-client`;
+  const setPanelSize = useAppStore((s) => s.setPanelSize);
+  const [sidebarWidth, setSidebarWidth] = useState(() => useAppStore.getState().clientUiState.panelSizes[panelKey] ?? 288);
   const [newRequestOpen, setNewRequestOpen] = useState(false);
   const resizing = useRef(false);
 
@@ -219,12 +222,15 @@ export const RestClient: React.FC<{ rootPath: string }> = ({ rootPath }) => {
     resizing.current = true;
     const startX = event.clientX;
     const startWidth = sidebarWidth;
+    let currentWidth = startWidth;
     const move = (moveEvent: PointerEvent) => {
       if (!resizing.current) return;
-      setSidebarWidth(Math.min(440, Math.max(220, startWidth + moveEvent.clientX - startX)));
+      currentWidth = Math.min(440, Math.max(220, startWidth + moveEvent.clientX - startX));
+      setSidebarWidth(currentWidth);
     };
     const end = () => {
       resizing.current = false;
+      setPanelSize(panelKey, currentWidth);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
     };

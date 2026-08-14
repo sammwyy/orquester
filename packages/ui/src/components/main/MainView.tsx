@@ -1,8 +1,7 @@
 import React from "react";
-import { LayoutGrid } from "lucide-react";
 import { cn } from "../../lib/cn";
-import { EmptyState } from "./EmptyState";
 import { ProjectOverview } from "./ProjectOverview";
+import { RecentProjects } from "./RecentProjects";
 import { TerminalView } from "../terminal";
 import { FileBrowser } from "../files";
 import { GitTree } from "../git";
@@ -22,13 +21,7 @@ export const MainView: React.FC = () => {
   let body: React.ReactNode;
 
   if (!currentProject) {
-    body = (
-      <EmptyState
-        icon={<LayoutGrid size={40} strokeWidth={1.25} />}
-        title="No project selected"
-        description="Pick a workspace and open a project from the sidebar to get started."
-      />
-    );
+    body = <RecentProjects />;
   } else if (tabs.length === 0) {
     body = <ProjectOverview rootPath={currentProject.path} />;
   } else {

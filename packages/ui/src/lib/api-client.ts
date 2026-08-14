@@ -37,6 +37,7 @@ import type {
   OpenResult,
   ProcessManagerResponse,
   ProjectSummary,
+  RecentProjectSummary,
   ProjectTemplatesResponse,
   RegistryActionResult,
   RegistryQuota,
@@ -181,6 +182,14 @@ export class ApiClient {
 
   listProjects(workspace: string, signal?: AbortSignal): Promise<ProjectSummary[]> {
     return this.send("GET", `/api/workspaces/${encodeURIComponent(workspace)}/projects`, { signal });
+  }
+
+  listRecentProjects(signal?: AbortSignal): Promise<RecentProjectSummary[]> {
+    return this.send("GET", "/api/projects/recent", { signal });
+  }
+
+  markProjectInteracted(project: ProjectSummary): Promise<RecentProjectSummary> {
+    return this.send("POST", "/api/projects/recent", { body: project });
   }
 
   // --- File browser --------------------------------------------------------

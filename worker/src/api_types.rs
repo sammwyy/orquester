@@ -53,12 +53,22 @@ pub struct WorkspaceSummary {
     pub project_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {
     pub name: String,
     pub workspace: String,
     pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentProjectSummary {
+    pub name: String,
+    pub workspace: String,
+    pub path: String,
+    pub last_interacted_at: String,
+    pub interaction_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]

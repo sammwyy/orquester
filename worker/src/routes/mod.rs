@@ -4,5 +4,6 @@ pub mod events;
 pub mod fs;
 pub mod integrations;
 pub mod registry;
+pub mod recent_projects;
 pub mod sessions;
 pub mod workspaces;

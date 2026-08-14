@@ -27,6 +27,7 @@ import { Avatar } from "./Avatar";
 import { CommitDetail } from "./CommitDetail";
 import { WorkingChanges } from "./WorkingChanges";
 import { layoutGraph, laneColor, type GraphRow } from "./graph";
+import { useAppStore } from "../../store/app";
 
 type SidebarTab = "branches" | "stash";
 
@@ -373,7 +374,9 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
   const [creatingStash, setCreatingStash] = useState(false);
   const [workingStatus, setWorkingStatus] = useState<GitStatusResponse | null>(null);
   const [showWorking, setShowWorking] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(248);
+  const panelKey = `${rootPath}:git`;
+  const setPanelSize = useAppStore((s) => s.setPanelSize);
+  const [sidebarWidth, setSidebarWidth] = useState(() => useAppStore.getState().clientUiState.panelSizes[panelKey] ?? 248);
   const resizingSidebar = useRef(false);
   const [collapsedRemotes, setCollapsedRemotes] = useState<Set<string>>(new Set());
 
@@ -527,6 +530,7 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
     resizingSidebar.current = true;
     const startX = event.clientX;
     const startWidth = sidebarWidth;
+    let currentWidth = startWidth;
     const maxWidth = () => {
       if (window.innerWidth < 1024) return 400;
       const mainMinimum = selectedHash || showWorking ? 360 : 280;
@@ -534,10 +538,12 @@ export const GitTree: React.FC<{ rootPath: string }> = ({ rootPath }) => {
     };
     const move = (moveEvent: PointerEvent) => {
       if (!resizingSidebar.current) return;
-      setSidebarWidth(Math.min(maxWidth(), Math.max(200, startWidth + moveEvent.clientX - startX)));
+      currentWidth = Math.min(maxWidth(), Math.max(200, startWidth + moveEvent.clientX - startX));
+      setSidebarWidth(currentWidth);
     };
     const end = () => {
       resizingSidebar.current = false;
+      setPanelSize(panelKey, currentWidth);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
     };

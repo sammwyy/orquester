@@ -136,7 +136,9 @@ export const FileBrowser: React.FC<{ rootPath: string }> = ({ rootPath }) => {
   const [creating, setCreating] = useState<null | "file" | "dir">(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(288);
+  const panelKey = `${rootPath}:files`;
+  const setPanelSize = useAppStore((s) => s.setPanelSize);
+  const [sidebarWidth, setSidebarWidth] = useState(() => useAppStore.getState().clientUiState.panelSizes[panelKey] ?? 288);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("files");
   const [jumpLine, setJumpLine] = useState<number | null>(null);
   const [diffPreview, setDiffPreview] = useState<DiffPreview | null>(null);
@@ -432,12 +434,15 @@ export const FileBrowser: React.FC<{ rootPath: string }> = ({ rootPath }) => {
     resizing.current = true;
     const startX = event.clientX;
     const startWidth = sidebarWidth;
+    let currentWidth = startWidth;
     const move = (moveEvent: PointerEvent) => {
       if (!resizing.current) return;
-      setSidebarWidth(Math.min(440, Math.max(220, startWidth + moveEvent.clientX - startX)));
+      currentWidth = Math.min(440, Math.max(220, startWidth + moveEvent.clientX - startX));
+      setSidebarWidth(currentWidth);
     };
     const end = () => {
       resizing.current = false;
+      setPanelSize(panelKey, currentWidth);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
     };
