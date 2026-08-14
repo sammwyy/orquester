@@ -36,7 +36,7 @@ export const StorageSettings: React.FC = () => {
       await api.updateDaemonConfig({
         workspacesDir
       });
-      setMessage("Saved. Storage changes apply after a daemon restart.");
+      setMessage("Saved. Storage changes apply immediately.");
     } catch {
       setMessage("Failed to save (daemon config is editable only over the local socket).");
     } finally {
@@ -131,7 +131,7 @@ const DaemonAccessSettings: React.FC<{
         }
       });
       setPassword("");
-      setMessage("Saved. Access changes apply after a daemon restart.");
+      setMessage("Saved. Access changes apply immediately.");
     } catch {
       setMessage("Failed to save access settings.");
     } finally {

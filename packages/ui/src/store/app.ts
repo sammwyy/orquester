@@ -238,6 +238,7 @@ export interface AppState {
 
   // app config + settings modal
   appConfig: UiAppConfig;
+  appConfigLoaded: boolean;
   settingsOpen: boolean;
   shortcutsOpen: boolean;
   /** Theme mode in effect once system/dynamic have been resolved. */
@@ -381,6 +382,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   connections: [],
   activeConnectionId: null,
   appConfig: DEFAULT_APP_CONFIG,
+  appConfigLoaded: false,
   settingsOpen: false,
   shortcutsOpen: false,
   resolvedMode: "dark",
@@ -530,12 +532,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       connections: [nextSetup.localConnection],
       activeConnectionId: nextSetup.localConnection.id,
       appConfig: { ...DEFAULT_APP_CONFIG, useTitlebar: nextSetup.defaultUseTitlebar },
+      appConfigLoaded: false,
       localApi: homeApi,
       api: homeApi
     });
+    const appConfig = get().loadAppConfig();
     await get().connect();
-    // App config + remote servers are shared (persisted on the home daemon).
-    await Promise.all([get().loadAppConfig(), get().loadRemotes()]);
+    await Promise.all([appConfig, get().loadRemotes()]);
   },
 
   loadAppConfig: async () => {
@@ -566,6 +569,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch {
       /* keep defaults */
+    } finally {
+      set({ appConfigLoaded: true });
     }
   },
 

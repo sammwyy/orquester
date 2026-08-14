@@ -30,6 +30,7 @@ const iconFor: Record<Step, React.ReactNode> = {
 export const Onboarding: React.FC = () => {
   const { runtime, workerManager } = useOrquester();
   const appConfig = useAppStore((state) => state.appConfig);
+  const appConfigLoaded = useAppStore((state) => state.appConfigLoaded);
   const updateAppConfig = useAppStore((state) => state.updateAppConfig);
   const addRemote = useAppStore((state) => state.addRemote);
   const selectConnection = useAppStore((state) => state.selectConnection);
@@ -50,7 +51,7 @@ export const Onboarding: React.FC = () => {
   const [serveWeb, setServeWeb] = useState(false);
   const [workspacesDir, setWorkspacesDir] = useState<string | undefined>();
 
-  if (runtime !== "desktop" || appConfig.setupComplete) return null;
+  if (runtime !== "desktop" || !appConfigLoaded || appConfig.setupComplete) return null;
 
   const chooseMode = (next: SetupChoice) => {
     setChoice(next);
