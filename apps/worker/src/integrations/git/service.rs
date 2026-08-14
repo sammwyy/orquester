@@ -476,110 +476,101 @@ pub async fn commit_changes(project_path: &str, message: &str) -> std::io::Resul
     read_git_status(project_path).await
 }
 
-/// Polls each watched project's git status and calls `on_change` when it
-/// differs from the last read. The TS worker used recursive `fs.watch`
-/// (notoriously unportable, especially recursive on non-Windows); polling
-/// trades a couple seconds of latency for something that behaves the same on
-/// every platform.
+/// Polls projects that at least one events client is actively viewing. The TS
+/// worker used recursive `fs.watch` (notoriously unportable, especially
+/// recursive on non-Windows); polling trades a couple seconds of latency for
+/// something that behaves the same on every platform.
 pub struct GitProjectWatcher {
     inner: std::sync::Arc<WatcherInner>,
 }
 
 struct WatcherInner {
-    workspaces_dir: String,
-    active: std::sync::atomic::AtomicBool,
-    tasks: tokio::sync::Mutex<std::collections::HashMap<String, tokio::task::JoinHandle<()>>>,
+    enabled: std::sync::atomic::AtomicBool,
+    projects: tokio::sync::Mutex<std::collections::HashMap<String, WatchedProject>>,
     on_change: Box<dyn Fn(GitStatusResponse) + Send + Sync>,
+}
+
+struct WatchedProject {
+    subscribers: usize,
+    task: Option<tokio::task::JoinHandle<()>>,
 }
 
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
-pub fn watch_git_projects(workspaces_dir: &str, on_change: impl Fn(GitStatusResponse) + Send + Sync + 'static) -> GitProjectWatcher {
+pub fn watch_git_projects(on_change: impl Fn(GitStatusResponse) + Send + Sync + 'static) -> GitProjectWatcher {
     let inner = std::sync::Arc::new(WatcherInner {
-        workspaces_dir: workspaces_dir.to_string(),
-        active: std::sync::atomic::AtomicBool::new(false),
-        tasks: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+        enabled: std::sync::atomic::AtomicBool::new(false),
+        projects: tokio::sync::Mutex::new(std::collections::HashMap::new()),
         on_change: Box::new(on_change),
     });
     GitProjectWatcher { inner }
 }
 
 impl GitProjectWatcher {
-    pub fn set_active(&self, active: bool) {
+    pub fn set_enabled(&self, enabled: bool) {
         let inner = self.inner.clone();
         tokio::spawn(async move {
-            let was_active = inner.active.swap(active, std::sync::atomic::Ordering::SeqCst);
-            if was_active == active {
+            let was_enabled = inner.enabled.swap(enabled, std::sync::atomic::Ordering::SeqCst);
+            if was_enabled == enabled {
                 return;
             }
-            if active {
-                discover(&inner).await;
-            } else {
-                let mut tasks = inner.tasks.lock().await;
-                for (_, handle) in tasks.drain() {
-                    handle.abort();
+            let mut projects = inner.projects.lock().await;
+            for (path, project) in projects.iter_mut() {
+                if enabled && project.subscribers > 0 && project.task.is_none() {
+                    project.task = Some(spawn_project_watcher(inner.clone(), path.clone()));
+                } else if !enabled {
+                    if let Some(task) = project.task.take() {
+                        task.abort();
+                    }
                 }
             }
         });
     }
 
-    pub fn watch(&self, project_path: &str) {
-        if !self.inner.active.load(std::sync::atomic::Ordering::SeqCst) {
-            return;
+    pub async fn subscribe(&self, project_path: &str) {
+        let mut projects = self.inner.projects.lock().await;
+        let project = projects.entry(project_path.to_string()).or_insert(WatchedProject { subscribers: 0, task: None });
+        project.subscribers += 1;
+        if self.inner.enabled.load(std::sync::atomic::Ordering::SeqCst) && project.task.is_none() {
+            project.task = Some(spawn_project_watcher(self.inner.clone(), project_path.to_string()));
         }
+    }
+
+    pub fn unsubscribe(&self, project_path: &str) {
         let inner = self.inner.clone();
         let project_path = project_path.to_string();
-        tokio::spawn(async move { add_project(&inner, &project_path).await });
+        tokio::spawn(async move {
+            let mut projects = inner.projects.lock().await;
+            let Some(project) = projects.get_mut(&project_path) else { return };
+            project.subscribers = project.subscribers.saturating_sub(1);
+            if project.subscribers == 0 {
+                if let Some(task) = project.task.take() {
+                    task.abort();
+                }
+                projects.remove(&project_path);
+            }
+        });
     }
 
     pub fn stop(&self) {
         let inner = self.inner.clone();
         tokio::spawn(async move {
-            inner.active.store(false, std::sync::atomic::Ordering::SeqCst);
-            let mut tasks = inner.tasks.lock().await;
-            for (_, handle) in tasks.drain() {
-                handle.abort();
+            inner.enabled.store(false, std::sync::atomic::Ordering::SeqCst);
+            let mut projects = inner.projects.lock().await;
+            for (_, project) in projects.drain() {
+                if let Some(task) = project.task {
+                    task.abort();
+                }
             }
         });
     }
 }
 
-async fn discover(inner: &std::sync::Arc<WatcherInner>) {
-    if !inner.active.load(std::sync::atomic::Ordering::SeqCst) {
-        return;
-    }
-    let Ok(mut workspaces) = tokio::fs::read_dir(&inner.workspaces_dir).await else { return };
-    while let Ok(Some(workspace)) = workspaces.next_entry().await {
-        let Ok(file_type) = workspace.file_type().await else { continue };
-        let name = workspace.file_name().to_string_lossy().to_string();
-        if !file_type.is_dir() || name.starts_with('.') {
-            continue;
-        }
-        let Ok(mut projects) = tokio::fs::read_dir(workspace.path()).await else { continue };
-        while let Ok(Some(project)) = projects.next_entry().await {
-            let Ok(project_type) = project.file_type().await else { continue };
-            let project_name = project.file_name().to_string_lossy().to_string();
-            if project_type.is_dir() && !project_name.starts_with('.') {
-                add_project(inner, &project.path().to_string_lossy()).await;
-            }
-        }
-    }
-}
-
-async fn add_project(inner: &std::sync::Arc<WatcherInner>, project_path: &str) {
-    {
-        let tasks = inner.tasks.lock().await;
-        if tasks.contains_key(project_path) {
-            return;
-        }
-    }
-    let inner_clone = inner.clone();
-    let key = project_path.to_string();
-    let watched_path = project_path.to_string();
-    let handle = tokio::spawn(async move {
+fn spawn_project_watcher(inner: std::sync::Arc<WatcherInner>, watched_path: String) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
         let mut previous: Option<String> = None;
         loop {
-            if !inner_clone.active.load(std::sync::atomic::Ordering::SeqCst) {
+            if !inner.enabled.load(std::sync::atomic::Ordering::SeqCst) {
                 return;
             }
             match read_git_status(&watched_path).await {
@@ -587,7 +578,7 @@ async fn add_project(inner: &std::sync::Arc<WatcherInner>, project_path: &str) {
                     let serialized = serde_json::to_string(&status).unwrap_or_default();
                     if let Some(prev) = &previous {
                         if *prev != serialized {
-                            (inner_clone.on_change)(status);
+                            (inner.on_change)(status);
                         }
                     }
                     previous = Some(serialized);
@@ -596,6 +587,5 @@ async fn add_project(inner: &std::sync::Arc<WatcherInner>, project_path: &str) {
             }
             tokio::time::sleep(POLL_INTERVAL).await;
         }
-    });
-    inner.tasks.lock().await.insert(key, handle);
+    })
 }

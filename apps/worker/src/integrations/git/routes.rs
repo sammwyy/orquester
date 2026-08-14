@@ -17,7 +17,7 @@ use serde::Deserialize;
 /// Windows, prefixes the result with `\\?\`, which would leak into every
 /// path this returns to the client and no longer match what other routes
 /// (workspaces, sessions) hand back for the same directory.
-fn project_path_for(workspaces_dir: &str, path: &str) -> Result<String, Response> {
+pub(crate) fn project_path_for(workspaces_dir: &str, path: &str) -> Result<String, Response> {
     let cwd = std::env::current_dir().unwrap_or_default();
     let root = crate::paths::lexical_resolve(&cwd, workspaces_dir);
     let project = crate::paths::lexical_resolve(&cwd, path);
@@ -62,7 +62,6 @@ pub async fn init(State(state): State<AppState>, Json(body): Json<GitInitRequest
     };
     match service::initialize_git(&project).await {
         Ok(status) => {
-            state.services.git_watcher.watch(&project);
             state.services.broadcaster.publish("projects", "project.git.changed", &status);
             Json(status).into_response()
         }

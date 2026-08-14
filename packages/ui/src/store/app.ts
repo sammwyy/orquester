@@ -471,18 +471,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ connectionStatus: "connected", reconnectAttempt: 0, authPrompt: null });
     await Promise.all([get().loadWorkspaces(), get().loadSessions(), get().loadRegistry(), get().loadBatteryStatus(), get().loadSystemResources(), get().loadMediaStatus(), get().loadNetworkingStatus(), get().loadProcessManagerStatus(), get().loadIntegrations()]);
 
-    // Live event sync. The stream ending unexpectedly (e.g. the transport was
-    // restarted) is the primary disconnect signal.
-    closeEvents();
-    const gen = eventsGen;
-    eventsUnsubscribe = active.openEvents(
-      (event) => get().applyEvent(event),
-      () => {
-        if (gen === eventsGen) {
-          get().handleDisconnect();
+    // Live event sync. Git events are scoped to the project this client is
+    // viewing, so inactive projects never create a polling workload.
+    const projectPath = get().currentProject?.path;
+    const subscribe = () => {
+      closeEvents();
+      const gen = eventsGen;
+      eventsUnsubscribe = active.openEvents(
+        projectPath,
+        (event) => get().applyEvent(event),
+        () => {
+          if (gen === eventsGen) {
+            get().handleDisconnect();
+          }
         }
-      }
-    );
+      );
+    };
+    if (projectPath) {
+      void get().loadGitStatus(projectPath).finally(subscribe);
+    } else {
+      subscribe();
+    }
 
     // Health probe: detect a dropped/restarted transport and auto-reconnect.
     stopHealthProbe();
@@ -857,7 +866,26 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       };
     });
-    void get().loadGitStatus(project.path);
+    const api = get().api;
+    if (!api) {
+      return;
+    }
+    void get().loadGitStatus(project.path).finally(() => {
+      if (get().currentProject?.path !== project.path || get().api !== api) {
+        return;
+      }
+      closeEvents();
+      const gen = eventsGen;
+      eventsUnsubscribe = api.openEvents(
+        project.path,
+        (event) => get().applyEvent(event),
+        () => {
+          if (gen === eventsGen) {
+            get().handleDisconnect();
+          }
+        }
+      );
+    });
   },
 
   loadGitStatus: async (projectPath) => {

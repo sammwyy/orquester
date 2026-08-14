@@ -102,9 +102,10 @@ export class ApiClient {
    * closes (e.g. the transport restarted) — used to detect disconnects.
    * Returns an unsubscribe fn.
    */
-  openEvents(onEvent: (event: EventMessage) => void, onEnd?: () => void): () => void {
+  openEvents(projectPath: string | undefined, onEvent: (event: EventMessage) => void, onEnd?: () => void): () => void {
     let buffer = "";
-    const handle = this.transporter.openStream("/events", {
+    const path = projectPath ? `/events?project=${encodeURIComponent(projectPath)}` : "/events";
+    const handle = this.transporter.openStream(path, {
       onData: (chunk) => {
         buffer += chunk;
         let newline = buffer.indexOf("\n");

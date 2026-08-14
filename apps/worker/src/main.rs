@@ -71,7 +71,7 @@ async fn main() {
     let sessions = Arc::new(SessionManager::new(registry.clone(), broadcaster.clone()));
     let git_watcher = {
         let broadcaster = broadcaster.clone();
-        integrations::git::watch_git_projects(&resolved.workspaces_dir, move |status| {
+        integrations::git::watch_git_projects(move |status| {
             broadcaster.publish("projects", "project.git.changed", &status);
         })
     };

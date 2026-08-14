@@ -61,7 +61,7 @@ impl Services {
         let availability = crate::integrations::integration_availability().await;
         let is_available = |id: &str| availability.iter().any(|entry| entry.id == id && entry.available);
 
-        self.git_watcher.set_active(count > 0 && is_enabled("git", true) && is_available("git"));
+        self.git_watcher.set_enabled(is_enabled("git", true) && is_available("git"));
         self.battery_watcher.set_active(count > 0 && is_enabled("battery", true) && is_available("battery"));
         self.resources_watcher.set_active(count > 0 && is_enabled("system-resources", true) && is_available("system-resources"));
         self.media_watcher.set_active(count > 0 && is_enabled("media", true) && is_available("media"));
