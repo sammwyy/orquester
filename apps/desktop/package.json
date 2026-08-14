@@ -44,6 +44,15 @@
     "directories": {
       "output": "release"
     },
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": [
+          "logo.png"
+        ]
+      }
+    ],
     "files": [
       "dist/**/*",
       "dist-electron/**/*"
@@ -53,6 +62,7 @@
       "executableName": "orquester"
     },
     "win": {
+      "icon": "assets/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -66,6 +76,7 @@
       "executableName": "orquester"
     },
     "linux": {
+      "icon": "assets/logo.png",
       "target": ["AppImage"],
       "executableName": "orquester",
       "category": "Utility"
