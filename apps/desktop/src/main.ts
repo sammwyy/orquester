@@ -871,17 +871,25 @@ app.whenReady().then(async () => {
   }
   ensureAppFiles();
   const socketPath = socketPathFor();
+  const installedWorker = repoWorkerMode() ? null : readInstalledWorker();
 
   if (await checkExistingDaemon(socketPath)) {
     daemonSocketPath = socketPath;
     process.env.ORQUESTER_UNIX_SOCKET = socketPath;
     isDaemonOwner = false;
-  } else if (!remoteWorkerMode() && (repoWorkerMode() || readAppConfig().localWorkerInstalled === true)) {
+  } else if (!remoteWorkerMode() && (repoWorkerMode() || installedWorker)) {
     if (process.platform !== "win32" && fs.existsSync(socketPath)) {
       fs.unlinkSync(socketPath);
     }
-    await startIntegratedDaemon();
-    isDaemonOwner = true;
+    try {
+      await startIntegratedDaemon();
+      isDaemonOwner = true;
+    } catch (error) {
+      await stopIntegratedDaemon();
+      console.error("Failed to start Orquester worker", error);
+    }
+  } else if (!remoteWorkerMode() && readAppConfig().localWorkerInstalled === true) {
+    writeAppConfig({ localWorkerInstalled: false });
   }
 
   listenForDaemonShutdown();

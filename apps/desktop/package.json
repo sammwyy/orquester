@@ -41,6 +41,7 @@
   "build": {
     "appId": "com.orquester.desktop",
     "productName": "Orquester",
+    "beforeBuild": "./scripts/before-build.cjs",
     "directories": {
       "output": "release"
     },
