@@ -62,7 +62,7 @@ export const ProjectOverview: React.FC<{ rootPath: string }> = ({ rootPath }) =>
   const agentName = (refId: string) => registry.agents.find((a) => a.id === refId)?.name ?? refId;
 
   const resume = (conversation: AgentConversationSummary) => {
-    void openTab("agent", conversation.agentRefId, agentName(conversation.agentRefId), conversation.id);
+    void openTab("agent", conversation.agentRefId, agentName(conversation.agentRefId), { resumeConversationId: conversation.id });
   };
 
   return (

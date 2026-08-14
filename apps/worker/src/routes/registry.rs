@@ -17,6 +17,10 @@ pub async fn list(State(state): State<AppState>) -> Response {
     Json(state.services.registry.list().await).into_response()
 }
 
+pub async fn templates(State(state): State<AppState>) -> Response {
+    Json(state.services.registry.list_templates().await).into_response()
+}
+
 pub async fn version(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     Json(state.services.registry.version(&id).await).into_response()
 }

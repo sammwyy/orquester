@@ -9,16 +9,19 @@ mod browsers;
 mod editors;
 mod explorers;
 mod shells;
+mod templates;
 
 use crate::api_types::{
-    OpenResult, RegistryActionResult, RegistryAuthInfo, RegistryAuthStatus, RegistryEntry, RegistryInstallState, RegistryKind,
-    RegistryQuota, RegistryResponse,
+    OpenResult, ProjectTemplateOptionSummary, ProjectTemplateSummary, ProjectTemplateVariantSummary, ProjectTemplatesResponse,
+    RegistryActionResult,
+    RegistryAuthInfo, RegistryAuthStatus, RegistryEntry, RegistryInstallState, RegistryKind, RegistryQuota, RegistryResponse,
 };
 use crate::broadcaster::Broadcaster;
 use browsers::BROWSERS;
 use editors::EDITORS;
 use explorers::EXPLORERS;
 use shells::materialize_shells;
+use templates::TEMPLATES;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -263,6 +266,50 @@ impl RegistryService {
             file_explorers: by_kind(RegistryKind::FileExplorer),
             browsers: by_kind(RegistryKind::Browser),
         }
+    }
+
+    /// Static project-scaffold catalog, availability computed fresh each
+    /// call (a plain PATH stat, same cost as the rest of `resolve_bin` —
+    /// not worth caching in `entries`).
+    pub async fn list_templates(&self) -> ProjectTemplatesResponse {
+        let templates = TEMPLATES
+            .iter()
+            .map(|def| {
+                let requires: Vec<String> = def.requires.iter().map(|r| r.to_string()).collect();
+                let available = requires.iter().all(|bin| resolve_bin(&[bin.clone()]).is_some());
+                let variants = def
+                    .variants
+                    .iter()
+                    .map(|v| ProjectTemplateVariantSummary {
+                        id: v.id.to_string(),
+                        name: v.name.to_string(),
+                        icon: v.icon.to_string(),
+                        command: v.command.to_string(),
+                        options: v
+                            .options
+                            .iter()
+                            .map(|o| ProjectTemplateOptionSummary {
+                                id: o.id.to_string(),
+                                label: o.label.to_string(),
+                                flag_on: o.flag_on.to_string(),
+                                flag_off: o.flag_off.to_string(),
+                                default_on: o.default_on,
+                            })
+                            .collect(),
+                    })
+                    .collect();
+                ProjectTemplateSummary {
+                    id: def.id.to_string(),
+                    name: def.name.to_string(),
+                    category: def.category.to_string(),
+                    icon: def.icon.to_string(),
+                    requires,
+                    available,
+                    variants,
+                }
+            })
+            .collect();
+        ProjectTemplatesResponse { templates }
     }
 
     /// Runs the entry's `versionFlag` (e.g. `claude --version`) and returns

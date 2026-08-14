@@ -186,7 +186,7 @@ export const NewTabMenu: React.FC = () => {
           agentName={agent.name}
           rootPath={currentProject?.path ?? null}
           onNewChat={() => void openTab("agent", agent.id, agent.name)}
-          onResume={(conversationId) => void openTab("agent", agent.id, agent.name, conversationId)}
+          onResume={(conversationId) => void openTab("agent", agent.id, agent.name, { resumeConversationId: conversationId })}
         />
       ))}
     </AdaptiveMenu>

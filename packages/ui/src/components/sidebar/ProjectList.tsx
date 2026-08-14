@@ -3,6 +3,7 @@ import { Box, ChevronLeft, FolderPlus, Plus } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { Dropdown, DropdownItem, IconButton } from "../ui";
 import { NewItemInput } from "./NewItemInput";
+import { NewProjectModal } from "./NewProjectModal";
 import { SidebarHeader } from "./SidebarHeader";
 import { useAppStore } from "../../store/app";
 
@@ -15,7 +16,8 @@ export const ProjectList: React.FC = () => {
   const closeWorkspace = useAppStore((s) => s.closeWorkspace);
   const openProject = useAppStore((s) => s.openProject);
   const createProject = useAppStore((s) => s.createProject);
-  const [creating, setCreating] = useState<null | "project" | "folder">(null);
+  const [creating, setCreating] = useState<null | "folder">(null);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
 
   return (
     <>
@@ -30,7 +32,7 @@ export const ProjectList: React.FC = () => {
             align="right"
             width="w-44"
           >
-            <DropdownItem icon={<Box size={14} />} onClick={() => setCreating("project")}>
+            <DropdownItem icon={<Box size={14} />} onClick={() => setNewProjectOpen(true)}>
               New Project
             </DropdownItem>
             <DropdownItem icon={<FolderPlus size={14} />} onClick={() => setCreating("folder")}>
@@ -55,9 +57,9 @@ export const ProjectList: React.FC = () => {
       </div>
 
       <nav className="flex-1 space-y-px overflow-y-auto px-2 pb-2">
-        {creating && (
+        {creating === "folder" && (
           <NewItemInput
-            placeholder={creating === "folder" ? "folder-name" : "project-name"}
+            placeholder="folder-name"
             onCancel={() => setCreating(null)}
             onSubmit={(name) => {
               setCreating(null);
@@ -89,6 +91,8 @@ export const ProjectList: React.FC = () => {
           </button>
         ))}
       </nav>
+
+      <NewProjectModal open={newProjectOpen} onClose={() => setNewProjectOpen(false)} />
     </>
   );
 };

@@ -421,6 +421,39 @@ export interface RegistryResponse {
   browsers: RegistryEntry[];
 }
 
+export interface ProjectTemplateOptionSummary {
+  id: string;
+  label: string;
+  flagOn: string;
+  flagOff: string;
+  defaultOn: boolean;
+}
+
+export interface ProjectTemplateVariantSummary {
+  id: string;
+  name: string;
+  /** Opaque id (e.g. "react") — the client owns the id-to-icon mapping. */
+  icon: string;
+  /** The base command, before any option flags below are appended. */
+  command: string;
+  options: ProjectTemplateOptionSummary[];
+}
+
+export interface ProjectTemplateSummary {
+  id: string;
+  name: string;
+  category: string;
+  /** Opaque id (e.g. "vite") — the client owns the id-to-icon mapping. */
+  icon: string;
+  requires: string[];
+  available: boolean;
+  variants: ProjectTemplateVariantSummary[];
+}
+
+export interface ProjectTemplatesResponse {
+  templates: ProjectTemplateSummary[];
+}
+
 export interface RegistryActionResult {
   ok: boolean;
   exitCode: number;

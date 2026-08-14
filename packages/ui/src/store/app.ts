@@ -13,6 +13,7 @@ import type {
   ConnectionStatus,
   EventMessage,
   ProjectSummary,
+  ProjectTemplateSummary,
   RegistryEntry,
   RegistryKind,
   RegistryResponse,
@@ -274,6 +275,9 @@ export interface AppState {
   workspacesLoading: boolean;
   projects: ProjectSummary[];
   projectsLoading: boolean;
+  /** Scaffold catalog for the "Template" tab of project creation; fetched once, on demand. */
+  projectTemplates: ProjectTemplateSummary[];
+  projectTemplatesLoaded: boolean;
 
   /** All daemon sessions; a project's sessions are its tabs. */
   sessions: SessionSummary[];
@@ -326,6 +330,10 @@ export interface AppState {
 
   loadProjects: () => Promise<void>;
   createProject: (name: string) => Promise<void>;
+  /** Creates the project, switches to it, then runs `command` (e.g. a git clone or
+   * scaffold) in a fresh terminal tab so the user can watch it run and answer any prompts. */
+  createProjectWithCommand: (name: string, command: string) => Promise<void>;
+  loadProjectTemplates: () => Promise<void>;
   openProject: (project: ProjectSummary) => void;
   loadGitStatus: (projectPath?: string) => Promise<void>;
   initializeGit: () => Promise<void>;
@@ -345,7 +353,12 @@ export interface AppState {
   loadRegistry: () => Promise<void>;
   installAgent: (id: string) => Promise<void>;
   updateAgent: (id: string) => Promise<void>;
-  openTab: (kind: RegistryKind, refId: string, title?: string, resumeConversationId?: string) => Promise<void>;
+  openTab: (
+    kind: RegistryKind,
+    refId: string,
+    title?: string,
+    options?: { resumeConversationId?: string; initialCommand?: string }
+  ) => Promise<void>;
   openTool: (kind: ToolKind) => void;
   closeTab: (id: string) => Promise<void>;
   activateTab: (id: string) => void;
@@ -394,6 +407,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   workspacesLoading: false,
   projects: [],
   projectsLoading: false,
+  projectTemplates: [],
+  projectTemplatesLoaded: false,
   sessions: [],
   toolTabsByProject: {},
   activeTabByProject: {},
@@ -775,6 +790,45 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().loadProjects();
   },
 
+  createProjectWithCommand: async (name, command) => {
+    const api = get().api;
+    const workspace = get().currentWorkspace;
+    if (!api || !workspace) {
+      return;
+    }
+    const project = await workspaceService.createProject(api, workspace, name);
+    await get().loadProjects();
+    get().openProject(project);
+    // Every scaffold/clone command here is POSIX shell syntax, so prefer a
+    // POSIX shell over whatever happens to be first in `registry.shells`
+    // (unordered — it round-trips through a HashMap on the daemon side) to
+    // avoid landing in nushell/fish/pwsh, which parse `--`/quoting differently.
+    const enabled = get().registry.shells.filter((s) => s.enabled);
+    const shellId = ["bash", "zsh", "sh"].map((id) => enabled.find((s) => s.id === id)?.id).find(Boolean) ?? enabled[0]?.id;
+    if (shellId) {
+      await get().openTab("shell", shellId, "Setup", { initialCommand: `${command}\r` });
+    }
+  },
+
+  loadProjectTemplates: async () => {
+    const api = get().api;
+    if (!api || get().projectTemplatesLoaded) {
+      return;
+    }
+    try {
+      const { templates } = await api.listProjectTemplates();
+      const normalized = templates.map((t) => ({
+        ...t,
+        category: t.category ?? "",
+        requires: t.requires ?? [],
+        variants: (t.variants ?? []).map((v) => ({ ...v, options: v.options ?? [] }))
+      }));
+      set({ projectTemplates: normalized, projectTemplatesLoaded: true });
+    } catch (error) {
+      console.error("[orquester] failed to load project templates", error);
+    }
+  },
+
   openProject: (project) => {
     // The active tree opens projects across workspaces: follow along so the
     // workspace browser and the project switcher stay on the same workspace.
@@ -962,7 +1016,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().api?.updateRegistryEntry(id).catch(() => undefined);
   },
 
-  openTab: async (kind, refId, title, resumeConversationId) => {
+  openTab: async (kind, refId, title, options) => {
     const api = get().api;
     if (!api) {
       return;
@@ -974,7 +1028,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       title,
       projectPath: project?.path ?? "",
       cwd: project?.path,
-      resumeConversationId
+      resumeConversationId: options?.resumeConversationId
     });
     set((state) => ({
       sessions: upsertSession(state.sessions, session),
@@ -982,6 +1036,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? { ...state.activeTabByProject, [project.path]: session.id }
         : state.activeTabByProject
     }));
+    if (options?.initialCommand) {
+      await api.sendSessionInput(session.id, options.initialCommand).catch(() => undefined);
+    }
   },
 
   openTool: (kind) =>

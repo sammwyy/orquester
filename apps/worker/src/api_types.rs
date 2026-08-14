@@ -578,6 +578,46 @@ pub struct RegistryResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectTemplateOptionSummary {
+    pub id: String,
+    pub label: String,
+    pub flag_on: String,
+    pub flag_off: String,
+    pub default_on: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTemplateVariantSummary {
+    pub id: String,
+    pub name: String,
+    /// Opaque id (e.g. "react") — the client owns the id-to-icon mapping.
+    pub icon: String,
+    /// The base command, before any option flags below are appended.
+    pub command: String,
+    pub options: Vec<ProjectTemplateOptionSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTemplateSummary {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+    pub icon: String,
+    pub requires: Vec<String>,
+    pub available: bool,
+    pub variants: Vec<ProjectTemplateVariantSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTemplatesResponse {
+    pub templates: Vec<ProjectTemplateSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RegistryActionResult {
     pub ok: bool,
     pub exit_code: i32,

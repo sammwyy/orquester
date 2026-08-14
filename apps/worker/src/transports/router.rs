@@ -78,6 +78,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/system/process-manager/kill", post(integrations::process_manager::routes::process_manager_kill))
         .route("/api/integrations", get(routes::integrations::list).put(routes::integrations::update))
         .route("/api/registry", get(routes::registry::list))
+        .route("/api/registry/templates", get(routes::registry::templates))
         .route("/api/registry/:id/version", get(routes::registry::version))
         .route("/api/registry/:id/quota", get(routes::registry::quota))
         .route("/api/registry/:id/install", post(routes::registry::install))

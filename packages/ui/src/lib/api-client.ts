@@ -37,6 +37,7 @@ import type {
   OpenResult,
   ProcessManagerResponse,
   ProjectSummary,
+  ProjectTemplatesResponse,
   RegistryActionResult,
   RegistryQuota,
   RegistryResponse,
@@ -405,6 +406,10 @@ export class ApiClient {
 
   registryQuota(id: string, signal?: AbortSignal): Promise<RegistryQuota> {
     return this.send("GET", `/api/registry/${encodeURIComponent(id)}/quota`, { signal });
+  }
+
+  listProjectTemplates(signal?: AbortSignal): Promise<ProjectTemplatesResponse> {
+    return this.send("GET", "/api/registry/templates", { signal });
   }
 
   /** Launch an ide/file-explorer/browser target on a path. */
