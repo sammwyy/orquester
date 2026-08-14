@@ -6,13 +6,44 @@ import { useOrquester } from "../../../context/orquester-context";
 import { useAppStore } from "../../../store/app";
 import { Group, Field } from "./shared";
 export const AppSettings: React.FC = () => {
-  const { runtime, workerManager } = useOrquester();
+  const { runtime, workerManager, api } = useOrquester();
   const appConfig = useAppStore((s) => s.appConfig);
   const updateAppConfig = useAppStore((s) => s.updateAppConfig);
   const connections = useAppStore((s) => s.connections);
   const activeId = useAppStore((s) => s.activeConnectionId);
   const active = connections.find((c) => c.id === activeId);
   const [serviceError, setServiceError] = useState<string | null>(null);
+  const [workerState, setWorkerState] = useState<{ running: boolean; service: boolean } | null>(null);
+  const remoteWorker = active?.kind === "remote";
+
+  useEffect(() => {
+    if (!workerManager) return;
+    void Promise.all([workerManager.status(), workerManager.serviceStatus()]).then(([worker, service]) => {
+      setWorkerState({ running: worker.running, service: service.installed });
+    }).catch(() => setWorkerState(null));
+  }, [workerManager]);
+
+  useEffect(() => {
+    if (!remoteWorker) {
+      setWorkerState(null);
+      return;
+    }
+    void api.workerServiceAction("status").then(({ output }) => {
+      setWorkerState({ running: /running=true/i.test(output), service: /installed=true/i.test(output) });
+    }).catch(() => setWorkerState(null));
+  }, [api, remoteWorker]);
+
+  const remoteAction = async (action: "install" | "uninstall" | "start" | "stop" | "restart") => {
+    if (action === "restart" && !workerState?.service) {
+      await api.restartWorker();
+    } else if (action === "stop" && !workerState?.service) {
+      await api.stopWorker();
+    } else {
+      await api.workerServiceAction(action);
+    }
+    const { output } = await api.workerServiceAction("status");
+    setWorkerState({ running: /running=true/i.test(output), service: /installed=true/i.test(output) });
+  };
 
   const setStartWorkerOnLogin = async (enabled: boolean) => {
     if (!workerManager) return;
@@ -40,6 +71,21 @@ export const AppSettings: React.FC = () => {
           </Field>
           {appConfig.localWorkerInstalled && workerManager && <Field label="Start worker when I sign in" hint="The worker starts without opening the desktop app.">
             <Switch checked={appConfig.startWorkerOnLogin} onChange={(checked) => void setStartWorkerOnLogin(checked)} />
+          </Field>}
+          {appConfig.localWorkerInstalled && workerManager && <Field label="Worker lifecycle" hint={workerState?.service ? "Managed by the system service." : "Managed by the desktop app."}>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" disabled={workerState?.running === true} onClick={() => void workerManager.start().then(async () => setWorkerState({ running: true, service: (await workerManager.serviceStatus()).installed }))}>Start</Button>
+              <Button size="sm" variant="outline" disabled={workerState?.running !== true} onClick={() => void workerManager.stop().then(() => setWorkerState((current) => current ? { ...current, running: false } : current))}>Stop</Button>
+              <Button size="sm" variant="outline" onClick={() => void workerManager.restart().then(async () => setWorkerState({ running: true, service: (await workerManager.serviceStatus()).installed }))}>Restart</Button>
+            </div>
+          </Field>}
+          {remoteWorker && <Field label="Remote worker lifecycle" hint={workerState ? (workerState.service ? "Managed by its system service." : "Remote administration is enabled, but no service is installed.") : "Remote administration is disabled or unavailable."}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" disabled={!workerState || workerState.running} onClick={() => void remoteAction(workerState?.service ? "start" : "restart")}>Start</Button>
+              <Button size="sm" variant="outline" disabled={!workerState?.running} onClick={() => void remoteAction("stop")}>Stop</Button>
+              <Button size="sm" variant="outline" disabled={!workerState} onClick={() => void remoteAction("restart")}>Restart</Button>
+              <Button size="sm" variant="outline" disabled={!workerState} onClick={() => void remoteAction(workerState?.service ? "uninstall" : "install")}>{workerState?.service ? "Disable service" : "Enable service"}</Button>
+            </div>
           </Field>}
           {serviceError && <p className="text-xs text-red-300">{serviceError}</p>}
         </Group>

@@ -120,6 +120,8 @@ export const httpTransportSchema = z.object({
   username: z.string().min(1).optional(),
   /** Serve the browser client from the worker's HTTP listener. */
   serveWeb: z.boolean().default(false),
+  /** Allow authenticated remote clients to change daemon settings and control it. */
+  allowRemoteAdmin: z.boolean().default(false),
   /** bcrypt hash of the password — what's persisted at rest. */
   passwordHash: z.string().optional()
 });
@@ -131,6 +133,11 @@ export const daemonConfigSchema = z.object({
   // May contain $vars; expand with expandVars() before use.
   workspacesDir: z.string().min(1),
   logsDir: z.string().min(1),
+  /** Which registered shells the worker may launch in PTY sessions. */
+  shellAccess: z.object({
+    policy: z.enum(["all", "allowList", "none"]).default("all"),
+    allowed: z.array(z.string().min(1)).default([])
+  }).default({ policy: "all", allowed: [] }),
   // Only the external HTTP transport is configurable here; the local unix
   // socket is always present and resolved at runtime (see resolveDaemonPaths).
   transports: z
@@ -256,10 +263,10 @@ export const appConfigSchema = z.object({
   /** Colour scheme id; matches a `[data-scheme]` block in the UI stylesheet. */
   theme: z.string().min(1).default("mono"),
   /** Which variant of that scheme to show. */
-  themeMode: z.enum(["system", "light", "dark", "dynamic"]).default("dark"),
+  themeMode: z.enum(["system", "light", "dark", "dynamic"]).default("system"),
   /** How quota reset timestamps are rendered in the client. */
-  quotaResetFormat: z.enum(["relative", "absolute", "both"]).default("relative"),
-  showQuotaMenu: z.boolean().default(false),
+  quotaResetFormat: z.enum(["relative", "absolute", "both"]).default("both"),
+  showQuotaMenu: z.boolean().default(true),
   /** Check GitHub releases when the app starts. */
   searchForUpdates: z.boolean().default(true),
   /** Stable releases or prerelease/nightly builds. */

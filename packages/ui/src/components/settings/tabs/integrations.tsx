@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import type { IntegrationStatus } from "@orquester/api";
+import type { DaemonConfig } from "@orquester/config";
 import { BatteryCharging, GitBranch, ListTree, Music2, Network, PlugZap } from "lucide-react";
 import { useApi } from "../../../context/orquester-context";
 import { useAppStore } from "../../../store/app";
@@ -22,14 +23,16 @@ export const IntegrationsSettings: React.FC = () => {
   const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const local = connections.find((connection) => connection.id === activeConnectionId)?.kind === "local";
+  const [canEdit, setCanEdit] = useState(local);
 
   useEffect(() => {
     let active = true;
-    api.getIntegrations()
-      .then((response) => {
+    Promise.all([api.getIntegrations(), api.getDaemonConfig()])
+      .then(([response, config]: [{ integrations: IntegrationStatus[] }, DaemonConfig]) => {
         if (active) {
           setIntegrations(response.integrations);
           setStoreIntegrations(response.integrations);
+          setCanEdit(local || config.transports.http.allowRemoteAdmin);
         }
       })
       .catch(() => { if (active) setMessage("Could not load integrations."); });
@@ -37,7 +40,7 @@ export const IntegrationsSettings: React.FC = () => {
   }, [api]);
 
   const toggle = async (id: string, enabled: boolean) => {
-    if (!local) return;
+    if (!canEdit) return;
     const next = integrations.map((integration) => integration.id === id ? { ...integration, enabled } : integration);
     setIntegrations(next);
     setMessage(null);
@@ -55,7 +58,7 @@ export const IntegrationsSettings: React.FC = () => {
     <div className="space-y-3">
       {!local && (
         <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-3 text-xs text-neutral-400">
-          Integration settings are read-only while connected to a remote worker.
+          This worker has remote administration disabled. Enable it from Local Access.
         </div>
       )}
       <div className="grid gap-2 sm:grid-cols-2">
@@ -70,7 +73,7 @@ export const IntegrationsSettings: React.FC = () => {
                 <p className="mt-1 text-xs leading-relaxed text-neutral-500">{integration.description}</p>
                 {!integration.available && <p className="mt-2 text-[11px] text-orange-300/80">{integration.unavailableReason ?? "Unavailable on this worker."}</p>}
               </div>
-              <Switch checked={integration.enabled} disabled={!local || !integration.available} onChange={(enabled) => void toggle(integration.id, enabled)} />
+              <Switch checked={integration.enabled} disabled={!canEdit || !integration.available} onChange={(enabled) => void toggle(integration.id, enabled)} />
             </div>
           </div>
         ))}

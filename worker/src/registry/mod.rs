@@ -17,6 +17,7 @@ use crate::api_types::{
     RegistryAuthInfo, RegistryAuthStatus, RegistryEntry, RegistryInstallState, RegistryKind, RegistryQuota, RegistryResponse,
 };
 use crate::broadcaster::Broadcaster;
+use crate::config::{ShellAccessConfig, ShellAccessPolicy};
 use browsers::BROWSERS;
 use editors::EDITORS;
 use explorers::EXPLORERS;
@@ -253,6 +254,28 @@ impl RegistryService {
         entries.clear();
         for entry in all {
             entries.insert(entry.id.clone(), entry);
+        }
+    }
+
+    pub async fn apply_shell_access(&self, access: &ShellAccessConfig) {
+        let entries = {
+            let mut entries = self.entries.write().await;
+            let allowed = |id: &str| match access.policy {
+                ShellAccessPolicy::All => true,
+                ShellAccessPolicy::AllowList => access.allowed.iter().any(|allowed| allowed == id),
+                ShellAccessPolicy::None => false,
+            };
+            entries
+                .values_mut()
+                .filter(|entry| entry.kind == RegistryKind::Shell)
+                .map(|entry| {
+                    entry.enabled = entry.resolved_bin.is_some() && allowed(&entry.id);
+                    to_public(entry)
+                })
+                .collect::<Vec<_>>()
+        };
+        for entry in entries {
+            self.broadcaster.publish("registry", "registry.changed", &entry);
         }
     }
 

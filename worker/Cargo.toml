@@ -29,6 +29,7 @@ hyper = { version = "1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 
 sha1 = "0.10"
+sha2 = "0.10"
 chrono-tz = "0.10"
 reqwest = "0.12"
 ignore = "0.4"

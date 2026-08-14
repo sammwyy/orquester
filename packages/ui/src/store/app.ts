@@ -136,7 +136,7 @@ export interface UiAppConfig {
 }
 
 const DEFAULT_APP_CONFIG: UiAppConfig = {
-  useTitlebar: false,
+  useTitlebar: true,
   runInBackground: false,
   startWorkerOnLogin: false,
   sidebarOpacity: 0.85,
@@ -145,9 +145,9 @@ const DEFAULT_APP_CONFIG: UiAppConfig = {
   glassTitlebar: false,
   roundedWindow: true,
   theme: "mono",
-  themeMode: "dark",
-  quotaResetFormat: "relative",
-  showQuotaMenu: false,
+  themeMode: "system",
+  quotaResetFormat: "both",
+  showQuotaMenu: true,
   searchForUpdates: true,
   updateChannel: "stable",
   setupComplete: false,

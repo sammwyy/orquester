@@ -11,6 +11,7 @@ mod recent_projects;
 mod routes;
 mod sessions;
 mod service_management;
+mod self_update;
 mod state;
 mod transports;
 
@@ -30,6 +31,9 @@ async fn main() {
     tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env().add_directive("orquester_worker=info".parse().unwrap())).init();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(exit_code) = self_update::handle(&args) {
+        std::process::exit(exit_code);
+    }
     let cwd = std::env::current_dir().expect("cannot read cwd");
     let env: HashMap<String, String> = std::env::vars().collect();
     // CLI flag wins over the env var (Electron passes the flag with an
@@ -71,6 +75,7 @@ async fn main() {
     let broadcaster = Arc::new(Broadcaster::new());
     let registry = Arc::new(RegistryService::new(broadcaster.clone()));
     registry.init().await;
+    registry.apply_shell_access(&daemon_config.shell_access).await;
     let sessions = Arc::new(SessionManager::new(registry.clone(), broadcaster.clone()));
     let git_watcher = {
         let broadcaster = broadcaster.clone();
@@ -137,6 +142,7 @@ async fn main() {
         process_manager_service,
         keep_awake,
         http_reload: tokio::sync::Notify::new(),
+        shutdown: Arc::new(tokio::sync::Notify::new()),
     });
 
     // Only run the pollers while at least one client is listening for events,
@@ -151,7 +157,7 @@ async fn main() {
 
     let local_state = AppState {
         services: services.clone(),
-        options: Arc::new(RouterOptions { auth_required: false, mode: TransportMode::Local, serve_web: None }),
+        options: Arc::new(RouterOptions { auth_required: false, admin_allowed: true, mode: TransportMode::Local, serve_web: None }),
     };
     let local_router = transports::router::build_router(local_state);
 
@@ -170,7 +176,10 @@ async fn main() {
 
     let remote_handle = tokio::spawn(transports::http::run_supervisor(services.clone(), serve_web));
 
-    tokio::signal::ctrl_c().await.expect("failed to listen for ctrl-c");
+    tokio::select! {
+        result = tokio::signal::ctrl_c() => result.expect("failed to listen for ctrl-c"),
+        _ = services.shutdown.notified() => tracing::info!("shutdown requested by local client"),
+    }
     tracing::info!("shutting down");
     services.git_watcher.stop();
     services.battery_watcher.stop();

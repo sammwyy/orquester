@@ -152,6 +152,22 @@ export class ApiClient {
     return this.send("PUT", "/api/config/daemon", { body: patch });
   }
 
+  updateWorker(): Promise<{ started: boolean }> {
+    return this.send("POST", "/api/worker/update");
+  }
+
+  restartWorker(): Promise<void> {
+    return this.send("POST", "/api/worker/restart").then(() => undefined);
+  }
+
+  stopWorker(): Promise<void> {
+    return this.send("POST", "/api/daemon/shutdown").then(() => undefined);
+  }
+
+  workerServiceAction(action: "install" | "uninstall" | "start" | "stop" | "restart" | "status"): Promise<{ ok: boolean; output: string }> {
+    return this.send("POST", `/api/worker/service/${action}`);
+  }
+
   // --- App config + remote servers (shared, daemon-persisted) --------------
 
   getAppConfig(signal?: AbortSignal): Promise<AppConfig> {

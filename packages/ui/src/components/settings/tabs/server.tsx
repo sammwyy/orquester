@@ -14,6 +14,10 @@ export const StorageSettings: React.FC = () => {
   const [workspacesDir, setWorkspacesDir] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [shellPolicy, setShellPolicy] = useState<DaemonConfig["shellAccess"]["policy"]>("all");
+  const [allowedShells, setAllowedShells] = useState<string[]>([]);
+  const [shells, setShells] = useState<Array<{ id: string; name: string; enabled: boolean }>>([]);
+  const [canEdit, setCanEdit] = useState(isLocal);
 
   useEffect(() => {
     let active = true;
@@ -22,7 +26,11 @@ export const StorageSettings: React.FC = () => {
       .then((config: DaemonConfig) => {
         if (!active) return;
         setWorkspacesDir(config.workspacesDir);
+        setShellPolicy(config.shellAccess.policy);
+        setAllowedShells(config.shellAccess.allowed);
+        setCanEdit(isLocal || config.transports.http.allowRemoteAdmin);
       })
+      .then(() => api.listRegistry().then((registry) => setShells(registry.shells.map(({ id, name, enabled }) => ({ id, name, enabled })))))
       .catch(() => setMessage("Could not load daemon config."));
     return () => {
       active = false;
@@ -34,7 +42,8 @@ export const StorageSettings: React.FC = () => {
     setMessage(null);
     try {
       await api.updateDaemonConfig({
-        workspacesDir
+        workspacesDir,
+        shellAccess: { policy: shellPolicy, allowed: allowedShells }
       });
       setMessage("Saved. Storage changes apply immediately.");
     } catch {
@@ -46,10 +55,9 @@ export const StorageSettings: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {!isLocal && (
+      {!canEdit && (
         <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-3 text-xs text-neutral-400">
-          Storage settings are read-only while connected to a remote worker. Change them from that
-          worker’s local app.
+          This worker has remote administration disabled. Enable it from the worker’s Local Access settings.
         </div>
       )}
 
@@ -58,15 +66,31 @@ export const StorageSettings: React.FC = () => {
           <Input
             className="w-40 sm:w-64"
             value={workspacesDir}
-            disabled={!isLocal}
+            disabled={!canEdit}
             onChange={(e) => setWorkspacesDir(e.target.value)}
           />
         </Field>
       </Group>
 
+      <Group title="Shell access">
+        <Field label="Policy" hint="Controls which registered shells can create PTY sessions.">
+          <select className="rounded-lg border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-neutral-200" disabled={!canEdit} value={shellPolicy} onChange={(event) => setShellPolicy(event.target.value as typeof shellPolicy)}>
+            <option value="all">Allow all detected shells</option>
+            <option value="allowList">Allow selected shells</option>
+            <option value="none">Disable shell sessions</option>
+          </select>
+        </Field>
+        {shellPolicy === "allowList" && <div className="space-y-2">
+          {shells.map((shell) => <label key={shell.id} className="flex items-center gap-2 text-sm text-neutral-300">
+            <input type="checkbox" disabled={!canEdit || !shell.enabled} checked={allowedShells.includes(shell.id)} onChange={(event) => setAllowedShells((current) => event.target.checked ? [...new Set([...current, shell.id])] : current.filter((id) => id !== shell.id))} />
+            {shell.name}{!shell.enabled && <span className="text-xs text-neutral-600">unavailable</span>}
+          </label>)}
+        </div>}
+      </Group>
+
       {message && <p className="px-1 text-xs text-neutral-400">{message}</p>}
 
-      {isLocal && (
+      {canEdit && (
         <Button size="sm" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : "Save storage settings"}
         </Button>
@@ -86,6 +110,7 @@ const DaemonAccessSettings: React.FC<{
   const [port, setPort] = useState("");
   const [username, setUsername] = useState("");
   const [serveWeb, setServeWeb] = useState(false);
+  const [allowRemoteAdmin, setAllowRemoteAdmin] = useState(false);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -106,6 +131,7 @@ const DaemonAccessSettings: React.FC<{
         setPort(String(config.transports.http.port));
         setUsername(config.transports.http.username ?? "");
         setServeWeb(config.transports.http.serveWeb);
+        setAllowRemoteAdmin(config.transports.http.allowRemoteAdmin);
       })
       .catch(() => setMessage("Could not load access settings."));
     return () => {
@@ -113,8 +139,10 @@ const DaemonAccessSettings: React.FC<{
     };
   }, [api]);
 
+  const canEdit = editable || (remote && allowRemoteAdmin);
+
   const save = async () => {
-    if (!api || !editable) return;
+    if (!api || !canEdit) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -126,6 +154,7 @@ const DaemonAccessSettings: React.FC<{
             port: Number(port) || 47831,
             ...(username ? { username } : {}),
             serveWeb,
+            allowRemoteAdmin,
             ...(password ? { password } : {})
           }
         }
@@ -143,7 +172,7 @@ const DaemonAccessSettings: React.FC<{
     <div className="space-y-6">
       {remote && (
         <div className="rounded-xl border border-neutral-800/70 bg-neutral-950 p-3 text-xs text-neutral-400">
-          <p>This worker’s access settings are read-only here. Change them from its local app.</p>
+          <p>{allowRemoteAdmin ? "Remote administration is enabled for this worker." : "This worker’s access settings are read-only here. Enable remote administration from its local app."}</p>
           {onGoToLocalAccess && (
             <Button size="sm" variant="outline" className="mt-3" onClick={onGoToLocalAccess}>
               Go to Local Access
@@ -154,16 +183,16 @@ const DaemonAccessSettings: React.FC<{
 
       <Group title="HTTP Access">
         <Field label="Enabled" hint="Allow other clients to reach this worker.">
-          <Switch checked={httpEnabled} disabled={!editable} onChange={setHttpEnabled} />
+          <Switch checked={httpEnabled} disabled={!canEdit} onChange={setHttpEnabled} />
         </Field>
         <Field label="Host">
-          <Input className="w-40 sm:w-64" value={host} disabled={!editable} onChange={(e) => setHost(e.target.value)} />
+          <Input className="w-40 sm:w-64" value={host} disabled={!canEdit} onChange={(e) => setHost(e.target.value)} />
         </Field>
         <Field label="Port">
-          <Input className="w-40 sm:w-64" value={port} disabled={!editable} onChange={(e) => setPort(e.target.value)} />
+          <Input className="w-40 sm:w-64" value={port} disabled={!canEdit} onChange={(e) => setPort(e.target.value)} />
         </Field>
         <Field label="Username" hint="Required for remote HTTP access.">
-          <Input className="w-40 sm:w-64" value={username} disabled={!editable} onChange={(e) => setUsername(e.target.value)} />
+          <Input className="w-40 sm:w-64" value={username} disabled={!canEdit} onChange={(e) => setUsername(e.target.value)} />
         </Field>
         <Field label="Password" hint="Min 8 chars. Leave blank to keep current.">
           <Input
@@ -171,21 +200,24 @@ const DaemonAccessSettings: React.FC<{
             type="password"
             placeholder="••••••••"
             value={password}
-            disabled={!editable}
+            disabled={!canEdit}
             onChange={(e) => setPassword(e.target.value)}
           />
         </Field>
         <Field label="Browser client" hint="Serve Orquester from this worker over HTTP.">
-          <Switch checked={serveWeb} disabled={!editable} onChange={(checked) => {
+          <Switch checked={serveWeb} disabled={!canEdit} onChange={(checked) => {
             setServeWeb(checked);
             if (checked) setHttpEnabled(true);
           }} />
+        </Field>
+        <Field label="Remote administration" hint="Allows authenticated remote clients to modify daemon settings and restart/update this worker.">
+          <Switch checked={allowRemoteAdmin} disabled={!canEdit} onChange={setAllowRemoteAdmin} />
         </Field>
       </Group>
 
       {message && <p className="px-1 text-xs text-neutral-400">{message}</p>}
 
-      {editable && (
+      {canEdit && (
         <Button size="sm" disabled={busy} onClick={() => void save()}>
           {busy ? "Saving…" : "Save access settings"}
         </Button>

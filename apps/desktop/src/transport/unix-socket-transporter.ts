@@ -35,6 +35,9 @@ export interface DesktopBridge {
   setWorkerServiceEnabled(enabled: boolean): Promise<void>;
   chooseWorkerWorkspaces(): Promise<string | undefined>;
   startWorker(): Promise<{ socketPath?: string }>;
+  stopWorker(): Promise<void>;
+  restartWorker(): Promise<void>;
+  workerServiceStatus(): Promise<{ installed: boolean; running: boolean }>;
   loadAppConfig(): Promise<Record<string, unknown>>;
   saveAppConfig(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
   loadRemotes(): Promise<Array<{ name: string; baseUrl: string; password?: string }>>;

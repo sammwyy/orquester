@@ -1,7 +1,7 @@
 use crate::integrations;
 use crate::middlewares::auth::auth_and_cors;
 use crate::routes;
-use crate::state::{AppState, TransportMode};
+use crate::state::AppState;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
@@ -29,6 +29,9 @@ pub fn build_router(state: AppState) -> Router {
             "/api/config/remotes",
             get(routes::config_routes::get_remotes_config).put(routes::config_routes::put_remotes_config),
         )
+        .route("/api/worker/update", post(routes::config_routes::update_worker))
+        .route("/api/worker/restart", post(routes::config_routes::shutdown))
+        .route("/api/worker/service/:action", post(routes::config_routes::worker_service))
         .route("/api/workspaces", get(routes::workspaces::list_workspaces).post(routes::workspaces::create_workspace))
         .route(
             "/api/workspaces/:workspace/projects",
@@ -98,9 +101,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/sessions/:id/output", get(routes::sessions::output))
         .route("/events", get(routes::events::events));
 
-    if state.options.mode == TransportMode::Local {
-        router = router.route("/api/daemon/shutdown", post(routes::config_routes::shutdown));
-    }
+    router = router.route("/api/daemon/shutdown", post(routes::config_routes::shutdown));
 
     if let Some(web_dir) = state.options.serve_web.clone() {
         let serve_dir = tower_http::services::ServeDir::new(&web_dir)

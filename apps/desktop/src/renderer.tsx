@@ -10,12 +10,18 @@ const workerManager = typeof desktopBridge.installWorker === "function"
   && typeof desktopBridge.configureWorker === "function"
   && typeof desktopBridge.setWorkerServiceEnabled === "function"
   && typeof desktopBridge.startWorker === "function"
+  && typeof desktopBridge.stopWorker === "function"
+  && typeof desktopBridge.restartWorker === "function"
+  && typeof desktopBridge.workerServiceStatus === "function"
   && typeof desktopBridge.chooseWorkerWorkspaces === "function"
   ? {
       install: () => desktopBridge.installWorker().then(() => undefined),
       status: () => desktopBridge.workerStatus(),
       configure: (input: { startWorkerOnLogin: boolean; remoteAccess: boolean; port: number; username?: string; password?: string; serveWeb: boolean; workspacesDir?: string }) => desktopBridge.configureWorker(input),
       start: () => desktopBridge.startWorker().then(() => undefined),
+      stop: () => desktopBridge.stopWorker(),
+      restart: () => desktopBridge.restartWorker(),
+      serviceStatus: () => desktopBridge.workerServiceStatus(),
       setServiceEnabled: (enabled: boolean) => desktopBridge.setWorkerServiceEnabled(enabled),
       chooseWorkspacesDirectory: () => desktopBridge.chooseWorkerWorkspaces()
     }

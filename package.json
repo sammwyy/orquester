@@ -14,7 +14,8 @@
     "dev:remoteworker": "cross-env ORQUESTER_REMOTE_WORKER=1 cargo build --manifest-path worker/Cargo.toml && cross-env ORQUESTER_REMOTE_WORKER=1 pnpm --filter @orquester/desktop dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "check": "pnpm -r typecheck"
+    "check": "pnpm -r typecheck",
+    "test": "pnpm check && cargo test --manifest-path worker/Cargo.toml"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",

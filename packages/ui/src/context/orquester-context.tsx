@@ -34,6 +34,9 @@ export interface WorkerManager {
   install(): Promise<void>;
   configure(input: LocalWorkerSetup): Promise<void>;
   start(): Promise<void>;
+  stop(): Promise<void>;
+  restart(): Promise<void>;
+  serviceStatus(): Promise<{ installed: boolean; running: boolean }>;
   setServiceEnabled(enabled: boolean): Promise<void>;
   chooseWorkspacesDirectory(): Promise<string | undefined>;
 }

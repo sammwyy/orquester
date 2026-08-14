@@ -125,6 +125,7 @@ export const QuotaSettings: React.FC = () => {
   const connections = useAppStore((state) => state.connections);
   const activeConnectionId = useAppStore((state) => state.activeConnectionId);
   const isLocal = connections.find((connection) => connection.id === activeConnectionId)?.kind === "local";
+  const [canEdit, setCanEdit] = useState(isLocal);
   const [quotaWorkers, setQuotaWorkers] = useState<Record<string, boolean>>({});
   const [now, setNow] = useState(() => new Date());
   const installedIds = agents.filter((agent) => agent.enabled).map((agent) => agent.id);
@@ -138,7 +139,10 @@ export const QuotaSettings: React.FC = () => {
   useEffect(() => {
     let active = true;
     api.getDaemonConfig().then((config) => {
-      if (active) setQuotaWorkers(config.quotaWorkers);
+      if (active) {
+        setQuotaWorkers(config.quotaWorkers);
+        setCanEdit(isLocal || config.transports.http.allowRemoteAdmin);
+      }
     }).catch(() => undefined);
     return () => { active = false; };
   }, [api]);
@@ -229,7 +233,7 @@ export const QuotaSettings: React.FC = () => {
           <div className="columns-1 gap-2.5 sm:columns-2">
             {available.map((quota) => (
               <div key={quota.id} className="mb-2.5 break-inside-avoid">
-                <QuotaCard quota={quota} resetFormat={resetFormat} now={now} workerEnabled={quotaWorkers[quota.id] !== false} onWorkerChange={(enabled) => void updateQuotaWorker(quota.id, enabled)} disabled={!isLocal} />
+                <QuotaCard quota={quota} resetFormat={resetFormat} now={now} workerEnabled={quotaWorkers[quota.id] !== false} onWorkerChange={(enabled) => void updateQuotaWorker(quota.id, enabled)} disabled={!canEdit} />
               </div>
             ))}
           </div>
@@ -241,7 +245,7 @@ export const QuotaSettings: React.FC = () => {
           <div className="columns-1 gap-2.5 sm:columns-2">
             {unavailable.map((quota) => (
               <div key={quota.id} className="mb-2.5 break-inside-avoid">
-                <QuotaCard quota={quota} resetFormat={resetFormat} now={now} workerEnabled={quotaWorkers[quota.id] !== false} onWorkerChange={(enabled) => void updateQuotaWorker(quota.id, enabled)} disabled={!isLocal} />
+                <QuotaCard quota={quota} resetFormat={resetFormat} now={now} workerEnabled={quotaWorkers[quota.id] !== false} onWorkerChange={(enabled) => void updateQuotaWorker(quota.id, enabled)} disabled={!canEdit} />
               </div>
             ))}
           </div>

@@ -86,6 +86,7 @@ pub struct HttpTransportConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub username: Option<String>,
     pub serve_web: bool,
+    pub allow_remote_admin: bool,
     /// bcrypt hash of the password — what's persisted at rest.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password_hash: Option<String>,
@@ -100,6 +101,7 @@ impl Default for HttpTransportConfig {
             password: None,
             username: None,
             serve_web: false,
+            allow_remote_admin: false,
             password_hash: None,
         }
     }
@@ -140,6 +142,7 @@ pub struct DaemonConfig {
     /// May contain $vars; expand with expand_vars() before use.
     pub workspaces_dir: String,
     pub logs_dir: String,
+    pub shell_access: ShellAccessConfig,
     pub transports: TransportsConfig,
 }
 
@@ -151,8 +154,36 @@ impl Default for DaemonConfig {
             integrations: default_integrations(),
             workspaces_dir: "$userhome/workspaces".to_string(),
             logs_dir: "$appdir/daemon/logs".to_string(),
+            shell_access: ShellAccessConfig::default(),
             transports: TransportsConfig::default(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ShellAccessConfig {
+    pub policy: ShellAccessPolicy,
+    pub allowed: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ShellAccessPolicy {
+    All,
+    AllowList,
+    None,
+}
+
+impl Default for ShellAccessConfig {
+    fn default() -> Self {
+        Self { policy: ShellAccessPolicy::All, allowed: Vec::new() }
+    }
+}
+
+impl Default for ShellAccessPolicy {
+    fn default() -> Self {
+        Self::All
     }
 }
 
@@ -281,9 +312,9 @@ impl Default for AppConfig {
         extra.insert("glassTitlebar".into(), false.into());
         extra.insert("roundedWindow".into(), true.into());
         extra.insert("theme".into(), "mono".into());
-        extra.insert("themeMode".into(), "dark".into());
-        extra.insert("quotaResetFormat".into(), "relative".into());
-        extra.insert("showQuotaMenu".into(), false.into());
+        extra.insert("themeMode".into(), "system".into());
+        extra.insert("quotaResetFormat".into(), "both".into());
+        extra.insert("showQuotaMenu".into(), true.into());
         Self { extra }
     }
 }

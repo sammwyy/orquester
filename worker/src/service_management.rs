@@ -14,11 +14,9 @@ pub fn handle(args: &[String], appdir: Option<&str>) -> Option<i32> {
     }
 
     let result = match args.get(1).map(String::as_str) {
-        Some("install") => install(appdir),
-        Some("uninstall") => uninstall(),
-        Some("status") => status(),
+        Some(action) => execute(action, appdir),
         _ => Err(
-            "Usage: orquester-worker service <install|uninstall|status> [--appdir <path>]"
+            "Usage: orquester-worker service <install|uninstall|start|stop|restart|status> [--appdir <path>]"
                 .to_string(),
         ),
     };
@@ -31,6 +29,18 @@ pub fn handle(args: &[String], appdir: Option<&str>) -> Option<i32> {
             eprintln!("{error}");
             Some(1)
         }
+    }
+}
+
+pub fn execute(action: &str, appdir: Option<&str>) -> Result<String, String> {
+    match action {
+        "install" => install(appdir),
+        "uninstall" => uninstall(),
+        "start" => start(),
+        "stop" => stop(),
+        "restart" => restart(),
+        "status" => status(),
+        _ => Err("Unknown service action.".to_string()),
     }
 }
 
@@ -68,12 +78,27 @@ fn uninstall() -> Result<String, String> {
 
 #[cfg(windows)]
 fn status() -> Result<String, String> {
-    Ok(if windows_task_exists() {
-        "installed"
-    } else {
-        "not installed"
-    }
-    .to_string())
+    let installed = windows_task_exists();
+    let running = installed && windows_task_running();
+    Ok(format!("installed={installed}\nrunning={running}"))
+}
+
+#[cfg(windows)]
+fn start() -> Result<String, String> {
+    run("schtasks", ["/Run", "/TN", WINDOWS_TASK_NAME])?;
+    Ok("Worker started.".to_string())
+}
+
+#[cfg(windows)]
+fn stop() -> Result<String, String> {
+    run("schtasks", ["/End", "/TN", WINDOWS_TASK_NAME])?;
+    Ok("Worker stopped.".to_string())
+}
+
+#[cfg(windows)]
+fn restart() -> Result<String, String> {
+    let _ = stop();
+    start()
 }
 
 #[cfg(windows)]
@@ -82,6 +107,15 @@ fn windows_task_exists() -> bool {
         .args(["/Query", "/TN", WINDOWS_TASK_NAME])
         .status()
         .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn windows_task_running() -> bool {
+    Command::new("schtasks")
+        .args(["/Query", "/TN", WINDOWS_TASK_NAME, "/FO", "LIST"])
+        .output()
+        .map(|output| String::from_utf8_lossy(&output.stdout).lines().any(|line| line.trim_end().ends_with("Running")))
         .unwrap_or(false)
 }
 
@@ -124,12 +158,27 @@ fn uninstall() -> Result<String, String> {
 
 #[cfg(target_os = "linux")]
 fn status() -> Result<String, String> {
-    Ok(if linux_unit_path()?.exists() {
-        "installed"
-    } else {
-        "not installed"
-    }
-    .to_string())
+    let installed = linux_unit_path()?.exists();
+    let running = installed && Command::new("systemctl").args(["--user", "is-active", "--quiet", LINUX_UNIT_NAME]).status().map(|status| status.success()).unwrap_or(false);
+    Ok(format!("installed={installed}\nrunning={running}"))
+}
+
+#[cfg(target_os = "linux")]
+fn start() -> Result<String, String> {
+    run("systemctl", ["--user", "start", LINUX_UNIT_NAME])?;
+    Ok("Worker started.".to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn stop() -> Result<String, String> {
+    run("systemctl", ["--user", "stop", LINUX_UNIT_NAME])?;
+    Ok("Worker stopped.".to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn restart() -> Result<String, String> {
+    run("systemctl", ["--user", "restart", LINUX_UNIT_NAME])?;
+    Ok("Worker restarted.".to_string())
 }
 
 #[cfg(all(not(windows), not(target_os = "linux")))]
@@ -144,6 +193,21 @@ fn uninstall() -> Result<String, String> {
 
 #[cfg(all(not(windows), not(target_os = "linux")))]
 fn status() -> Result<String, String> {
+    Err("Worker service management is only supported on Windows and Linux.".to_string())
+}
+
+#[cfg(all(not(windows), not(target_os = "linux")))]
+fn start() -> Result<String, String> {
+    Err("Worker service management is only supported on Windows and Linux.".to_string())
+}
+
+#[cfg(all(not(windows), not(target_os = "linux")))]
+fn stop() -> Result<String, String> {
+    Err("Worker service management is only supported on Windows and Linux.".to_string())
+}
+
+#[cfg(all(not(windows), not(target_os = "linux")))]
+fn restart() -> Result<String, String> {
     Err("Worker service management is only supported on Windows and Linux.".to_string())
 }
 

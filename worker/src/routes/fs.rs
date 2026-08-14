@@ -24,15 +24,49 @@ fn fs_err(error: std::io::Error, fallback: &str) -> Response {
 
 /// Confines a client-supplied path to the resolved workspaces directory,
 /// mirroring integrations/git/routes.rs's `project_path_for`. Deliberately
-/// not `fs::canonicalize` (see `paths::lexical_resolve`'s doc).
+/// canonicalizes existing path components so symlinks cannot escape the root;
+/// missing components are appended after resolving their nearest parent.
 fn workspace_path_for(workspaces_dir: &str, path: &str) -> Result<String, Response> {
     let cwd = std::env::current_dir().unwrap_or_default();
     let root = crate::paths::lexical_resolve(&cwd, workspaces_dir);
     let target = crate::paths::lexical_resolve(&cwd, path);
-    if target != root && !target.starts_with(&root) {
+    let canonical_root = std::fs::canonicalize(&root).map_err(|_| {
+        ApiError::response(StatusCode::FORBIDDEN, "FORBIDDEN", "The workspaces directory is unavailable.")
+    })?;
+    let canonical_target = canonicalize_for_confinement(&target).map_err(|_| {
+        ApiError::response(StatusCode::FORBIDDEN, "FORBIDDEN", "Path cannot be resolved safely.")
+    })?;
+    if canonical_target != canonical_root && !canonical_target.starts_with(&canonical_root) {
         return Err(ApiError::response(StatusCode::FORBIDDEN, "FORBIDDEN", "Path is outside the workspaces directory."));
     }
-    Ok(target.to_string_lossy().to_string())
+    Ok(canonical_target.to_string_lossy().to_string())
+}
+
+fn canonicalize_for_confinement(target: &Path) -> std::io::Result<PathBuf> {
+    if let Ok(metadata) = std::fs::symlink_metadata(target) {
+        if metadata.file_type().is_symlink() {
+            return std::fs::canonicalize(target);
+        }
+    }
+    if target.exists() {
+        return std::fs::canonicalize(target);
+    }
+
+    let mut missing = Vec::new();
+    let mut existing = target;
+    while !existing.exists() {
+        let Some(name) = existing.file_name() else {
+            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "path has no existing parent"));
+        };
+        missing.push(name.to_os_string());
+        existing = existing.parent().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "path has no existing parent"))?;
+    }
+
+    let mut resolved = std::fs::canonicalize(existing)?;
+    for component in missing.iter().rev() {
+        resolved.push(component);
+    }
+    Ok(resolved)
 }
 
 async fn workspaces_dir(state: &AppState) -> String {
@@ -132,6 +166,9 @@ pub async fn search(State(state): State<AppState>, Query(q): Query<SearchQuery>)
     let (Some(root), Some(query)) = (q.path, q.query) else {
         return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "path and query required.");
     };
+    if query.is_empty() {
+        return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "query cannot be empty.");
+    }
     let workspaces_dir = workspaces_dir(&state).await;
     let root = match workspace_path_for(&workspaces_dir, &root) {
         Ok(p) => p,

@@ -415,7 +415,26 @@ function ensureAppFiles(): void {
   fs.mkdirSync(logsDir, { recursive: true });
   const appConfigPath = path.join(dir, "app.json");
   if (!fs.existsSync(appConfigPath)) {
-    const defaults = { version: 1, activeConnectionId: "local", useTitlebar: true, runInBackground: false, startWorkerOnLogin: false, setupComplete: false, localWorkerInstalled: false };
+    const defaults = {
+      version: 1,
+      activeConnectionId: "local",
+      useTitlebar: true,
+      runInBackground: false,
+      startWorkerOnLogin: false,
+      sidebarOpacity: 0.85,
+      glassSidebar: false,
+      titlebarOpacity: 0.85,
+      glassTitlebar: false,
+      roundedWindow: true,
+      theme: "mono",
+      themeMode: "system",
+      quotaResetFormat: "both",
+      showQuotaMenu: true,
+      searchForUpdates: true,
+      updateChannel: "stable",
+      setupComplete: false,
+      localWorkerInstalled: false
+    };
     fs.writeFileSync(appConfigPath, `${JSON.stringify(defaults, null, 2)}\n`);
   }
   const remotesPath = path.join(dir, "remotes.json");
@@ -441,6 +460,27 @@ function setWorkerServiceEnabled(enabled: boolean): void {
   const result = spawnSync(binary, ["service", enabled ? "install" : "uninstall", "--appdir", baseDir()], { encoding: "utf8", windowsHide: true });
   if (result.error || result.status !== 0) {
     throw new Error(result.stderr?.trim() || result.error?.message || "Could not update worker sign-in startup.");
+  }
+}
+
+type WorkerServiceAction = "start" | "stop" | "restart" | "status";
+
+function workerServiceCommand(action: WorkerServiceAction): string {
+  const binary = workerBinaryPath();
+  if (!binary || !fs.existsSync(binary)) throw new Error("The local worker is not installed.");
+  const result = spawnSync(binary, ["service", action, "--appdir", baseDir()], { encoding: "utf8", windowsHide: true });
+  if (result.error || result.status !== 0) {
+    throw new Error(result.stderr?.trim() || result.error?.message || `Could not ${action} the worker service.`);
+  }
+  return result.stdout ?? "";
+}
+
+function workerServiceStatus(): { installed: boolean; running: boolean } {
+  try {
+    const output = workerServiceCommand("status");
+    return { installed: /installed=true/i.test(output), running: /running=true/i.test(output) };
+  } catch {
+    return { installed: false, running: false };
   }
 }
 
@@ -487,8 +527,9 @@ async function startIntegratedDaemon(): Promise<void> {
   }
 
   const args = appdir ? ["--appdir", appdir] : [];
-  const child = spawn(binary, args, { cwd: repoRoot, env, stdio: "inherit", windowsHide: true });
+  const child = spawn(binary, args, { cwd: repoRoot, env, stdio: "ignore", detached: true, windowsHide: true });
   workerProcess = child;
+  child.unref();
   child.on("exit", (code) => {
     if (workerProcess === child) {
       workerProcess = undefined;
@@ -503,12 +544,19 @@ async function startIntegratedDaemon(): Promise<void> {
 }
 
 async function stopIntegratedDaemon(): Promise<void> {
-  if (!workerProcess) {
-    return;
+  const socket = daemonSocketPath ?? socketPathFor();
+  if (await checkExistingDaemon(socket)) {
+    try {
+      await requestOverSocket({ method: "POST", path: "/api/daemon/shutdown" });
+    } catch {
+      // The daemon can close the socket before the response reaches Electron.
+    }
   }
-  const current = workerProcess;
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline && await checkExistingDaemon(socket)) await sleep(100);
+  workerProcess?.kill();
   workerProcess = undefined;
-  current.kill();
+  daemonSocketPath = undefined;
 }
 
 /** HTTP request to the daemon over its unix socket (the renderer's transport). */
@@ -611,9 +659,9 @@ function registerIpc(): void {
     await shell.openExternal(url);
     return true;
   });
-  ipcMain.handle("orquester:worker:status", () => ({
+  ipcMain.handle("orquester:worker:status", async () => ({
     installed: repoWorkerMode() || readInstalledWorker() !== null,
-    running: Boolean(workerProcess),
+    running: Boolean(workerProcess) || await checkExistingDaemon(socketPathFor()) || workerServiceStatus().running,
     source: repoWorkerMode() ? "repository" : "release"
   }));
   ipcMain.handle("orquester:worker:install", async () => {
@@ -647,7 +695,11 @@ function registerIpc(): void {
     return result.canceled ? undefined : result.filePaths[0];
   });
   ipcMain.handle("orquester:worker:start", async () => {
-    if (!workerProcess && !await checkExistingDaemon(socketPathFor())) {
+    const service = workerServiceStatus();
+    if (service.installed && !service.running) {
+      workerServiceCommand("start");
+      await waitForWorkerReady(socketPathFor());
+    } else if (!workerProcess && !await checkExistingDaemon(socketPathFor())) {
       await startIntegratedDaemon();
       isDaemonOwner = true;
       createTray();
@@ -658,6 +710,22 @@ function registerIpc(): void {
     return { socketPath: daemonSocketPath };
   });
   ipcMain.handle("orquester:worker:set-service-enabled", (_event, enabled: boolean) => setWorkerServiceEnabled(enabled === true));
+  ipcMain.handle("orquester:worker:service-status", () => workerServiceStatus());
+  ipcMain.handle("orquester:worker:stop", async () => {
+    const service = workerServiceStatus();
+    if (service.installed) workerServiceCommand("stop");
+    else await stopIntegratedDaemon();
+  });
+  ipcMain.handle("orquester:worker:restart", async () => {
+    const service = workerServiceStatus();
+    if (service.installed) {
+      workerServiceCommand("restart");
+      await waitForWorkerReady(socketPathFor());
+    } else {
+      await stopIntegratedDaemon();
+      await startIntegratedDaemon();
+    }
+  });
   ipcMain.handle("orquester:config:load", () => readAppConfig());
   ipcMain.handle("orquester:config:save", (_event, patch: Record<string, unknown>) => writeAppConfig(patch));
   ipcMain.handle("orquester:remotes:load", () => {

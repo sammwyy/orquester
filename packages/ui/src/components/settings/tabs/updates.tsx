@@ -56,6 +56,15 @@ export const UpdatesSettings: React.FC = () => {
     const clientLatest = clientUpdate?.latest;
     const latest = clientLatest ?? workerUpdate?.latest;
     if (!latest) return;
+    if (!clientLatest) {
+      try {
+        await api.updateWorker();
+        setMessage("Worker update downloaded. It will restart safely now.");
+      } catch {
+        setMessage("This worker cannot be updated from the current connection. Use its local client.");
+      }
+      return;
+    }
     const url = clientLatest ? desktopReleasePage(latest.version) : workerReleasePage(latest.version);
     const opened = openExternal ? await openExternal(url) : window.open(url, "_blank") !== null;
     setMessage(opened ? `Opening the ${clientLatest ? "desktop" : "worker"} release.` : "Could not open the release page.");

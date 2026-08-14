@@ -113,3 +113,27 @@ pub fn sanitize_daemon_config(config: &DaemonConfig) -> DaemonConfig {
         config.transports.http.password_hash.as_ref().map(|_| "********".to_string());
     sanitized
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_equal_compares_without_accepting_different_lengths() {
+        assert!(safe_equal("token", "token"));
+        assert!(!safe_equal("token", "tokens"));
+        assert!(!safe_equal("token", "Token"));
+    }
+
+    #[test]
+    fn sanitized_config_never_exposes_password_material() {
+        let mut config = DaemonConfig::default();
+        config.transports.http.password = Some("plaintext".to_string());
+        config.transports.http.password_hash = Some(hash_password("plaintext"));
+
+        let sanitized = sanitize_daemon_config(&config);
+
+        assert_eq!(sanitized.transports.http.password, None);
+        assert_eq!(sanitized.transports.http.password_hash.as_deref(), Some("********"));
+    }
+}

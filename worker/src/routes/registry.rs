@@ -6,7 +6,7 @@
 //! registry.rs's module doc.
 
 use crate::api_types::{ApiError, OpenRequest};
-use crate::state::{AppState, TransportMode};
+use crate::state::AppState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -36,16 +36,16 @@ pub struct InstallBody {
 }
 
 pub async fn install(State(state): State<AppState>, Path(id): Path<String>, Json(body): Json<InstallBody>) -> Response {
-    if state.options.mode != TransportMode::Local {
-        return ApiError::response(StatusCode::FORBIDDEN, "LOCAL_ONLY", "Installation is only available on a local daemon.");
+    if !state.options.admin_allowed {
+        return ApiError::response(StatusCode::FORBIDDEN, "REMOTE_ADMIN_DISABLED", "Remote daemon administration is disabled.");
     }
     let started = state.services.registry.install(&id, body.elevated.unwrap_or(false)).await;
     Json(serde_json::json!({ "started": started })).into_response()
 }
 
 pub async fn update(State(state): State<AppState>, Path(id): Path<String>) -> Response {
-    if state.options.mode != TransportMode::Local {
-        return ApiError::response(StatusCode::FORBIDDEN, "LOCAL_ONLY", "Updating is only available on a local daemon.");
+    if !state.options.admin_allowed {
+        return ApiError::response(StatusCode::FORBIDDEN, "REMOTE_ADMIN_DISABLED", "Remote daemon administration is disabled.");
     }
     let started = state.services.registry.update(&id).await;
     Json(serde_json::json!({ "started": started })).into_response()
@@ -70,8 +70,8 @@ pub async fn cancel_install_password(State(state): State<AppState>, Path(id): Pa
 }
 
 pub async fn open(State(state): State<AppState>, Json(body): Json<OpenRequest>) -> Response {
-    if state.options.mode != TransportMode::Local {
-        return ApiError::response(StatusCode::FORBIDDEN, "LOCAL_ONLY", "Opening host applications is only available on a local daemon.");
+    if !state.options.admin_allowed {
+        return ApiError::response(StatusCode::FORBIDDEN, "REMOTE_ADMIN_DISABLED", "Remote daemon administration is disabled.");
     }
     let (Some(target_id), Some(path)) = (body.target_id, body.path) else {
         return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_REQUEST", "targetId and path required.");

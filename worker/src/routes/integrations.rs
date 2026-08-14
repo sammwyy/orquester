@@ -1,7 +1,7 @@
 //! `/api/integrations`.
 
 use crate::api_types::{ApiError, IntegrationsResponse, UpdateIntegrationsRequest};
-use crate::state::{AppState, TransportMode};
+use crate::state::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -25,8 +25,8 @@ pub async fn list(State(state): State<AppState>) -> Response {
 }
 
 pub async fn update(State(state): State<AppState>, Json(body): Json<UpdateIntegrationsRequest>) -> Response {
-    if state.options.mode != TransportMode::Local {
-        return ApiError::response(StatusCode::FORBIDDEN, "FORBIDDEN", "Integrations can only be changed locally.");
+    if !state.options.admin_allowed {
+        return ApiError::response(StatusCode::FORBIDDEN, "REMOTE_ADMIN_DISABLED", "Remote daemon administration is disabled.");
     }
     let available = crate::integrations::integration_availability().await;
     let known: std::collections::HashSet<String> = available.iter().map(|entry| entry.id.clone()).collect();

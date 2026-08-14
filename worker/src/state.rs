@@ -45,6 +45,8 @@ pub struct Services {
     /// mirrors index.ts's `reloadHttp`. Sessions, the local transport and
     /// every watcher above are untouched by this.
     pub http_reload: tokio::sync::Notify,
+    /// Local lifecycle requests ask the main task to perform an orderly stop.
+    pub shutdown: Arc<tokio::sync::Notify>,
 }
 
 impl Services {
@@ -82,6 +84,7 @@ pub enum TransportMode {
 #[derive(Clone)]
 pub struct RouterOptions {
     pub auth_required: bool,
+    pub admin_allowed: bool,
     pub mode: TransportMode,
     pub serve_web: Option<String>,
 }

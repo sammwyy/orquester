@@ -80,3 +80,20 @@ pub fn resolve_appdir(raw: Option<&str>, cwd: &std::path::Path) -> Option<String
     let raw = raw.filter(|r| !r.is_empty())?;
     Some(lexical_resolve(cwd, raw).to_string_lossy().to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lexical_resolve_normalizes_relative_parent_components() {
+        let resolved = lexical_resolve(std::path::Path::new("/tmp/orquester"), "one/../two/./file");
+        assert_eq!(resolved, std::path::PathBuf::from("/tmp/orquester/two/file"));
+    }
+
+    #[test]
+    fn parse_appdir_accepts_both_cli_forms() {
+        assert_eq!(parse_appdir_arg(&["--appdir=/tmp/app".to_string()]), Some("/tmp/app".to_string()));
+        assert_eq!(parse_appdir_arg(&["--appdir".to_string(), "/tmp/app".to_string()]), Some("/tmp/app".to_string()));
+    }
+}

@@ -49,8 +49,8 @@ pub async fn get_client_config(State(state): State<AppState>) -> Json<crate::con
 }
 
 pub async fn put_daemon_config(State(state): State<AppState>, Json(patch): Json<serde_json::Value>) -> Response {
-    if state.options.mode == WorkerMode::Remote {
-        return ApiError::response(StatusCode::FORBIDDEN, "FORBIDDEN", "Daemon config can only be changed locally over the unix socket.");
+    if !state.options.admin_allowed {
+        return ApiError::response(StatusCode::FORBIDDEN, "REMOTE_ADMIN_DISABLED", "Remote daemon administration is disabled.");
     }
 
     let mut daemon = state.services.config.daemon.write().await;
@@ -72,6 +72,11 @@ pub async fn put_daemon_config(State(state): State<AppState>, Json(patch): Json<
     if let Some(logs_dir) = patch.get("logsDir").and_then(|v| v.as_str()) {
         merged.logs_dir = logs_dir.to_string();
     }
+    if let Some(shell_access) = patch.get("shellAccess").cloned() {
+        if let Ok(value) = serde_json::from_value(shell_access) {
+            merged.shell_access = value;
+        }
+    }
     if let Some(http_patch) = patch.get("transports").and_then(|t| t.get("http")) {
         if let Some(enabled) = http_patch.get("enabled").and_then(|v| v.as_bool()) {
             merged.transports.http.enabled = enabled;
@@ -84,6 +89,9 @@ pub async fn put_daemon_config(State(state): State<AppState>, Json(patch): Json<
         }
         if let Some(password) = http_patch.get("password").and_then(|v| v.as_str()) {
             if password != "********" {
+                if password.len() < 8 {
+                    return ApiError::response(StatusCode::BAD_REQUEST, "INVALID_PASSWORD", "Password must be at least 8 characters.");
+                }
                 merged.transports.http.password_hash = Some(bootstrap::hash_password(password));
             }
         }
@@ -94,6 +102,9 @@ pub async fn put_daemon_config(State(state): State<AppState>, Json(patch): Json<
         }
         if let Some(serve_web) = http_patch.get("serveWeb").and_then(|v| v.as_bool()) {
             merged.transports.http.serve_web = serve_web;
+        }
+        if let Some(allow_remote_admin) = http_patch.get("allowRemoteAdmin").and_then(|v| v.as_bool()) {
+            merged.transports.http.allow_remote_admin = allow_remote_admin;
         }
     }
     merged.version = 1;
@@ -108,6 +119,8 @@ pub async fn put_daemon_config(State(state): State<AppState>, Json(patch): Json<
     }
     *daemon = merged.clone();
     drop(daemon);
+
+    state.services.registry.apply_shell_access(&merged.shell_access).await;
 
     {
         let mut resolved = state.services.config.resolved.write().await;
@@ -185,6 +198,42 @@ async fn write_json_file(file: &str, value: &impl serde::Serialize) -> std::io::
 }
 
 pub async fn shutdown(State(state): State<AppState>) -> Response {
+    if !state.options.admin_allowed {
+        return ApiError::response(StatusCode::FORBIDDEN, "REMOTE_ADMIN_DISABLED", "Remote daemon administration is disabled.");
+    }
     state.services.broadcaster.publish("daemon", "daemon.shutdown", &serde_json::json!({}));
+    let shutdown = state.services.shutdown.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        shutdown.notify_waiters();
+    });
     StatusCode::NO_CONTENT.into_response()
+}
+
+pub async fn update_worker(State(state): State<AppState>) -> Response {
+    if !state.options.admin_allowed {
+        return ApiError::response(StatusCode::FORBIDDEN, "REMOTE_ADMIN_DISABLED", "Remote daemon administration is disabled.");
+    }
+    match crate::self_update::update().await {
+        Ok(()) => {
+            let shutdown = state.services.shutdown.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                shutdown.notify_waiters();
+            });
+            Json(serde_json::json!({ "started": true })).into_response()
+        }
+        Err(error) => ApiError::response(StatusCode::BAD_REQUEST, "UPDATE_FAILED", error),
+    }
+}
+
+pub async fn worker_service(State(state): State<AppState>, axum::extract::Path(action): axum::extract::Path<String>) -> Response {
+    if !state.options.admin_allowed {
+        return ApiError::response(StatusCode::FORBIDDEN, "REMOTE_ADMIN_DISABLED", "Remote daemon administration is disabled.");
+    }
+    let appdir = state.services.config.resolved.read().await.vars.appdir.clone();
+    match crate::service_management::execute(&action, Some(&appdir)) {
+        Ok(output) => Json(serde_json::json!({ "ok": true, "output": output })).into_response(),
+        Err(error) => ApiError::response(StatusCode::BAD_REQUEST, "SERVICE_ACTION_FAILED", error),
+    }
 }

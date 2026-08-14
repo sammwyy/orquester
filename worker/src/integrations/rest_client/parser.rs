@@ -119,3 +119,26 @@ pub fn interpolate(text: &str, variables: &HashMap<String, String>) -> String {
     let re = RE.get_or_init(|| regex::Regex::new(r"\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}").unwrap());
     re.replace_all(text, |caps: &regex::Captures| variables.get(&caps[1]).cloned().unwrap_or_else(|| caps[0].to_string())).into_owned()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_requests_and_preserves_multiline_body() {
+        let parsed = parse("@host = https://example.test\n### Create\nPOST {{host}}/items\nContent-Type: application/json\n\n{\n  \"name\": \"demo\"\n}\n");
+        assert_eq!(parsed.variables.get("host"), Some(&"https://example.test".to_string()));
+        assert_eq!(parsed.requests.len(), 1);
+        assert_eq!(parsed.requests[0].name, "Create");
+        assert_eq!(parsed.requests[0].method, "POST");
+        assert_eq!(parsed.requests[0].headers, vec![("Content-Type".to_string(), "application/json".to_string())]);
+        assert_eq!(parsed.requests[0].body.as_deref(), Some("{\n  \"name\": \"demo\"\n}"));
+    }
+
+    #[test]
+    fn interpolation_leaves_unknown_variables_untouched() {
+        let variables = HashMap::from([(String::from("host"), String::from("https://example.test"))]);
+        assert_eq!(interpolate("{{host}}/{{missing}}", &variables), "https://example.test/{{missing}}");
+        assert_eq!(referenced_variables("{{host}} {{host}} {{missing}}"), vec!["host", "missing"]);
+    }
+}
