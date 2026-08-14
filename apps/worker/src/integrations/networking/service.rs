@@ -1,9 +1,6 @@
 //! Networking integration.
-//! — Windows uses the native IP Helper table + a toolhelp process snapshot
-//! instead of shelling out to `Get-NetTCPConnection`/`Get-CimInstance
-//! Win32_Process` through PowerShell. `killNetworkProcess` still shells out
-//! to `taskkill /T /F`, same as the TS worker (it's already the simplest
-//! correct way to kill a process tree on Windows).
+//! Windows uses the native IP Helper table; Linux reads procfs. Both avoid a
+//! dependency on a command-line networking tool being installed.
 
 use crate::api_types::{NetworkPort, NetworkStatusResponse, SessionSummary};
 use std::collections::HashMap;
@@ -127,6 +124,187 @@ mod win {
     }
 }
 
+#[cfg(target_os = "linux")]
+mod linux {
+    use super::*;
+    use std::collections::HashMap;
+    use std::fs;
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    use sysinfo::{Pid, ProcessesToUpdate, System};
+
+    #[derive(Clone)]
+    struct SocketOwner {
+        pid: u32,
+        process: String,
+        session_id: Option<String>,
+    }
+
+    fn descendants(sessions: &[SessionSummary], system: &System) -> HashMap<u32, String> {
+        let mut allowed = root_pids(sessions);
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for process in system.processes().values() {
+                let pid = process.pid().as_u32();
+                if allowed.contains_key(&pid) {
+                    continue;
+                }
+                if let Some(session_id) = process
+                    .parent()
+                    .and_then(|parent| allowed.get(&parent.as_u32()))
+                    .cloned()
+                {
+                    allowed.insert(pid, session_id);
+                    changed = true;
+                }
+            }
+        }
+        allowed
+    }
+
+    fn socket_inode(target: &std::path::Path) -> Option<u64> {
+        let target = target.to_string_lossy();
+        target
+            .strip_prefix("socket:[")?
+            .strip_suffix(']')?
+            .parse()
+            .ok()
+    }
+
+    fn socket_owners(allowed: &HashMap<u32, String>, system: &System) -> HashMap<u64, SocketOwner> {
+        let mut owners = HashMap::new();
+        let own_pid = std::process::id();
+        for (&pid, session_id) in allowed {
+            if pid == own_pid {
+                continue;
+            }
+            let Some(process) = system.process(Pid::from_u32(pid)) else {
+                continue;
+            };
+            let process_name = process.name().to_string_lossy().into_owned();
+            let Ok(entries) = fs::read_dir(format!("/proc/{pid}/fd")) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let Some(inode) = fs::read_link(entry.path())
+                    .ok()
+                    .as_deref()
+                    .and_then(socket_inode)
+                else {
+                    continue;
+                };
+                owners.entry(inode).or_insert_with(|| SocketOwner {
+                    pid,
+                    process: process_name.clone(),
+                    session_id: (!session_id.is_empty()).then(|| session_id.clone()),
+                });
+            }
+        }
+        owners
+    }
+
+    fn decode_address(value: &str, ipv6: bool) -> Option<(String, u16)> {
+        let (address, port) = value.split_once(':')?;
+        let port = u16::from_str_radix(port, 16).ok()?;
+        let address = if ipv6 {
+            if address.len() != 32 {
+                return None;
+            }
+            let mut bytes = [0u8; 16];
+            for (chunk, destination) in address
+                .as_bytes()
+                .chunks_exact(8)
+                .zip(bytes.chunks_exact_mut(4))
+            {
+                for (source, destination) in chunk.chunks_exact(2).zip(destination.iter_mut().rev())
+                {
+                    *destination =
+                        u8::from_str_radix(std::str::from_utf8(source).ok()?, 16).ok()?;
+                }
+            }
+            Ipv6Addr::from(bytes).to_string()
+        } else {
+            if address.len() != 8 {
+                return None;
+            }
+            let mut bytes = [0u8; 4];
+            for (source, destination) in address
+                .as_bytes()
+                .chunks_exact(2)
+                .zip(bytes.iter_mut().rev())
+            {
+                *destination = u8::from_str_radix(std::str::from_utf8(source).ok()?, 16).ok()?;
+            }
+            Ipv4Addr::from(bytes).to_string()
+        };
+        Some((address, port))
+    }
+
+    fn listening_sockets(path: &str, ipv6: bool) -> Vec<(String, u16, u64)> {
+        let Ok(contents) = fs::read_to_string(path) else {
+            return Vec::new();
+        };
+        contents
+            .lines()
+            .skip(1)
+            .filter_map(|line| {
+                let fields: Vec<_> = line.split_whitespace().collect();
+                if fields.get(3) != Some(&"0A") {
+                    return None;
+                }
+                let (address, port) = decode_address(*fields.get(1)?, ipv6)?;
+                let inode = fields.get(9)?.parse().ok()?;
+                Some((address, port, inode))
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn decodes_procfs_listener_addresses() {
+            assert_eq!(
+                decode_address("0100007F:1F90", false),
+                Some(("127.0.0.1".to_string(), 8080))
+            );
+            assert_eq!(
+                decode_address("00000000000000000000000001000000:1F90", true),
+                Some(("::1".to_string(), 8080))
+            );
+        }
+    }
+
+    pub fn read_ports(sessions: &[SessionSummary]) -> Vec<NetworkPort> {
+        let mut system = System::new_all();
+        system.refresh_processes(ProcessesToUpdate::All);
+        let owners = socket_owners(&descendants(sessions, &system), &system);
+        let mut ports: Vec<_> = listening_sockets("/proc/net/tcp", false)
+            .into_iter()
+            .chain(listening_sockets("/proc/net/tcp6", true))
+            .filter_map(|(address, port, inode)| {
+                let owner = owners.get(&inode)?;
+                Some(NetworkPort {
+                    protocol: "tcp".to_string(),
+                    address,
+                    port,
+                    pid: owner.pid,
+                    process: owner.process.clone(),
+                    session_id: owner.session_id.clone(),
+                })
+            })
+            .collect();
+        ports.sort_by(|left, right| {
+            left.port
+                .cmp(&right.port)
+                .then(left.pid.cmp(&right.pid))
+                .then(left.address.cmp(&right.address))
+        });
+        ports
+    }
+}
+
 pub async fn read_network_status(sessions: &[SessionSummary]) -> NetworkStatusResponse {
     #[cfg(windows)]
     {
@@ -134,7 +312,15 @@ pub async fn read_network_status(sessions: &[SessionSummary]) -> NetworkStatusRe
         let ports = tokio::task::spawn_blocking(move || win::read_ports(&sessions)).await.unwrap_or_default();
         NetworkStatusResponse { ports }
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        let sessions = sessions.to_vec();
+        let ports = tokio::task::spawn_blocking(move || linux::read_ports(&sessions))
+            .await
+            .unwrap_or_default();
+        NetworkStatusResponse { ports }
+    }
+    #[cfg(all(not(windows), not(target_os = "linux")))]
     {
         let _ = sessions;
         NetworkStatusResponse { ports: Vec::new() }
