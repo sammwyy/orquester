@@ -121,10 +121,8 @@ jobs:
           git diff --cached --quiet || git commit -m "chore(release): update worker versions for $TAG"
           git push
       - name: Publish GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          prerelease=""
-          [[ "$TAG" == *-* ]] && prerelease="--prerelease"
-          gh release create "$TAG" release-assets/* --title "$TAG" --generate-notes $prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
