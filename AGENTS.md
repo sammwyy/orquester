@@ -43,19 +43,29 @@ sides need to agree on ends up here.
 **packages/registry** — static catalog of known shells, agents, IDEs, browsers and
 file managers. Pure data, no logic.
 
-**packages/ui** — the entire interface both clients render: components grouped by
-feature, a store for shared state, hooks for component-local data, services for
-domain logic, and the transport/client layer that talks to the daemon.
+**packages/core** — platform-neutral client contracts: daemon transports,
+connections, secure credential storage, per-client config persistence and local
+worker lifecycle. It contains no React, DOM, Electron or React Native imports.
+
+**packages/design-tokens** — the cross-platform visual contract: palettes,
+typography, spacing, radii, touch targets and layering. Web imports its CSS
+tokens; a future native renderer consumes the TypeScript tokens directly.
+
+**packages/ui** — the React + web-renderer interface used by desktop and web:
+components grouped by feature, a store for shared state, hooks for
+component-local data, services for domain logic, and web-specific rendering.
+Keep DOM, CSS, portals, Electron bridges and xterm here; promote only
+platform-neutral contracts to `packages/core`.
 
 **.stage** — a committed sandbox config dir so development never touches your real
 one.
 
 ## Where features go
 
-Follow the dependency direction: config, then api, then registry and ui; the
-daemon uses all three, the apps compose them. The UI and the daemon never import
-each other — when you want them to, the thing you're reaching for should become
-a shared contract instead.
+Follow the dependency direction: config, then api, registry, core and visual
+tokens, then UI; the daemon uses the shared contracts and the apps compose them.
+The UI and the daemon never import each other — when you want them to, the thing
+you're reaching for should become a shared contract instead.
 
 A typical feature threads inward to outward: a shared type, a daemon route
 delegating to a service, a method on the API client, then a store action or hook,

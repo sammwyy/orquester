@@ -151,6 +151,22 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/core:
+    dependencies:
+      '@orquester/config':
+        specifier: workspace:*
+        version: link:../config
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/design-tokens:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/registry:
     dependencies:
       '@orquester/api':
@@ -187,6 +203,12 @@ importers:
       '@orquester/config':
         specifier: workspace:*
         version: link:../config
+      '@orquester/core':
+        specifier: workspace:*
+        version: link:../core
+      '@orquester/design-tokens':
+        specifier: workspace:*
+        version: link:../design-tokens
       '@orquester/registry':
         specifier: workspace:*
         version: link:../registry

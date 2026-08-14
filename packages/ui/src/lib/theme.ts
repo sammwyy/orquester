@@ -1,21 +1,12 @@
 import type { ThemeMode } from "../types";
+import { COLOR_SCHEMES } from "@orquester/design-tokens";
+
+export { COLOR_SCHEMES } from "@orquester/design-tokens";
 
 /**
- * Colour schemes offered in settings. Each id matches a `[data-scheme="…"]`
- * block in globals.css; "mono" is the base scheme defined by the mode blocks,
- * so it needs no block of its own. Adding a scheme is an entry here plus that
- * block — no component changes.
+ * Colour schemes offered in settings. The palette contract lives in
+ * `@orquester/design-tokens`; web CSS applies the selected scheme.
  */
-export const COLOR_SCHEMES: { id: string; label: string }[] = [
-  { id: "mono", label: "Monochrome" },
-  { id: "warm", label: "Warm" },
-  { id: "slate", label: "Slate" },
-  { id: "rose", label: "Rose" },
-  { id: "green", label: "Matcha" },
-  { id: "yellow", label: "Dune" },
-  { id: "amethyst", label: "Amethyst" }
-];
-
 export const THEME_MODES: { id: ThemeMode; label: string }[] = [
   { id: "system", label: "System" },
   { id: "light", label: "Light" },

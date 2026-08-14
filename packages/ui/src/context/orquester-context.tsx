@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useMemo } from "react";
+import type { LocalWorkerSetup, WorkerManager } from "@orquester/core";
 import type { ApiClient } from "../lib/api-client";
 import type { Runtime, WindowCapabilities } from "../types";
+
+export type { LocalWorkerSetup, WorkerManager } from "@orquester/core";
 
 /** Live state of the native window, pushed by the desktop shell. */
 export interface WindowState {
@@ -27,28 +30,6 @@ export interface WindowControls {
   setBackdrop?(enabled: boolean): void;
   /** What this window can do (transparency, blur backend). */
   capabilities?(): Promise<WindowCapabilities>;
-}
-
-export interface WorkerManager {
-  status(): Promise<{ installed: boolean; running: boolean; source: "repository" | "release" }>;
-  install(): Promise<void>;
-  configure(input: LocalWorkerSetup): Promise<void>;
-  start(): Promise<void>;
-  stop(): Promise<void>;
-  restart(): Promise<void>;
-  serviceStatus(): Promise<{ installed: boolean; running: boolean }>;
-  setServiceEnabled(enabled: boolean): Promise<void>;
-  chooseWorkspacesDirectory(): Promise<string | undefined>;
-}
-
-export interface LocalWorkerSetup {
-  startWorkerOnLogin: boolean;
-  remoteAccess: boolean;
-  port: number;
-  username?: string;
-  password?: string;
-  serveWeb: boolean;
-  workspacesDir?: string;
 }
 
 export interface OrquesterContextValue {

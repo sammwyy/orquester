@@ -1,16 +1,7 @@
-import type { AppConfig, RemoteConnectionConfig } from "@orquester/config";
+import type { AppConfig } from "@orquester/config";
+import type { AppConfigAdapter } from "@orquester/core";
 
-/**
- * Persistence for the app's own config. It is per-client, so each runtime
- * supplies its own store: web uses localStorage; desktop omits this and the
- * store falls back to the daemon (app.json under the appdir).
- */
-export interface AppConfigAdapter {
-  load(): Promise<Partial<AppConfig>>;
-  save(config: AppConfig): Promise<void>;
-  loadRemotes?(): Promise<RemoteConnectionConfig[]>;
-  saveRemotes?(remotes: RemoteConnectionConfig[]): Promise<void>;
-}
+export type { AppConfigAdapter } from "@orquester/core";
 
 export function createLocalStorageAppConfigAdapter(key = "orquester.app"): AppConfigAdapter {
   return {
