@@ -70,7 +70,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onClose, title, 
         aria-modal="true"
         onMouseDown={(e) => e.stopPropagation()}
         className={cn(
-          "relative max-h-[75vh] overflow-y-auto rounded-t-2xl border-t border-neutral-800/70",
+          "relative w-screen max-w-none max-h-[75vh] self-stretch overflow-y-auto rounded-t-2xl border-t border-neutral-800/70",
           "bg-neutral-900/95 backdrop-blur-2xl",
           "pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl shadow-black/50",
           closing ? "animate-sheet-out" : "animate-sheet-in"

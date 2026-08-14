@@ -710,7 +710,14 @@ function registerIpc(): void {
   ipcMain.handle("orquester:config:save", (_event, patch: Record<string, unknown>) => writeAppConfig(patch));
   ipcMain.handle("orquester:remotes:load", () => {
     try {
-      return JSON.parse(fs.readFileSync(path.join(appDir(), "remotes.json"), "utf8")).remotes ?? [];
+      const remotes = JSON.parse(fs.readFileSync(path.join(appDir(), "remotes.json"), "utf8")).remotes ?? [];
+      return Array.isArray(remotes)
+        ? remotes.map((remote) => {
+            if (!remote || typeof remote !== "object") return remote;
+            const { username: _username, password: _password, ...publicRemote } = remote as Record<string, unknown>;
+            return publicRemote;
+          })
+        : [];
     } catch {
       return [];
     }

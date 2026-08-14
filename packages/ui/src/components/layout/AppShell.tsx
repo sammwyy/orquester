@@ -27,8 +27,8 @@ export const AppShell: React.FC = () => {
       >
         <TopBar />
         <MainView />
-        <StatusBar />
         <MobileKeyBar />
+        <StatusBar />
       </div>
       <SettingsModal />
       <SudoPasswordModal />

@@ -4,7 +4,8 @@ import type { AgentConversationSummary, BatteryStatusResponse, GitStatusResponse
 import { ApiClient, ApiError } from "../lib/api-client";
 import { createTransporter } from "../lib/transporters";
 import { toRemoteConfig, toUiConnection } from "../lib/connections";
-import { clearStoredHash, deriveAuthHash, loadStoredHash, storeHash } from "../lib/auth";
+import { clearStoredHash, deriveAuthHash, loadStoredHash } from "../lib/auth";
+import { loadCredential, saveCredential } from "../lib/credential-vault";
 import type { AppConfigAdapter } from "../lib/app-config";
 import type { HttpClient } from "../lib/http-client";
 import type { Transporter } from "../lib/transporter";
@@ -470,7 +471,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     const info = await active.authInfo().catch(() => null);
     set({ authSalt: info?.salt ?? null });
     if (info?.authRequired) {
-      const hash = active.connection.password ?? loadStoredHash(active.connection.endpoint);
+      let hash = active.connection.password ?? loadStoredHash(active.connection.endpoint);
+      if (!hash) {
+        const credential = await loadCredential(active.connection.endpoint);
+        if (credential && info.salt) {
+          hash = deriveAuthHash(credential.password, info.salt);
+          active = new ApiClient(
+            { ...active.connection, username: credential.username, password: hash },
+            buildTransporter({ ...active.connection, username: credential.username, password: hash })
+          );
+          set({ api: active });
+        }
+      }
       if (!hash) {
         stopHealthProbe();
         set({ connectionStatus: "error", reconnectAttempt: 0, authPrompt: { connectionId: active.connection.id } });
@@ -730,7 +742,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Derive the same bcrypt hash the daemon stores; persist it (never the
     // plaintext) and use it as the bearer.
     const hash = deriveAuthHash(password, salt);
-    storeHash(api.connection.endpoint, hash);
+    await saveCredential(api.connection.endpoint, { username: username.trim(), password });
     const connection = { ...api.connection, username: username.trim(), password: hash };
     const nextApi = new ApiClient(connection, buildTransporter(connection));
     set({
@@ -794,7 +806,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const info = await new ApiClient(probe, buildTransporter(probe)).authInfo().catch(() => null);
       if (info?.salt) {
         password = deriveAuthHash(rawPassword, info.salt);
-        storeHash(endpoint, password);
+        await saveCredential(endpoint, { username: input.username?.trim() ?? "", password: rawPassword });
       }
     }
     const connection: UiConnection = {

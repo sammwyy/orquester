@@ -39,9 +39,12 @@ export const AdaptiveMenu: React.FC<AdaptiveMenuProps> = ({
 
   return (
     <>
-      <button type="button" className="app-no-drag inline-flex" onClick={() => { setOpen(true); onOpenChange?.(true); }}>
+      <span
+        className="app-no-drag inline-flex"
+        onClick={() => { setOpen(true); onOpenChange?.(true); }}
+      >
         {trigger}
-      </button>
+      </span>
       <BottomSheet open={open} onClose={() => { setOpen(false); onOpenChange?.(false); }} title={title}>
         {children}
       </BottomSheet>

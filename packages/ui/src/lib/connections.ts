@@ -13,8 +13,7 @@ export function toUiConnection(remote: RemoteConnectionConfig): UiConnection {
     kind: "remote",
     endpoint: remote.baseUrl,
     status: "disconnected",
-    username: remote.username,
-    password: remote.password
+    username: remote.username
   };
 }
 
@@ -23,8 +22,6 @@ export function toRemoteConfig(connection: UiConnection): RemoteConnectionConfig
     id: connection.id,
     name: connection.name,
     kind: "remote",
-    baseUrl: connection.endpoint,
-    username: connection.username,
-    password: connection.password
+    baseUrl: connection.endpoint
   };
 }
