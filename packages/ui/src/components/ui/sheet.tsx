@@ -56,7 +56,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onClose, title, 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[110] flex flex-col justify-end overflow-hidden rounded-[var(--window-radius)]"
+      className="fixed inset-0 z-[110] overflow-hidden rounded-[var(--window-radius)]"
       onMouseDown={onClose}
     >
       <div
@@ -70,13 +70,13 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onClose, title, 
         aria-modal="true"
         onMouseDown={(e) => e.stopPropagation()}
         className={cn(
-          "relative w-screen max-w-none max-h-[75vh] self-stretch overflow-y-auto rounded-t-2xl border-t border-neutral-800/70",
+          "fixed inset-x-0 bottom-0 w-auto max-w-none max-h-[75vh] overflow-y-auto rounded-t-2xl border-t border-neutral-800/70",
           "bg-neutral-900/95 backdrop-blur-2xl",
           "pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl shadow-black/50",
           closing ? "animate-sheet-out" : "animate-sheet-in"
         )}
       >
-        <div className="sticky top-0 flex items-center justify-center bg-neutral-900 pb-1 pt-2">
+        <div className="sticky top-0 flex items-center justify-center bg-transparent pb-1 pt-2">
           <span className="h-1 w-9 rounded-full bg-neutral-700" />
         </div>
         {title && (

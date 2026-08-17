@@ -30,7 +30,7 @@ const GitContent: React.FC = () => {
   const [tab, setTab] = React.useState<"origin" | "commits" | "files">("origin");
   if (!status) {
     return (
-      <div className="min-w-64">
+      <div className="w-full md:min-w-64">
         <p className="text-xs font-medium">No Git repository</p>
         <p className="mt-1 text-[10px] text-current/60">Initialize this project to start tracking changes.</p>
         <button
@@ -46,7 +46,7 @@ const GitContent: React.FC = () => {
     );
   }
   return (
-    <div className="min-w-64">
+    <div className="w-full md:min-w-64">
       <div className="mb-2 flex gap-1 border-b border-white/10 pb-1">
         {(["origin", "commits", "files"] as const).map((item) => (
           <button key={item} type="button" className="rounded px-1.5 py-1 text-[10px] capitalize text-current/70 hover:bg-white/10 hover:text-current" onClick={() => setTab(item)}>
@@ -100,7 +100,7 @@ const BatteryContent: React.FC = () => {
   const updateIntegration = useAppStore((state) => state.updateIntegration);
   if (!battery) return <p className="text-xs text-neutral-500">Battery information unavailable.</p>;
   return (
-    <div className="w-64 max-w-[calc(100vw-2rem)]">
+    <div className="w-full md:w-64 md:max-w-[calc(100vw-2rem)]">
       <div className="flex items-center justify-between border-b border-neutral-700/50 pb-2.5">
         <div>
           <p className="text-xs font-medium text-neutral-100">{battery.hasBattery ? "Battery" : "AC Power"}</p>
@@ -191,7 +191,7 @@ const NetworkingContent: React.FC = () => {
     : "localhost";
   if (!networking || networking.ports.length === 0) return <p className="text-xs text-neutral-500">No listening ports from Orquester processes.</p>;
   return (
-    <div className="w-80 max-w-[calc(100vw-2rem)]">
+    <div className="w-full md:w-80 md:max-w-[calc(100vw-2rem)]">
       <div className="mb-2 border-b border-neutral-700/50 pb-2">
         <p className="text-xs font-medium text-neutral-100">Listening ports</p>
         <p className="mt-0.5 text-[10px] text-neutral-500">Processes owned by this worker</p>
@@ -319,7 +319,7 @@ const AgentsContent: React.FC = () => {
   };
 
   return (
-    <div className="w-72 max-w-[calc(100vw-2rem)]">
+    <div className="w-full md:w-72 md:max-w-[calc(100vw-2rem)]">
       <AgentGroup title="Needs Attention" items={buckets.attention} onSelect={select} />
       <AgentGroup title="Active" items={buckets.active} onSelect={select} />
       <AgentGroup title="Idle" items={buckets.idle} onSelect={select} />
@@ -364,7 +364,7 @@ const ResourcesContent: React.FC = () => {
   const resources = useAppStore((state) => state.systemResources);
   if (!resources) return <p className="text-xs text-current/60">System resources unavailable.</p>;
   return (
-    <div className="w-72 max-w-[calc(100vw-2rem)]">
+    <div className="w-full md:w-72 md:max-w-[calc(100vw-2rem)]">
       <div className="mb-1 flex items-center justify-between px-0.5 pb-1.5">
         <p className="text-xs font-medium text-neutral-100">System Resources</p>
         <span className="text-[10px] text-neutral-500">This worker</span>
@@ -450,7 +450,7 @@ const MediaContent: React.FC = () => {
   if (!media?.available) return <p className="text-xs text-neutral-500">Media controls unavailable.</p>;
   const title = media.title || "Nothing playing";
   return (
-    <div className="w-64 max-w-[calc(100vw-2rem)]">
+    <div className="w-full md:w-64 md:max-w-[calc(100vw-2rem)]">
       <div className="mb-3 flex items-start gap-2 border-b border-neutral-700/50 pb-2.5">
         {thumbnail ? (
           <img src={thumbnail} alt="" className="mt-0.5 h-10 w-10 shrink-0 rounded-md object-cover" />
